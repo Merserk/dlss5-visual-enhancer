@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/81c29005-e4f0-4acf-b9f7-d58850bb055f
 - **Safety and diagnostics:** only one GPU render runs at a time. Stop cancels active workers and encoders, completed batch outputs are retained, incomplete outputs are cleaned up, and finished files are published only after the relevant render path and output properties are verified.
 - **Persistent controls:** Image, Video, and Live share Neural Rendering settings and the DLSS Model Preset. Frame Interpolation settings, HDR Mode selections, Preview Encoding, DLSS 5 Architecture, and GPU selections are also saved in `config.ini`. Settings presets can be exported to or imported from JSON, and Reset restores the relevant controls to their defaults. Live source, quality, buffering, and playback controls are session-local.
 
-The application creates `outputs/`, `logs/`, `jobs/`, and `live/` when needed. Successful media is written to `outputs/`, reports and manifests to `logs/`, temporary active-render data to `jobs/`, and temporary Live session data to `live/`. Old cache and abandoned Live session data is cleaned up automatically.
+The application creates `outputs/`, `logs/`, `jobs/`, and `live/` when needed. Successful media is written to `outputs/`, reports and manifests to `logs/`, temporary active-render data to `jobs/`, and temporary Live session data to `live/`. Old cache and abandoned Live session data are cleaned up automatically.
 
 ## Requirements
 
