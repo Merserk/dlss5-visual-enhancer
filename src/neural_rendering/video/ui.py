@@ -14,6 +14,7 @@ from ...core.disk_paths import create_media_archive
 from ...core.ffmpeg import hdr_mode_supported
 from ...core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
 from ...core.naming import RENAME_MODES
+from ...core.paths import OUTPUTS
 from ...core.runtime import DLSS_MODEL_PRESETS, NR_PRESETS, NR_STYLES, UPSCALING_MODES
 from ...settings.models import (
     AUTOMATIC_MASK_CHOICES, CODEC_CHOICES, CONTAINER_CHOICES, QUALITY_CHOICES, UISettings,
@@ -171,8 +172,11 @@ def render_video_batch(
         progress(value, desc=message)
 
     try:
-        result = convert_videos(paths, options, progress=report, output_dir=output_dir,
-                                controller=controller, on_item_update=on_item_update)
+        result = convert_videos(
+            paths, options, progress=report,
+            output_dir=output_dir if direct_disk else (output_dir or (OUTPUTS / "videos")),
+            controller=controller, on_item_update=on_item_update,
+        )
     except Exception as exc:
         traceback.print_exc()
         if on_item_update is not None:

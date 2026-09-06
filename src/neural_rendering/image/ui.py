@@ -12,6 +12,7 @@ from ...core.batch_ui import (
 from PIL import Image
 
 from ...core.naming import RENAME_MODES
+from ...core.paths import OUTPUTS
 from ...core.runtime import DLSS_MODEL_PRESETS, NR_PRESETS, NR_STYLES, UPSCALING_MODES
 from ...settings.models import AUTOMATIC_MASK_CHOICES, UISettings, automatic_mask_choice, parse_automatic_mask
 from ...settings.storage import processing_gpu_settings
@@ -146,9 +147,12 @@ def render_image_batch(
         progress(value, desc=message)
 
     try:
-        result = convert_images(input_paths, options, progress=report, output_dir=output_dir,
-                                controller=controller, on_item_update=on_item_update,
-                                generate_previews=not direct_disk, create_zip=not direct_disk)
+        result = convert_images(
+            input_paths, options, progress=report,
+            output_dir=output_dir if direct_disk else (output_dir or (OUTPUTS / "images")),
+            controller=controller, on_item_update=on_item_update,
+            generate_previews=not direct_disk, create_zip=not direct_disk and len(input_paths) > 1,
+        )
     except Exception as exc:
         traceback.print_exc()
         if on_item_update is not None:
@@ -197,6 +201,7 @@ class ImageTab:
     stop: object
     reset: object
     output_gallery: object
+    send_to_compare: object
     zip_download: object
     status: object
     results: object
@@ -267,6 +272,7 @@ def build_image_tab(settings: UISettings) -> ImageTab:
                 interactive=False, buttons=["download", "download_all", "fullscreen"],
                 elem_id="image-output-preview",
             )
+            send_to_compare = gr.Button("Send to Comparison")
             zip_download = gr.DownloadButton("Save as ZIP", visible=False)
             status = gr.Textbox(label="Status", interactive=False, lines=5, max_lines=12)
             results = gr.Dataframe(
@@ -275,8 +281,9 @@ def build_image_tab(settings: UISettings) -> ImageTab:
                 label="Batch results", wrap=True,
             )
     tab = ImageTab(
-        sources, input_gallery, input_actions, select_source, clear_source, neural, model_preset, output_format, quality, rename_mode,
-        custom_suffix, render, stop, reset, output_gallery, zip_download, status, results
+        sources, input_gallery, input_actions, select_source, clear_source, neural, model_preset,
+        output_format, quality, rename_mode, custom_suffix, render, stop, reset, output_gallery,
+        send_to_compare, zip_download, status, results
     )
     tab.input_path, tab.output_path = input_path, output_path
     bind_image_events(tab)
@@ -288,3 +295,5 @@ def bind_image_events(tab: ImageTab) -> None:
     tab.rename_mode.change(
         rename_suffix_update, inputs=tab.rename_mode, outputs=tab.custom_suffix, queue=False,
     )
+
+

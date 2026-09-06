@@ -20,6 +20,8 @@ except Exception:
 import gradio as gr
 
 from src.about.ui import build_about_tab
+from src.compare.grid_ui import bind_grid_events, build_grid_tab
+from src.compare.ui import bind_comparison_events, build_compare_tab
 from src.core.cache_cleanup import (
     CACHE_MAX_AGE_SECONDS,
     CACHE_SWEEP_INTERVAL_SECONDS,
@@ -218,7 +220,7 @@ def build_app() -> gr.Blocks:
             "# DLSS 5 Visual Enhancer",
             elem_id="app-title",
         )
-        with gr.Tabs(selected="neural-rendering"):
+        with gr.Tabs(selected="neural-rendering") as tabs:
             with gr.Tab("Neural Rendering", id="neural-rendering"):
                 neural_rendering_tab = build_neural_rendering_tab(settings)
             with gr.Tab("Upscale", id="upscale"):
@@ -227,6 +229,10 @@ def build_app() -> gr.Blocks:
                 frame_tab = build_frame_interpolation_tab(settings)
             with gr.Tab("Live", id="live"):
                 live_tab = build_live_tab(settings)
+            with gr.Tab("Comparison", id="compare"):
+                compare_tab = build_compare_tab()
+            with gr.Tab("Grid", id="grid"):
+                grid_tab = build_grid_tab(settings)
             with gr.Tab("Settings", id="settings"):
                 settings_tab = build_settings_tab(settings, ai_gpu_choices, video_gpu_choices)
             with gr.Tab("About", id="about"):
@@ -240,8 +246,12 @@ def build_app() -> gr.Blocks:
             live_tab,
             upscale_tab,
         )
+        # Video, Frame Interpolation, Live, and Upscale aren't wired into Comparison yet
+        # (each needs a synced player or a different flow, not the image before/after
+        # slider) — that's a later phase.
+        bind_comparison_events(compare_tab, tabs, image_tab=neural_rendering_tab.image, grid_tab=grid_tab)
+        bind_grid_events(grid_tab, neural_rendering_tab.image)
     return demo
-
 
 def main() -> None:
     OUTPUTS.mkdir(exist_ok=True)

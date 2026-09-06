@@ -14,6 +14,7 @@ from ..core.disk_paths import create_media_archive
 from ..core.ffmpeg import hdr_mode_supported
 from ..core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
 from ..core.naming import RENAME_MODES
+from ..core.paths import OUTPUTS
 from ..settings.models import CODEC_CHOICES, CONTAINER_CHOICES, QUALITY_CHOICES, UISettings, coerce_hdr_mode
 from ..settings.storage import current_preview_encoding, processing_gpu_settings
 from .batch import interpolate_videos
@@ -65,8 +66,11 @@ def render_frame_interpolation_batch(
         progress(value, desc=message)
 
     try:
-        result = interpolate_videos(paths, options, report, output_dir=output_dir,
-                                    controller=controller, on_item_update=on_item_update)
+        result = interpolate_videos(
+            paths, options, report,
+            output_dir=output_dir if direct_disk else (output_dir or (OUTPUTS / "frame_interpolation")),
+            controller=controller, on_item_update=on_item_update,
+        )
     except Exception as exc:
         traceback.print_exc()
         if on_item_update is not None:
@@ -163,13 +167,17 @@ class FrameInterpolationTab:
 
 
 def build_frame_interpolation_tab(settings: UISettings) -> FrameInterpolationTab:
+    # The uploader lives in its own full-width row, above the input/output columns,
+    # so both preview panes are the first element in their column and line up
+    # vertically regardless of how many files are queued in the uploader.
+    sources = gr.File(
+        label="Input video(s)", file_count="multiple", file_types=["video"],
+        type="filepath", allow_reordering=True, elem_id="frame-interpolation-upload-list",
+        elem_classes=["media-upload-surface"],
+    )
+    input_path, output_path = build_path_controls()
     with gr.Row():
         with gr.Column(scale=3):
-            sources = gr.File(
-                label="Input video(s)", file_count="multiple", file_types=["video"],
-                type="filepath", allow_reordering=True, elem_id="frame-interpolation-upload-list",
-                elem_classes=["media-upload-surface"],
-            )
             input_preview = gr.Video(label="Input video preview", interactive=False, visible=False)
             with gr.Row(
                 visible=False, elem_id="frame-interpolation-input-actions",
