@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -8,6 +9,18 @@ from .codecs import _base_codec
 
 PREVIEW_ENCODING_CHOICES = ("Auto", "Always H.264", "Disabled")
 DEFAULT_PREVIEW_ENCODING = "Auto"
+FAST_PREVIEW_NVENC_ENV = "DLSS5_FAST_PREVIEW_NVENC"
+
+
+def _fast_preview_nvenc_enabled() -> bool:
+    value = os.environ.get(FAST_PREVIEW_NVENC_ENV, "").strip().lower()
+    return value in {"1", "true", "yes", "on", "nvenc"}
+
+
+def _compat_h264_codec() -> str:
+    # The RTX 4090 launcher opts into this. Generic start.bat retains the
+    # previous CPU H.264 fallback for maximum compatibility.
+    return "H.264 (NVIDIA NVENC)" if _fast_preview_nvenc_enabled() else "H.264"
 
 
 def normalize_preview_encoding(value: object) -> str:
@@ -34,29 +47,43 @@ def is_user_playable_request(codec: str, container: str) -> bool:
 def resolve_preview_codec(
     requested_codec: str, requested_container: str, mode: object
 ) -> tuple[str, str]:
-    """Return the (codec, container) to encode a truncated preview with."""
+    """Return the (codec, container) to encode a truncated preview with.
+
+    The RTX 4090 launcher can opt the compatibility preview into H.264 NVENC.
+    It remains the same browser-compatible H.264/MP4 format; only the encoder
+    changes from CPU libx264 to the selected NVIDIA GPU.
+    """
     normalized = normalize_preview_encoding(mode)
     if normalized == "Disabled":
         return requested_codec, requested_container
     if normalized == "Always H.264":
-        return "H.264", "MP4"
+        return _compat_h264_codec(), "MP4"
     # Auto: reuse the user's settings when they are already browser-playable,
     # otherwise fall back to the compatible H.264/MP4 preview.
     if is_user_playable_request(requested_codec, requested_container):
         return requested_codec, requested_container
-    return "H.264", "MP4"
+    return _compat_h264_codec(), "MP4"
 
 
 def wants_compat_preview(
     requested_codec: str, requested_container: str, mode: object
 ) -> bool:
-    """True when a truncated preview must use the forced H.264 SDR path."""
+    """True only when the forced H.264 preview must use the CPU compatibility path.
+
+    The processor historically treats compat_preview as a CPU H.264 path and
+    intentionally suppresses GPU selection there. When the 4090 fast-preview
+    switch is enabled we return False so H.264 NVENC is resolved against the
+    explicitly selected Video Processing GPU instead of an implicit adapter.
+    H.264 remains SDR regardless.
+    """
     normalized = normalize_preview_encoding(mode)
     if normalized == "Disabled":
         return False
     if normalized == "Always H.264":
-        return True
-    return not is_user_playable_request(requested_codec, requested_container)
+        return not _fast_preview_nvenc_enabled()
+    if is_user_playable_request(requested_codec, requested_container):
+        return False
+    return not _fast_preview_nvenc_enabled()
 
 
 def is_browser_playable(path: str | Path) -> bool:
@@ -84,7 +111,8 @@ def make_browser_preview(
     source: str | Path,
     dest_dir: str | Path | None = None,
     controller=None,
-    *, sdr_filter: str | None = None,
+    *,
+    sdr_filter: str | None = None,
 ) -> str:
     """Transcode an existing result file to a browser-playable H.264 MP4.
 
@@ -119,7 +147,22 @@ def make_browser_preview(
         "0:v:0",
         "-map",
         "0:a?",
-        *(["-vf", sdr_filter, "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"] if sdr_filter else []),
+        *(
+            [
+                "-vf",
+                sdr_filter,
+                "-color_primaries",
+                "bt709",
+                "-color_trc",
+                "bt709",
+                "-colorspace",
+                "bt709",
+                "-color_range",
+                "tv",
+            ]
+            if sdr_filter
+            else []
+        ),
         "-c:v",
         "libx264",
         "-preset",
@@ -139,18 +182,25 @@ def make_browser_preview(
     process = None
     try:
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8", errors="replace",
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if controller is not None:
             controller.register(process)
         _stdout, stderr = process.communicate()
         if process.returncode:
-            raise RuntimeError("Browser preview transcode failed:\n" + (stderr or "")[-4000:])
+            raise RuntimeError(
+                "Browser preview transcode failed:\n" + (stderr or "")[-4000:]
+            )
         if not is_browser_playable(output_file.temporary):
             raise RuntimeError("Browser preview transcode produced an unplayable file.")
         if controller is not None and controller.cancel.is_set():
             from ..jobs import Cancelled
+
             raise Cancelled("Preview cancelled.")
         output_file.publish()
     finally:
