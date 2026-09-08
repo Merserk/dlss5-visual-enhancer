@@ -20,12 +20,38 @@ function Write-Step([string]$Message) {
     Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
-function Resolve-FullPath([string]$PathValue) {
-    $expanded = [Environment]::ExpandEnvironmentVariables($PathValue)
-    if ([IO.Path]::IsPathRooted($expanded)) {
-        return [IO.Path]::GetFullPath($expanded)
+function Normalize-PathArgument([string]$PathValue, [string]$Name) {
+    if ($null -eq $PathValue) {
+        return ""
     }
-    return [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $expanded))
+    $value = [Environment]::ExpandEnvironmentVariables([string]$PathValue).Trim()
+    # A quoted cmd.exe argument that ends in a backslash can reach Windows
+    # PowerShell with a literal quote still attached. Quotes are illegal in a
+    # Windows path, so remove only quote characters at the outside of the value.
+    $value = $value.Trim([char[]]@('"', "'"))
+    if ($value.IndexOf([char]0) -ge 0) {
+        throw "$Name contains a NUL character."
+    }
+    if ($value.IndexOf('"') -ge 0) {
+        throw "$Name contains an unexpected quote character: $value"
+    }
+    return $value
+}
+
+function Resolve-FullPath([string]$PathValue, [string]$Name = "Path") {
+    $expanded = Normalize-PathArgument $PathValue $Name
+    if ([string]::IsNullOrWhiteSpace($expanded)) {
+        throw "$Name is empty."
+    }
+    try {
+        if ([IO.Path]::IsPathRooted($expanded)) {
+            return [IO.Path]::GetFullPath($expanded)
+        }
+        return [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $expanded))
+    }
+    catch [System.ArgumentException] {
+        throw "$Name is not a valid Windows path: '$expanded'. $($_.Exception.Message)"
+    }
 }
 
 function Copy-TreeContents([string]$From, [string]$To) {
@@ -58,8 +84,8 @@ function Test-PortableLayout([string]$Root) {
         "bin\runtime\dlss\nvngx_dlss.dll",
         "bin\runtime\dlssnr\renodx-dlss5.addon64",
         "bin\runtime\dlssnr\nvngx_dlssnr.dll",
-        "bin\runtime\dlssg\dlssg-worker.exe",
         "bin\runtime\dlssg\nvngx_dlssg.dll",
+        "bin\runtime\dlssg\dlssg-worker.exe",
         "bin\runtime\rtx_video\rtx-video-worker.exe",
         "bin\runtime\rtx_video\nvngx_vsr.dll",
         "bin\runtime\rtx_video\nvngx_truehdr.dll"
@@ -70,179 +96,141 @@ function Test-PortableLayout([string]$Root) {
             $missing += $relative
         }
     }
-    if ($missing.Count -gt 0) {
-        throw "Portable installation is incomplete. Missing:`n - $($missing -join "`n - ")"
-    }
+    return $missing
 }
-
-if ($env:OS -ne "Windows_NT") {
-    throw "This installer supports native Windows only."
-}
-if (-not [Environment]::Is64BitOperatingSystem) {
-    throw "A 64-bit Windows installation is required."
-}
-
-if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
-    $SourceRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-}
-$SourceRoot = Resolve-FullPath $SourceRoot
-if (-not (Test-Path -LiteralPath (Join-Path $SourceRoot "app.py") -PathType Leaf)) {
-    throw "SourceRoot does not look like the DLSS5 repository: $SourceRoot"
-}
-
-$sourceParent = Split-Path -Parent $SourceRoot
-if ([string]::IsNullOrWhiteSpace($InstallDir)) {
-    # Sibling directory keeps the 500+ MB portable runtime out of the Git repo and
-    # avoids using C:\Temp when the repo is on another drive.
-    $InstallDir = Join-Path $sourceParent "DLSS5_4090_PORTABLE"
-}
-$InstallDir = Resolve-FullPath $InstallDir
-
-$installVolumeRoot = [IO.Path]::GetPathRoot($InstallDir)
-if ($InstallDir.TrimEnd('\') -ieq $installVolumeRoot.TrimEnd('\')) {
-    throw "InstallDir cannot be the root of a drive. Choose a dedicated application folder."
-}
-$sourcePrefix = $SourceRoot.TrimEnd('\') + '\'
-$installPrefix = $InstallDir.TrimEnd('\') + '\'
-if ($InstallDir -ieq $SourceRoot -or $installPrefix.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "InstallDir must be outside the source repository so the clean overlay cannot recurse into itself."
-}
-
-$installParent = Split-Path -Parent $InstallDir
-New-Item -ItemType Directory -Path $installParent -Force | Out-Null
-$work = Join-Path $installParent (".dlss5-install-" + [Guid]::NewGuid().ToString("N"))
-$zipPath = Join-Path $work $RuntimeAsset
-$extractPath = Join-Path $work "release"
-$stagePath = Join-Path $work "stage"
-$backupPath = $null
-New-Item -ItemType Directory -Path $work -Force | Out-Null
 
 try {
-    Write-Step "Downloading the verified $RuntimeTag portable runtime"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -UseBasicParsing -Uri $RuntimeUrl -OutFile $zipPath
-
-    Write-Step "Verifying the official release SHA-256"
-    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actualHash -ne $RuntimeSha256) {
-        throw "Runtime ZIP SHA-256 mismatch. Expected $RuntimeSha256 but received $actualHash. Nothing was installed."
+    if (-not [Environment]::Is64BitOperatingSystem) {
+        throw "A 64-bit Windows installation is required."
     }
 
-    Write-Step "Extracting the portable release"
-    New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
-    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractPath -Force
+    if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
+        $SourceRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+    }
+    $SourceRoot = Resolve-FullPath $SourceRoot "SourceRoot"
+    if (-not (Test-Path -LiteralPath $SourceRoot -PathType Container)) {
+        throw "SourceRoot does not exist: $SourceRoot"
+    }
 
-    $candidates = @(
-        Get-ChildItem -LiteralPath $extractPath -Filter "app.py" -File -Recurse |
-            Where-Object {
-                Test-Path -LiteralPath (Join-Path $_.Directory.FullName "start.bat") -PathType Leaf
+    if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+        $sourceParent = Split-Path -Parent $SourceRoot
+        $InstallDir = Join-Path $sourceParent "DLSS5_4090_PORTABLE"
+    }
+    $InstallDir = Resolve-FullPath $InstallDir "InstallDir"
+
+    if ([string]::Equals($SourceRoot.TrimEnd('\'), $InstallDir.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "InstallDir must be different from SourceRoot. Choose another folder."
+    }
+
+    $sourceFiles = @("app.py", "start.bat", "start_4090.bat", "src", "tools", "docs", "LICENSE", "README.md")
+    foreach ($requiredSource in $sourceFiles) {
+        $candidate = Join-Path $SourceRoot $requiredSource
+        if (-not (Test-Path -LiteralPath $candidate)) {
+            throw "Source overlay is incomplete; missing: $candidate"
+        }
+    }
+
+    Write-Step "Preparing clean installation"
+    $stagingRoot = Join-Path ([IO.Path]::GetTempPath()) ("dlss5-4090-install-" + [Guid]::NewGuid().ToString("N"))
+    $downloadPath = Join-Path $stagingRoot $RuntimeAsset
+    $extractRoot = Join-Path $stagingRoot "runtime"
+    New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
+
+    try {
+        Write-Step "Downloading verified $RuntimeTag portable runtime"
+        Invoke-WebRequest -UseBasicParsing -Uri $RuntimeUrl -OutFile $downloadPath
+
+        Write-Step "Verifying SHA-256"
+        $actualHash = (Get-FileHash -LiteralPath $downloadPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne $RuntimeSha256) {
+            throw "Runtime archive hash mismatch. Expected $RuntimeSha256 but received $actualHash."
+        }
+
+        Write-Step "Extracting portable runtime"
+        Expand-Archive -LiteralPath $downloadPath -DestinationPath $extractRoot -Force
+        $runtimeRoot = $extractRoot
+        $children = @(Get-ChildItem -LiteralPath $extractRoot -Force)
+        if ($children.Count -eq 1 -and $children[0].PSIsContainer) {
+            $runtimeRoot = $children[0].FullName
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $runtimeRoot "app.py") -PathType Leaf)) {
+            $candidate = Get-ChildItem -LiteralPath $extractRoot -Filter app.py -File -Recurse | Select-Object -First 1
+            if ($null -eq $candidate) {
+                throw "Downloaded archive does not contain app.py."
             }
-    )
-    if ($candidates.Count -ne 1) {
-        throw "Could not identify exactly one portable application root in the verified release."
-    }
-    $portableRoot = $candidates[0].Directory.FullName
+            $runtimeRoot = Split-Path -Parent $candidate.FullName
+        }
 
-    Write-Step "Building a clean staged install and overlaying this repository"
-    New-Item -ItemType Directory -Path $stagePath -Force | Out-Null
-    Copy-TreeContents $portableRoot $stagePath
+        Write-Step "Building clean RTX 4090 installation"
+        $buildRoot = Join-Path $stagingRoot "build"
+        New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
+        Copy-TreeContents $runtimeRoot $buildRoot
+        foreach ($item in $sourceFiles) {
+            $from = Join-Path $SourceRoot $item
+            $to = Join-Path $buildRoot $item
+            if (Test-Path -LiteralPath $from -PathType Container) {
+                Copy-TreeContents $from $to
+            }
+            elseif (Test-Path -LiteralPath $from -PathType Leaf) {
+                $parent = Split-Path -Parent $to
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+                Copy-Item -LiteralPath $from -Destination $to -Force
+            }
+        }
 
-    # Overlay only application/source artifacts. Runtime binaries always come
-    # from the verified portable release rather than an arbitrary local bin/.
-    $fileItems = @(
-        "app.py",
-        "start.bat",
-        "start_4090.bat",
-        "install_clean_4090.bat",
-        "README.md",
-        "LICENSE",
-        ".gitignore"
-    )
-    foreach ($name in $fileItems) {
-        $source = Join-Path $SourceRoot $name
-        if (Test-Path -LiteralPath $source -PathType Leaf) {
-            Copy-Item -LiteralPath $source -Destination (Join-Path $stagePath $name) -Force
+        $missing = @(Test-PortableLayout $buildRoot)
+        if ($missing.Count -gt 0) {
+            throw "Built portable installation is missing required runtime files:`n - $($missing -join "`n - ")"
+        }
+
+        Write-Step "Installing to $InstallDir"
+        $backupPath = $null
+        if (Test-Path -LiteralPath $InstallDir) {
+            $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+            $backupPath = "$InstallDir.backup-$stamp"
+            if (Test-Path -LiteralPath $backupPath) {
+                throw "Backup path already exists: $backupPath"
+            }
+            Move-Item -LiteralPath $InstallDir -Destination $backupPath
+            Write-Host "Existing installation moved to: $backupPath"
+        }
+        try {
+            Move-Item -LiteralPath $buildRoot -Destination $InstallDir
+        }
+        catch {
+            if ($backupPath -and -not (Test-Path -LiteralPath $InstallDir) -and (Test-Path -LiteralPath $backupPath)) {
+                Move-Item -LiteralPath $backupPath -Destination $InstallDir
+            }
+            throw
+        }
+
+        Write-Step "Applying RTX 4090 best profile"
+        $profilePython = Join-Path $InstallDir "bin\python-3.13.15-embed-amd64\python.exe"
+        $profileTool = Join-Path $InstallDir "tools\rtx4090_profile.py"
+        & $profilePython $profileTool --apply
+        if ($LASTEXITCODE -ne 0) {
+            throw "RTX 4090 profile application failed with exit code $LASTEXITCODE."
+        }
+
+        Write-Step "Installation complete"
+        Write-Host "Installed: $InstallDir" -ForegroundColor Green
+        if ($backupPath) {
+            Write-Host "Previous install backup: $backupPath"
+        }
+
+        if ($Launch) {
+            Write-Step "Launching RTX 4090 profile"
+            $launcher = Join-Path $InstallDir "start_4090.bat"
+            Start-Process -FilePath $launcher -WorkingDirectory $InstallDir
         }
     }
-    foreach ($name in @("src", "tools", "docs", "tests")) {
-        Copy-TreeContents (Join-Path $SourceRoot $name) (Join-Path $stagePath $name)
-    }
-
-    Test-PortableLayout $stagePath
-
-    Write-Step "Installing to $InstallDir"
-    if (Test-Path -LiteralPath $InstallDir) {
-        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $backupPath = "$InstallDir.backup-$stamp"
-        if (Test-Path -LiteralPath $backupPath) {
-            throw "Backup destination already exists: $backupPath"
+    finally {
+        if (-not $KeepDownload -and (Test-Path -LiteralPath $stagingRoot)) {
+            Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
-        Write-Host "Existing install is being preserved as: $backupPath" -ForegroundColor Yellow
-        Move-Item -LiteralPath $InstallDir -Destination $backupPath
-    }
-
-    try {
-        Move-Item -LiteralPath $stagePath -Destination $InstallDir
-    }
-    catch {
-        if ($backupPath -and (Test-Path -LiteralPath $backupPath) -and -not (Test-Path -LiteralPath $InstallDir)) {
-            Move-Item -LiteralPath $backupPath -Destination $InstallDir
-        }
-        throw
-    }
-
-    Test-PortableLayout $InstallDir
-
-    $sourceCommit = "unknown"
-    try {
-        $git = Get-Command git.exe -ErrorAction Stop
-        $sourceCommit = (& $git.Source -C $SourceRoot rev-parse HEAD 2>$null).Trim()
-        if ([string]::IsNullOrWhiteSpace($sourceCommit)) { $sourceCommit = "unknown" }
-    }
-    catch {}
-
-    $manifest = [ordered]@{
-        schema = 1
-        installed_utc = [DateTime]::UtcNow.ToString("o")
-        source_root = $SourceRoot
-        source_commit = $sourceCommit
-        runtime_repository = "Merserk/dlss5-visual-enhancer"
-        runtime_tag = $RuntimeTag
-        runtime_asset = $RuntimeAsset
-        runtime_sha256 = $RuntimeSha256
-        install_dir = $InstallDir
-        previous_install_backup = $backupPath
-    }
-    $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $InstallDir "install_manifest_4090.json") -Encoding UTF8
-
-    Write-Step "Applying the RTX 4090 balanced-performance profile"
-    $python = Join-Path $InstallDir "bin\python-3.13.15-embed-amd64\python.exe"
-    $profile = Join-Path $InstallDir "tools\rtx4090_profile.py"
-    & $python $profile --apply --best-settings
-    if ($LASTEXITCODE -ne 0) {
-        throw "The portable files installed successfully, but the RTX 4090 profile could not be applied. The install was left intact for diagnosis."
-    }
-
-    Write-Host ""
-    Write-Host "Clean RTX 4090 installation completed." -ForegroundColor Green
-    Write-Host "Install: $InstallDir"
-    if ($backupPath) {
-        Write-Host "Previous install backup: $backupPath"
-    }
-    Write-Host "Launch with: $(Join-Path $InstallDir 'start_4090.bat')"
-
-    if ($Launch) {
-        Write-Step "Launching DLSS 5 Visual Enhancer"
-        Start-Process -FilePath (Join-Path $InstallDir "start_4090.bat") -WorkingDirectory $InstallDir
     }
 }
-finally {
-    if (Test-Path -LiteralPath $work) {
-        if ($KeepDownload -and (Test-Path -LiteralPath $zipPath)) {
-            $savedZip = Join-Path $installParent $RuntimeAsset
-            Copy-Item -LiteralPath $zipPath -Destination $savedZip -Force
-            Write-Host "Verified runtime ZIP retained at: $savedZip"
-        }
-        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
-    }
+catch {
+    Write-Error $_
+    exit 1
 }
