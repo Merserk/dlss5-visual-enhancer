@@ -26,15 +26,22 @@ if not exist "%INSTALLER%" (
     exit /b 1
 )
 
+rem IMPORTANT: use %%~dp0. instead of %%~dp0 when forwarding the directory to
+rem PowerShell. %%~dp0 ends in a backslash; a trailing backslash immediately
+rem before the closing quote can be preserved as an embedded quote by command-
+rem line parsing on some Windows/PowerShell paths, producing "Illegal characters
+rem in path". The trailing dot resolves to the same directory without that edge.
+set "SOURCE_ROOT=%~dp0."
+
 rem Double-click = clean install to a sibling DLSS5_4090_PORTABLE folder and launch.
 rem Advanced usage examples:
 rem   install_clean_4090.bat -InstallDir "E:\Apps\DLSS5_4090"
 rem   install_clean_4090.bat -InstallDir "E:\Apps\DLSS5_4090" -Launch
 rem   install_clean_4090.bat -KeepDownload
 if "%~1"=="" (
-    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -SourceRoot "%~dp0" -Launch
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -SourceRoot "%SOURCE_ROOT%" -Launch
 ) else (
-    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -SourceRoot "%~dp0" %*
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -SourceRoot "%SOURCE_ROOT%" %*
 )
 
 set "RC=%ERRORLEVEL%"
