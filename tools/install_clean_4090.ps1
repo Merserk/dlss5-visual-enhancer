@@ -33,9 +33,12 @@ function Copy-TreeContents([string]$From, [string]$To) {
         return
     }
     New-Item -ItemType Directory -Path $To -Force | Out-Null
-    Get-ChildItem -LiteralPath $From -Force | ForEach-Object {
-        $destination = Join-Path $To $_.Name
-        Copy-Item -LiteralPath $_.FullName -Destination $destination -Recurse -Force
+    $robocopy = Get-Command robocopy.exe -ErrorAction Stop
+    & $robocopy.Source $From $To /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP
+    $code = $LASTEXITCODE
+    # Robocopy uses 0-7 for successful/no-change/copy-with-extra-info states.
+    if ($code -gt 7) {
+        throw "Robocopy failed while copying '$From' to '$To' (exit $code)."
     }
 }
 
@@ -48,11 +51,18 @@ function Test-PortableLayout([string]$Root) {
         "bin\python-3.13.15-embed-amd64\python.exe",
         "bin\ffmpeg\bin\ffmpeg.exe",
         "bin\ffmpeg\bin\ffprobe.exe",
+        "bin\mpv\mpv.exe",
+        "bin\yt-dlp\yt-dlp.exe",
         "bin\runtime\host\nvngx.dll",
         "bin\runtime\host\dxgi.dll",
         "bin\runtime\dlss\nvngx_dlss.dll",
+        "bin\runtime\dlssnr\renodx-dlss5.addon64",
         "bin\runtime\dlssnr\nvngx_dlssnr.dll",
-        "bin\runtime\dlssg\nvngx_dlssg.dll"
+        "bin\runtime\dlssg\dlssg-worker.exe",
+        "bin\runtime\dlssg\nvngx_dlssg.dll",
+        "bin\runtime\rtx_video\rtx-video-worker.exe",
+        "bin\runtime\rtx_video\nvngx_vsr.dll",
+        "bin\runtime\rtx_video\nvngx_truehdr.dll"
     )
     $missing = @()
     foreach ($relative in $required) {
@@ -88,6 +98,10 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
 }
 $InstallDir = Resolve-FullPath $InstallDir
 
+$installVolumeRoot = [IO.Path]::GetPathRoot($InstallDir)
+if ($InstallDir.TrimEnd('\') -ieq $installVolumeRoot.TrimEnd('\')) {
+    throw "InstallDir cannot be the root of a drive. Choose a dedicated application folder."
+}
 $sourcePrefix = $SourceRoot.TrimEnd('\') + '\'
 $installPrefix = $InstallDir.TrimEnd('\') + '\'
 if ($InstallDir -ieq $SourceRoot -or $installPrefix.StartsWith($sourcePrefix, [StringComparison]::OrdinalIgnoreCase)) {
