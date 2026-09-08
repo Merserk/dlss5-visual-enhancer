@@ -9,6 +9,8 @@ rem RTX 4090 balanced-performance launcher.
 rem - p5 is NVIDIA's balanced quality/performance NVENC preset.
 rem - The Python profile pins AI/video selections to the verified RTX 4090 UUID,
 rem   uses H.265 NVENC + Auto bitrate, RTX Video VSR Ultra, and Auto FG engine.
+rem - 3-second compatibility previews use H.264 NVENC instead of CPU libx264.
+rem - FFmpeg CUDA/NVDEC input decode is enabled in Auto mode with safe PyAV fallback.
 rem - Job-specific scale, output FPS, HDR enablement and Neural Rendering effect
 rem   controls are deliberately not forced.
 rem - CUDA_VISIBLE_DEVICES is NOT set: DLSSNR/DLSSG are Direct3D/native workers,
@@ -19,10 +21,14 @@ set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 set "GRADIO_ANALYTICS_ENABLED=False"
 
-rem Allow an advanced user to override the encoder preset before launch:
+rem Allow advanced overrides before launch:
 rem   set DLSS5_NVENC_PRESET=p6
+rem   set DLSS5_FAST_PREVIEW_NVENC=0
+rem   set DLSS5_CUDA_DECODE=off
 rem   start_4090.bat
 if not defined DLSS5_NVENC_PRESET set "DLSS5_NVENC_PRESET=p5"
+if not defined DLSS5_FAST_PREVIEW_NVENC set "DLSS5_FAST_PREVIEW_NVENC=1"
+if not defined DLSS5_CUDA_DECODE set "DLSS5_CUDA_DECODE=auto"
 
 set "PYTHON_EXE=%~dp0bin\python-3.13.15-embed-amd64\python.exe"
 if not exist "%PYTHON_EXE%" (
