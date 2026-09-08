@@ -1,0 +1,44 @@
+{
+  "scope": "CPU motion-field resize + vector scaling + FP16 conversion only",
+  "not_measured": [
+    "DLSS inference",
+    "NVENC throughput",
+    "GPU affinity",
+    "VRAM usage"
+  ],
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "python": "3.13.5",
+  "opencv": "4.13.0",
+  "numpy": "2.3.5",
+  "opencv_threads": 1,
+  "iterations_per_path": 12,
+  "results": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "previous_median_ms": 13.615886000025057,
+      "updated_median_ms": 3.315274499982479,
+      "speedup": 4.107016176216183,
+      "max_float32_vector_error_pixels": 3.814697265625e-06,
+      "scratch_bytes_cpu_ram": 16588800
+    },
+    {
+      "width": 3840,
+      "height": 2160,
+      "previous_median_ms": 56.68524800000796,
+      "updated_median_ms": 11.72653850005645,
+      "speedup": 4.833928443567135,
+      "max_float32_vector_error_pixels": 1.52587890625e-05,
+      "scratch_bytes_cpu_ram": 66355200
+    },
+    {
+      "width": 7680,
+      "height": 4320,
+      "previous_median_ms": 236.10080399998878,
+      "updated_median_ms": 56.62803249992976,
+      "speedup": 4.169327338015525,
+      "max_float32_vector_error_pixels": 3.814697265625e-05,
+      "scratch_bytes_cpu_ram": 265420800
+    }
+  ]
+}

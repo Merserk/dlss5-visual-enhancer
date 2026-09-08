@@ -6,6 +6,8 @@ from pathlib import Path
 
 from ..jobs import BoundedLogBuffer, JobController, drain_bounded_text, drain_text
 from ..paths import FFMPEG
+from ..gpu_selection import gpu_preference_key, preferred_gpu_uuid
+from .performance import nvenc_preset, probe_encoder
 from .codecs import (
     CODEC_CHOICES, _NVENC_ENCODERS, _base_codec, _hdr_color_args,
     _is_hdr_allowed_codec, _is_nvenc_codec, _normalize_codec, _x265_hdr_params,
@@ -15,32 +17,7 @@ from .codecs import (
 def _encoder_probe(
     codec: str, width: int, height: int, gpu_ordinal: int | None = None
 ) -> bool:
-    gpu_args = ["-gpu", str(gpu_ordinal)] if gpu_ordinal is not None else []
-    command = [
-        str(FFMPEG),
-        "-v",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        f"color=size={width}x{height}:rate=1",
-        "-frames:v",
-        "1",
-        "-c:v",
-        codec,
-        *gpu_args,
-        "-f",
-        "null",
-        "-",
-    ]
-    return (
-        subprocess.run(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode
-        == 0
-    )
+    return probe_encoder(FFMPEG, codec, width, height, gpu_ordinal)
 
 
 # Legacy mapping kept for external callers; new display names use _NVENC_ENCODERS.
@@ -104,11 +81,19 @@ def resolve_video_gpu(
         encoder = _NVENC_ENCODERS[norm]
     except KeyError as exc:
         raise ValueError(f"Unknown video codec: {codec!r}.") from exc
-    candidates = [gpu for gpu in gpus if gpu.get("cuda_ordinal") is not None]
+    gpu_uuid = preferred_gpu_uuid(gpu_uuid)
+    candidates = sorted(
+        (gpu for gpu in gpus if gpu.get("cuda_ordinal") is not None),
+        key=gpu_preference_key, reverse=True,
+    )
     if gpu_uuid != "auto":
         candidates = [gpu for gpu in candidates if gpu.get("uuid") == gpu_uuid]
         if not candidates:
-            raise RuntimeError("The selected Video Processing GPU is unavailable.")
+            raise RuntimeError(
+                "The selected Video Processing GPU is unavailable or its CUDA identity "
+                "could not be verified. Check nvcuda.dll/driver and CUDA_VISIBLE_DEVICES; "
+                "nvidia-smi indices are not interchangeable with CUDA ordinals."
+            )
     for gpu in candidates:
         ordinal = int(gpu["cuda_ordinal"])
         if _encoder_probe(encoder, width, height, ordinal):
@@ -150,6 +135,8 @@ def _codec_command(
         )
     # HDR mode needs 10-bit divisor
     quality = resolve_encoding_quality(quality_name, codec, width, height, fps, hdr_mode=hdr_mode)
+    if _is_nvenc_codec(norm):
+        quality = {**quality, "nvenc_preset": nvenc_preset()}
     # ProRes Proxy is always 10-bit; HDR just copies colorspace
     if norm == "ProRes Proxy":
         hdr_extra = _hdr_color_args(hdr_metadata) if hdr_mode and hdr_metadata else []
@@ -251,7 +238,7 @@ def _codec_command(
             )
         return (
             [
-                "-c:v", "h264_nvenc", *gpu_args, "-preset", "p6", "-tune", "hq",
+                "-c:v", "h264_nvenc", *gpu_args, "-preset", nvenc_preset(), "-tune", "hq",
                 *nvenc_quality, "-pix_fmt", "yuv420p",
             ],
             "h264_nvenc",
@@ -267,7 +254,7 @@ def _codec_command(
         # HEVC HDR should use main10 implicitly via p010le
         return (
             [
-                "-c:v", "hevc_nvenc", *gpu_args, "-preset", "p6", "-tune", "hq",
+                "-c:v", "hevc_nvenc", *gpu_args, "-preset", nvenc_preset(), "-tune", "hq",
                 *nvenc_quality, "-pix_fmt", pix_fmt, *hdr_color,
             ],
             "hevc_nvenc",
@@ -281,7 +268,7 @@ def _codec_command(
             )
         pix_fmt = "p010le" if hdr_mode else "yuv420p"
         return (
-            ["-c:v", "av1_nvenc", *gpu_args, "-preset", "p6", *nvenc_quality, "-pix_fmt", pix_fmt, *hdr_color],
+            ["-c:v", "av1_nvenc", *gpu_args, "-preset", nvenc_preset(), *nvenc_quality, "-pix_fmt", pix_fmt, *hdr_color],
             "av1_nvenc",
             quality,
         )
