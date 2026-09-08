@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from ...core.motion_resize import MotionFieldResizer, motion_to_fp16
+
 @dataclass(slots=True)
 class GuideFrame:
     motion: np.ndarray
@@ -16,6 +18,7 @@ class TemporalGuideGenerator:
     """Estimate the guide buffers an encoded video does not contain."""
 
     def __init__(self, width: int, height: int, flow_width: int = 640) -> None:
+        self.resizer = MotionFieldResizer(width, height)
         self.width = width
         self.height = height
         scale = min(1.0, flow_width / width)
@@ -42,20 +45,18 @@ class TemporalGuideGenerator:
             reset = True
             scene_score = 1.0
         else:
-            scene_score = float(np.mean(cv2.absdiff(current, self.previous_gray))) / 255.0
+            difference = cv2.absdiff(current, self.previous_gray)
+            scene_score = cv2.mean(difference)[0] / 255.0
             reset = scene_score > 0.24
-            if reset:
+            if reset or scene_score == 0.0:
                 motion = self.zero_motion
             else:
                 motion = self.dis.calc(current, self.previous_gray, None)
-                motion = cv2.resize(
-                    motion,
-                    (self.width, self.height),
-                    interpolation=cv2.INTER_LINEAR,
-                )
-                motion[..., 0] *= self.width / self.flow_width
-                motion[..., 1] *= self.height / self.flow_height
-                motion = np.ascontiguousarray(motion.astype(np.float16))
+                if not np.isfinite(motion).all():
+                    motion, reset = self.zero_motion, True
+                else:
+                    motion = motion_to_fp16(self.resizer.resize(motion))
+                    # The FP16 allocation cannot alias the reusable float32 scratch.
         self.previous_gray = current
         return GuideFrame(
             motion=motion,

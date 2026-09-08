@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Any
 
@@ -12,7 +13,25 @@ def gpu_choice_label(gpu: dict[str, Any]) -> str:
     return f"{gpu.get('name', 'NVIDIA GPU')} | {memory_gib:.0f} GB | PCI {location}"
 
 
+def preferred_gpu_uuid(gpu_uuid: str = "auto") -> str:
+    """Explicit UI selections win; the launcher can pin Automatic by UUID."""
+    if gpu_uuid != "auto":
+        return gpu_uuid
+    return os.environ.get("DLSS5_PREFERRED_GPU_UUID", "").strip() or "auto"
+
+
+def gpu_preference_key(gpu: dict[str, Any]) -> tuple[int, int, str]:
+    """Capacity-first Automatic policy, not a universal GPU speed benchmark.
+
+    On the target 4090/2080 Ti system this prefers the 24 GiB compute adapter,
+    regardless of display attachment or enumeration order. UUID breaks ties.
+    """
+    return (int(gpu.get("memory_mb") or 0), int(bool(gpu.get("ai_compatible"))),
+            str(gpu.get("uuid") or ""))
+
+
 def resolve_ai_gpu(gpus: tuple[dict[str, Any], ...], gpu_uuid: str = "auto") -> dict[str, Any]:
+    gpu_uuid = preferred_gpu_uuid(gpu_uuid)
     compatible = [gpu for gpu in gpus if gpu.get("ai_compatible")]
     if gpu_uuid != "auto":
         selected = next((gpu for gpu in compatible if gpu.get("uuid") == gpu_uuid), None)
@@ -25,7 +44,7 @@ def resolve_ai_gpu(gpus: tuple[dict[str, Any], ...], gpu_uuid: str = "auto") -> 
         )
         message = "No supported NVIDIA RTX GPU was detected."
         raise RuntimeError(f"{message} {details}" if details else message)
-    return dict(compatible[0])
+    return dict(max(compatible, key=gpu_preference_key))
 
 
 def resolve_runtime_ai_gpu(
@@ -44,7 +63,7 @@ def _detect_gpu_cached(gpu_uuid: str = "auto") -> dict:
 
 
 def detect_gpu(gpu_uuid: str = "auto") -> dict:
-    return _detect_gpu_cached(gpu_uuid)
+    return dict(_detect_gpu_cached(preferred_gpu_uuid(gpu_uuid)))
 
 
 def _clear_gpu_detection_cache() -> None:

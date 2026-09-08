@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from ..core.motion_resize import MotionFieldResizer, motion_to_fp16
+
 
 @dataclass(slots=True)
 class Guide:
@@ -19,6 +21,7 @@ class DLSSGGuideGenerator:
     """CUDA-free guide estimation; it never creates an image frame."""
 
     def __init__(self, width: int, height: int, flow_width: int = 640) -> None:
+        self.resizer = MotionFieldResizer(width, height)
         self.width = width
         self.height = height
         scale = min(1.0, flow_width / max(1, width))
@@ -40,7 +43,7 @@ class DLSSGGuideGenerator:
             guide = Guide(self.zero, True, 1.0, False, 0.0)
         else:
             difference = cv2.absdiff(current, self.previous)
-            score = float(np.mean(difference)) / 255.0
+            score = cv2.mean(difference)[0] / 255.0
             duplicate = score < 0.0005
             reset = force_reset or score > 0.24
             if reset or duplicate:
@@ -48,11 +51,7 @@ class DLSSGGuideGenerator:
                 confidence = 1.0 if duplicate else 0.0
             else:
                 calculated = self.flow.calc(current, self.previous, None)
-                calculated = cv2.resize(
-                    calculated, (self.width, self.height), interpolation=cv2.INTER_LINEAR
-                )
-                calculated[..., 0] *= self.width / self.flow_width
-                calculated[..., 1] *= self.height / self.flow_height
+                calculated = self.resizer.resize(calculated)
                 # Reducing an H×W×2 boolean array along its tiny last axis is
                 # expensive. These two channel checks produce the same mask.
                 finite = np.isfinite(calculated[..., 0])
@@ -61,7 +60,7 @@ class DLSSGGuideGenerator:
                 if confidence < 1.0:
                     calculated[~finite] = 0
                 reset = confidence < 0.98
-                vectors = self.zero if reset else np.ascontiguousarray(calculated.astype(np.float16))
+                vectors = self.zero if reset else motion_to_fp16(calculated)
             guide = Guide(vectors, reset, score, duplicate, confidence)
         self.previous = current
         return guide

@@ -62,7 +62,10 @@ def detect_gpus() -> tuple[dict[str, Any], ...]:
         "--format=csv,noheader,nounits",
     ]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError(
             "NVIDIA driver tools are unavailable; an RTX GPU and current driver are required."
@@ -78,11 +81,9 @@ def detect_gpus() -> tuple[dict[str, Any], ...]:
         if not parts or not any(parts):
             continue
         if len(parts) == 4:
-            legacy_row = True
             name, driver, memory, _legacy_capability = parts
             index, uuid, pci_bus_id = str(fallback_index), f"index:{fallback_index}", ""
         elif len(parts) == 6:
-            legacy_row = False
             index, uuid, pci_bus_id, name, driver, memory = parts
         else:
             name = parts[3] if len(parts) > 3 else parts[0] or "NVIDIA GPU"
@@ -120,9 +121,10 @@ def detect_gpus() -> tuple[dict[str, Any], ...]:
                 "beta": False,
                 "ai_compatible": is_rtx,
                 "compatibility_error": compatibility_error,
-                "cuda_ordinal": (
-                    smi_index if legacy_row else identity.get("cuda_ordinal", smi_index)
-                ),
+                # nvidia-smi, CUDA and DXGI ordinals are different namespaces.
+                # Never silently encode on another adapter when CUDA lookup fails.
+                "cuda_ordinal": identity.get("cuda_ordinal"),
+                "cuda_identity_verified": "cuda_ordinal" in identity,
             }
         )
     if not devices:
