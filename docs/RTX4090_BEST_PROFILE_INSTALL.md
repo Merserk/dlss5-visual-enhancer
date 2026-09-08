@@ -36,9 +36,39 @@ The PowerShell helper also normalizes forwarded path arguments defensively and r
 
 ## RTX 4090 profile
 
-The profile identifies an RTX 4090 by stable NVIDIA UUID and verified PCI-to-CUDA mapping. It selects that UUID for AI/video processing and uses NVIDIA NVENC variants for supported H.264/H.265/AV1 selections. The dedicated launcher defaults to NVENC preset p4 for a performance-oriented balance; set `DLSS5_NVENC_PRESET=p6` before launch if you prefer the normal higher-quality preset.
+The profile identifies an RTX 4090 by stable NVIDIA UUID and verified PCI-to-CUDA mapping. It selects that UUID for AI/video processing and uses NVIDIA NVENC variants for supported H.264/H.265/AV1 selections. The dedicated launcher defaults to NVENC preset p5 for a performance/quality balance; set `DLSS5_NVENC_PRESET=p6` before launch if you prefer a slower higher-quality encode preset.
 
 Your monitor can remain attached to the second GPU. The profile does not change Windows display assignments, registry display preferences, CUDA visibility, clock settings, power limits, or VRAM allocation.
+
+## Fast Neural Rendering preview path
+
+The 4090 launcher now enables two performance paths that are deliberately limited to work FFmpeg can actually accelerate:
+
+1. **3-second browser-compatible previews use H.264 NVENC.** The old compatibility path forced plain `H.264`, which selected `libx264` on the CPU. At outputs such as 2112x3696 this can throttle the rendered-frame queue and make the whole preview wait for CPU encoding. The 4090 launcher sets `DLSS5_FAST_PREVIEW_NVENC=1`, causing forced H.264/MP4 previews to use `H.264 (NVIDIA NVENC)` and the selected Video Processing GPU.
+2. **Input video decode can use FFmpeg CUDA/NVDEC.** `DLSS5_CUDA_DECODE=auto` installs a frame-stream wrapper around the Neural Rendering video processor. It tries hardware decode on the selected AI GPU, prefers CUDA-side conversion to RGBA when the bundled FFmpeg filter supports it, preserves frame PTS through a NUT pipe, and falls back to the original PyAV/software decoder when the source or filter path is unsupported.
+
+The original processing path remains available:
+
+```powershell
+set DLSS5_FAST_PREVIEW_NVENC=0
+set DLSS5_CUDA_DECODE=off
+.\start_4090.bat
+```
+
+For testing CUDA decode strictly, use:
+
+```powershell
+set DLSS5_CUDA_DECODE=on
+.\start_4090.bat
+```
+
+`on` fails instead of falling back if FFmpeg CUDA cannot initialize. `auto` is recommended.
+
+Every successful Neural Rendering video report now adds `cuda_decode` and `performance_analysis` sections. `performance_analysis.dlss_feature18_ms_per_frame` shows the synchronous native feature-18 time, while `rgba_output_readback_gib` shows how much full-resolution RGBA data was returned by the native worker. This distinguishes FFmpeg decode/encode bottlenecks from the DLSS feature evaluation/readback stage.
+
+### What CUDA cannot replace
+
+Neural Rendering still executes signed NVIDIA feature 18 in the native D3D12/NGX worker one frame at a time. FFmpeg CUDA can accelerate source decode, compatible pixel conversion, and NVENC output, but it cannot replace feature-18 evaluation or its RGBA readback. If `dlss_feature18_seconds` accounts for most of the elapsed time after the new FFmpeg paths are enabled, the remaining optimization belongs in the native worker: GPU-resident texture exchange, asynchronous/fenced queues, fewer CPU copies, or a native encoder handoff.
 
 ## Important native-worker limitation
 
