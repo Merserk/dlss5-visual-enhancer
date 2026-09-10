@@ -10,13 +10,12 @@ from ..core.ffmpeg.preview import (
     is_browser_playable, make_browser_preview, normalize_preview_encoding,
     resolve_preview_codec, wants_compat_preview,
 )
+from ..core.preview_duration import resolve_duration
 from ..settings.storage import current_preview_encoding, processing_gpu_settings
 from .capabilities import probe_frame_interpolation_capabilities
 from .models import FrameInterpolationOptions
 from .processor import interpolate_video
 from .scheduler import choose_interpolation_plan
-
-PREVIEW_SECONDS = 3.0
 
 
 def normalize_video_paths(paths: list[str] | str | None) -> list[str]:
@@ -97,6 +96,7 @@ def update_frame_interpolation_preview_mode(
         gr.update(value=normalized[0] if available else None, visible=available, label=label),
         gr.update(value=None, visible=True),
         gr.update(visible=single),
+        gr.update(visible=single),
     )
 
 def preview_frame_interpolation(
@@ -106,6 +106,7 @@ def preview_frame_interpolation(
     codec: str,
     container: str,
     quality: str,
+    duration: str,
     progress=gr.Progress(track_tqdm=False),
 ):
     selected = first_video_path(input_paths)
@@ -119,6 +120,9 @@ def preview_frame_interpolation(
         codec, container, preview_mode
     )
     compat_preview = wants_compat_preview(codec, container, preview_mode)
+    # Frame Interpolation only ever offers timed clips (no "1 frame" choice --
+    # see core.preview_duration), so this always resolves to a seconds value.
+    preview_seconds, _preview_frames = resolve_duration(duration)
     options = FrameInterpolationOptions(
         ai_gpu_uuid=processing_gpu_settings()[0],
         video_gpu_uuid=processing_gpu_settings()[1],
@@ -127,7 +131,7 @@ def preview_frame_interpolation(
         codec=effective_codec,
         container=effective_container,
         quality=quality,
-        preview_seconds=PREVIEW_SECONDS,
+        preview_seconds=preview_seconds,
         preview_compat=compat_preview,
     )
     try:

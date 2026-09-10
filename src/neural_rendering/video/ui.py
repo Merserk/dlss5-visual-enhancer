@@ -14,6 +14,8 @@ from ...core.disk_paths import create_media_archive
 from ...core.ffmpeg import hdr_mode_supported
 from ...core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
 from ...core.naming import RENAME_MODES
+from ...core.paths import OUTPUTS
+from ...core.preview_duration import build_duration_control
 from ...core.runtime import DLSS_MODEL_PRESETS, NR_PRESETS, NR_STYLES, UPSCALING_MODES
 from ...settings.models import (
     AUTOMATIC_MASK_CHOICES, CODEC_CHOICES, CONTAINER_CHOICES, QUALITY_CHOICES, UISettings,
@@ -23,7 +25,7 @@ from ...settings.storage import current_preview_encoding, processing_gpu_setting
 from .batch import convert_videos
 from .models import ConversionOptions
 from .preview import (
-    _process_video, normalize_video_paths, preview_one_frame, preview_video, update_video_preview_mode,
+    _process_video, normalize_video_paths, preview_with_duration, update_video_preview_mode,
 )
 
 
@@ -171,8 +173,11 @@ def render_video_batch(
         progress(value, desc=message)
 
     try:
-        result = convert_videos(paths, options, progress=report, output_dir=output_dir,
-                                controller=controller, on_item_update=on_item_update)
+        result = convert_videos(
+            paths, options, progress=report,
+            output_dir=output_dir if direct_disk else (output_dir or (OUTPUTS / "videos")),
+            controller=controller, on_item_update=on_item_update,
+        )
     except Exception as exc:
         traceback.print_exc()
         if on_item_update is not None:
@@ -262,18 +267,20 @@ class VideoTab:
     rename_mode: object
     custom_suffix: object
     hdr_mode: object
-    preview_frame: object
+    preview_duration: object
     preview: object
     render: object
     stop: object
     reset: object
     output_video: object
+    send_to_compare: object
     zip_download: object
     status: object
     results: object
     input_path: object = None
     output_path: object = None
     job_state: object = None
+    last_preview_path: object = None
 
     @property
     def render_inputs(self) -> list[object]:
@@ -286,7 +293,7 @@ class VideoTab:
     def preview_inputs(self) -> list[object]:
         return [
             self.sources, *self.neural, self.model_preset, self.codec, self.container,
-            self.quality, self.hdr_mode,
+            self.quality, self.hdr_mode, self.preview_duration,
         ]
 
     @property
@@ -345,8 +352,8 @@ def build_video_tab(settings: UISettings) -> VideoTab:
                 interactive=hdr_mode_supported(settings.codec),
             )
             with gr.Row():
-                preview_frame = gr.Button("Preview 1 frame", visible=False)
-                preview = gr.Button("Preview 3 sec", visible=False)
+                preview_duration = build_duration_control(allow_single_frame=True)
+                preview = gr.Button("Preview", visible=False)
                 render = gr.Button("Render video(s)", variant="primary")
                 stop = gr.Button("Stop", variant="stop")
                 reset = gr.Button("Reset settings")
@@ -354,6 +361,7 @@ def build_video_tab(settings: UISettings) -> VideoTab:
             output_video = gr.Video(
                 label="Output video", interactive=False, visible=True, height=520,
             )
+            send_to_compare = gr.Button("Send to Comparison")
             zip_download = gr.DownloadButton("Save as ZIP", visible=False)
             status = gr.Textbox(label="Status", interactive=False, lines=5, max_lines=12)
             results = gr.Dataframe(
@@ -363,8 +371,8 @@ def build_video_tab(settings: UISettings) -> VideoTab:
             )
     tab = VideoTab(
         sources, input_preview, input_actions, select_source, clear_source, neural, model_preset, quality, codec, container, rename_mode,
-        custom_suffix, hdr_mode, preview_frame, preview, render, stop, reset, output_video,
-        zip_download, status, results
+        custom_suffix, hdr_mode, preview_duration, preview, render, stop, reset, output_video,
+        send_to_compare, zip_download, status, results
     )
     tab.input_path, tab.output_path = input_path, output_path
     bind_video_events(tab)
@@ -372,7 +380,10 @@ def build_video_tab(settings: UISettings) -> VideoTab:
 
 
 def bind_video_events(tab: VideoTab) -> None:
+    tab.last_preview_path = gr.State(None)
     bind_batch_ui(tab, render_video_batch, kind="video", preview_mode=update_video_preview_mode,
-                  preview_actions=[(tab.preview_frame, preview_one_frame), (tab.preview, preview_video)])
+                  preview_actions=[(tab.preview, preview_with_duration)],
+                  preview_controls=[tab.preview_duration],
+                  preview_result_state=tab.last_preview_path)
     tab.rename_mode.change(rename_suffix_update, inputs=tab.rename_mode, outputs=tab.custom_suffix, queue=False)
     tab.codec.change(hdr_mode_update, inputs=tab.codec, outputs=tab.hdr_mode, queue=False)

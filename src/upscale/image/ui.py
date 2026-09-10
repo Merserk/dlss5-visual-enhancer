@@ -118,13 +118,14 @@ def build_image_tab(settings):
                 elem_id="upscale-image-output-preview",
             )
             zip_download = gr.DownloadButton("Save as ZIP", visible=False)
+            send_to_compare = gr.Button("Send to Comparison")
             status = gr.Textbox(label="Status", interactive=False, lines=5)
             results = gr.Dataframe(headers=BATCH_HEADERS, datatype=["str"] * len(BATCH_HEADERS), interactive=False,
                                    label="Batch results", wrap=True)
     tab = SimpleNamespace(sources=sources, input_gallery=input_gallery, input_actions=input_actions,
                           select_source=select_source, clear_source=clear_source, input_path=input_path,
                           output_path=output_path, render=render, stop=stop, reset=reset, output_gallery=output_gallery,
-                          zip_download=zip_download, status=status, results=results,
+                          zip_download=zip_download, send_to_compare=send_to_compare, status=status, results=results,
                           controls=c, settings_inputs=[c[n] for n in SETTING_FIELDS])
     tab.render_inputs = [sources, *tab.settings_inputs]
     bind_batch_ui(tab, render_image_batch, kind="image", preview_mode=preview_input_images)

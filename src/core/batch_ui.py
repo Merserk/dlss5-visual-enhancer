@@ -118,8 +118,19 @@ def release_view(key):
         view.job.controller.stop()
 
 
-def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=()):
-    """Media values are only returned in upload mode, once a batch is finished."""
+def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(), preview_controls=(),
+                   preview_result_state=None):
+    """Media values are only returned in upload mode, once a batch is finished.
+
+    `preview_controls` are non-button preview components (e.g. the shared
+    duration dropdown from `core.preview_duration`) that should show/hide and
+    enable/disable in lockstep with the preview buttons, without themselves
+    having a `.click()` handler wired up.
+
+    `preview_result_state`, if given, is a `gr.State` that gets the most
+    recent successful preview's output video path -- letting "Send to
+    Comparison" offer the preview itself as a candidate, not just a
+    completed full render from `tab.results`."""
     tab.job_state = gr.State(value=lambda: uuid.uuid4().hex, delete_callback=release_view)
     is_image = kind == "image"
     input_media = tab.input_gallery if is_image else tab.input_preview
@@ -128,9 +139,10 @@ def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(
     if archive_download is not None:
         media.append(tab.zip_download)
     preview_buttons = [button for button, _fn in preview_actions]
+    preview_visibility = [*preview_buttons, *preview_controls]
     controls = [
         tab.sources, tab.select_source, tab.clear_source, tab.input_path, tab.output_path,
-        tab.render, tab.reset, *preview_buttons,
+        tab.render, tab.reset, *preview_visibility,
     ]
     outputs = [*media, tab.results, tab.status, *controls]
     path_inputs = [tab.job_state, tab.input_path, tab.output_path]
@@ -170,11 +182,11 @@ def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(
         if busy and disk and view.job is not None and view.job.is_preview:
             view.job.controller.stop()
         if busy and not disk:
-            return [gr.skip()] * (1 + len(media) + len(preview_buttons) + 2)
+            return [gr.skip()] * (1 + len(media) + len(preview_visibility) + 2)
         show_input_media = False
         if disk:
             values = [gr.update(value=None, visible=False), *empty_media(True),
-                      *[gr.update(visible=False) for _ in preview_buttons]]
+                      *[gr.update(visible=False) for _ in preview_visibility]]
         elif is_image:
             previews = preview_mode(args[0])
             show_input_media = bool(previews)
@@ -186,7 +198,7 @@ def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(
             values = [input_update, output_update, *empty_media(False)[1:], *buttons]
         with view.lock:
             if revision != view.revision:
-                return [gr.skip()] * (1 + len(media) + len(preview_buttons) + 2)
+                return [gr.skip()] * (1 + len(media) + len(preview_visibility) + 2)
         source_update, actions_update = input_surface_updates(show_input_media, input_path)
         return [
             *values,
@@ -198,7 +210,7 @@ def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(
     if hasattr(tab, "target_fps"):
         source_args += [tab.target_fps, tab.engine]
     refresh_outputs = [
-        input_media, *media, *preview_buttons,
+        input_media, *media, *preview_visibility,
         tab.sources, tab.input_actions,
     ]
     tab.select_source.upload(
@@ -288,12 +300,26 @@ def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(
         return gr.skip()
     tab.stop.click(stop, inputs=tab.job_state, outputs=tab.status, queue=False, show_progress="hidden")
 
+    def _resolve_preview_path(value):
+        """Preview functions sometimes wrap their output path in gr.update(...)
+        (Upscale Video does, to also set visibility/label) and sometimes
+        return the path directly (Neural Rendering Video, Frame
+        Interpolation). Normalize either shape to the actual path so it can
+        be stored for a later "send this preview to Comparison" action."""
+        if hasattr(value, "get"):
+            return value.get("value")
+        return value
+
     def guarded_preview(function):
+        extra_slots = int(archive_download is not None) + int(preview_result_state is not None)
+
         def preview(key, input_path, output_path, *args, progress=gr.Progress(track_tqdm=False)):
             def empty_preview(video, status):
                 values = (video, status)
                 if archive_download is not None:
                     values += (gr.update(value=None, visible=False),)
+                if preview_result_state is not None:
+                    values += (gr.skip(),)  # a blocked/cancelled preview isn't a new "last preview"
                 return values
             view = _view(key)
             if direct_disk_mode(input_path, output_path):
@@ -312,10 +338,13 @@ def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(
                     return empty_preview(gr.update(value=None, visible=False), "Preview cancelled.")
                 with view.lock:
                     if view.revision != revision or view.disk:
-                        return (gr.skip(),) * (2 + int(archive_download is not None))
+                        return (gr.skip(),) * (2 + extra_slots)
+                extra = ()
                 if archive_download is not None:
-                    return (*result, gr.update(value=None, visible=False))
-                return result
+                    extra += (gr.update(value=None, visible=False),)
+                if preview_result_state is not None:
+                    extra += (_resolve_preview_path(result[0]),)
+                return (*result, *extra)
             finally:
                 job.done.set()
                 with view.lock:
@@ -323,6 +352,10 @@ def bind_batch_ui(tab, render_function, *, kind, preview_mode, preview_actions=(
                         view.job = None
         return preview
     for button, function in preview_actions:
+        outputs = [tab.output_video, tab.status]
+        if archive_download is not None:
+            outputs.append(archive_download)
+        if preview_result_state is not None:
+            outputs.append(preview_result_state)
         button.click(guarded_preview(function), inputs=[*path_inputs, *tab.preview_inputs],
-                     outputs=[tab.output_video, tab.status, *([archive_download] if archive_download is not None else [])],
-                     concurrency_limit=None, show_progress="hidden")
+                     outputs=outputs, concurrency_limit=None, show_progress="hidden")

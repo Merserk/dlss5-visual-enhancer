@@ -6,6 +6,7 @@ from pathlib import Path
 import gradio as gr
 
 from ...core.ffmpeg.preview import is_browser_playable, make_browser_preview
+from ...core.preview_duration import DEFAULT_DURATION, resolve_duration
 from ...settings.storage import current_preview_encoding
 from .media import inspect_video
 from .processor import upscale_video
@@ -30,13 +31,14 @@ def display_result(result, options, controller=None):
     return path, "SDR tone-mapped browser preview. Download the original for HDR playback." if options.hdr_enabled else "H.264 browser preview."
 
 
-def preview_upscale(paths, options, *, one_frame=False, progress=None):
+def preview_upscale(paths, options, *, duration=DEFAULT_DURATION, progress=None):
     paths = [paths] if isinstance(paths, str) else list(paths or [])
     if len(paths) != 1:
         raise gr.Error("Select one video to preview.")
     from ...core.jobs import current_job_controller
     controller = current_job_controller()
-    opts = replace(options, preview_frames=1 if one_frame else None, preview_seconds=None if one_frame else 3.0)
+    preview_seconds, preview_frames = resolve_duration(duration)
+    opts = replace(options, preview_frames=preview_frames, preview_seconds=preview_seconds)
     result = upscale_video(paths[0], opts, progress=progress, controller=controller)
     display, detail = display_result(result, opts, controller)
     return gr.update(value=display, visible=True, label="SDR tone-mapped preview (download original for HDR)" if opts.hdr_enabled and current_preview_encoding() != "Disabled" else "Output preview"), (

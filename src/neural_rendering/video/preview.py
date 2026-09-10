@@ -9,12 +9,11 @@ from ...core.ffmpeg.preview import (
     is_browser_playable, make_browser_preview, normalize_preview_encoding,
     resolve_final_preview, resolve_preview_codec, wants_compat_preview,
 )
+from ...core.preview_duration import resolve_duration
 from ...settings.models import coerce_hdr_mode, parse_automatic_mask
 from ...settings.storage import current_preview_encoding, processing_gpu_settings
 from .models import ConversionOptions
 from .processor import convert_video
-
-PREVIEW_SECONDS = 3.0
 
 def _process_video(
     input_path: str | None,
@@ -114,7 +113,7 @@ def _process_video(
             )
         return output_preview, (
             f"Preview complete for {source_name}: {result.frames} frames from the first "
-            f"{PREVIEW_SECONDS:g} seconds processed "
+            f"{preview_seconds:g} seconds processed "
             f"on {result.gpu} in {result.elapsed_seconds:.1f}s. DLSS {result.dlss_mode}: "
             f"{result.render_width}×{result.render_height} → {result.output_width}×{result.output_height}. "
             "All frames returned success with signed feature 18 confirmed."
@@ -159,7 +158,7 @@ def update_video_preview_mode(paths: list[str] | str | None):
         gr.update(visible=single),
     )
 
-def preview_video(
+def preview_with_duration(
     input_path: list[str] | str | None,
     nr_preset: str,
     nr_style: str,
@@ -173,39 +172,15 @@ def preview_video(
     codec: str,
     container: str,
     quality: str,
-    hdr_mode: bool = False,
+    hdr_mode: bool,
+    duration: str,
     progress=gr.Progress(track_tqdm=False),
 ):
     selected = first_video_path(input_path)
+    preview_seconds, preview_frames = resolve_duration(duration)
     return _process_video(
         selected, nr_preset, nr_style, nr_intensity, local_tone_strength, local_structure_strength,
         skin_structure_strength, upscaling_factor, automatic_mask, dlss_model_preset,
         codec, container, quality, hdr_mode,
-        progress, PREVIEW_SECONDS, None
-    )
-
-
-def preview_one_frame(
-    input_path: list[str] | str | None,
-    nr_preset: str,
-    nr_style: str,
-    nr_intensity: float,
-    local_tone_strength: float,
-    local_structure_strength: float,
-    skin_structure_strength: float,
-    upscaling_factor: float,
-    automatic_mask: str,
-    dlss_model_preset: str,
-    codec: str,
-    container: str,
-    quality: str,
-    hdr_mode: bool = False,
-    progress=gr.Progress(track_tqdm=False),
-):
-    selected = first_video_path(input_path)
-    return _process_video(
-        selected, nr_preset, nr_style, nr_intensity, local_tone_strength, local_structure_strength,
-        skin_structure_strength, upscaling_factor, automatic_mask, dlss_model_preset,
-        codec, container, quality, hdr_mode,
-        progress, None, 1
+        progress, preview_seconds, preview_frames
     )
