@@ -6,9 +6,10 @@ from pathlib import Path
 
 import gradio as gr
 from ..core.batch_ui import (
-    BATCH_HEADERS, bind_batch_ui, build_media_clear_button, build_media_select_button,
+    batch_headers, bind_batch_ui, build_media_clear_button, build_media_select_button,
     build_path_controls, build_save_controls,
 )
+from ..core.i18n import option_label, t, translator
 
 from ..core.ffmpeg import hdr_mode_supported
 from ..core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
@@ -45,7 +46,7 @@ def render_frame_interpolation_batch(
 ):
     paths = normalize_video_paths(input_paths)
     if not paths:
-        raise gr.Error("Choose at least one video first.")
+        raise gr.Error(t("frame_interpolation.error.choose_video"))
     effective_hdr = coerce_hdr_mode(codec, hdr_mode)
     options = FrameInterpolationOptions(
         ai_gpu_uuid=processing_gpu_settings()[0],
@@ -70,7 +71,7 @@ def render_frame_interpolation_batch(
         traceback.print_exc()
         if on_item_update is not None:
             raise
-        return gr.update(value=None, visible=not direct_disk), None, [], f"Failed: {exc}"
+        return gr.update(value=None, visible=not direct_disk), None, [], t("neural.video.status.failed", error=exc)
     ordered: list[tuple[int, list[str]]] = []
     for item in result.successes:
         value = item.result
@@ -99,10 +100,12 @@ def render_frame_interpolation_batch(
     used_derivative = False
     if not direct_disk and len(paths) == 1 and result.successes and not result.cancelled:
         preview, used_derivative = resolve_final_preview(files[0], preview_mode, controller=controller)
-    status = (
-        f"{'Cancelled' if result.cancelled else 'Complete'}: "
-        f"{len(result.successes)} completed, {len(result.failures)} failed/cancelled. "
-        f"Batch manifest: {result.manifest_path}"
+    status = t(
+        "frame_interpolation.status.batch",
+        state="Cancelled" if result.cancelled else "Complete",
+        successes=len(result.successes),
+        failures=len(result.failures),
+        manifest=result.manifest_path,
     )
     if result.failures:
         status += f"\nFirst error: {result.failures[0].error}"
@@ -159,72 +162,80 @@ class FrameInterpolationTab:
 
 
 def build_frame_interpolation_tab(settings: UISettings) -> FrameInterpolationTab:
+    ui_t = translator(settings.language).t
     with gr.Row():
         with gr.Column(scale=3):
             sources = gr.File(
-                label="Input video(s)", file_count="multiple", file_types=["video"],
+                label=ui_t("common.label.input_video_plural"), file_count="multiple", file_types=["video"],
                 type="filepath", allow_reordering=True, elem_id="frame-interpolation-upload-list",
                 elem_classes=["media-upload-surface"],
             )
-            input_preview = gr.Video(label="Input video preview", interactive=False, visible="hidden")
+            input_preview = gr.Video(label=ui_t("common.label.input_video_preview"), interactive=False, visible="hidden")
             with gr.Row(
                 visible=False, elem_id="frame-interpolation-input-actions",
                 elem_classes=["media-input-actions"],
             ) as input_actions:
                 select_source = build_media_select_button(
-                    "Choose Videos", ["video"], "frame-interpolation-select-input",
+                    ui_t("common.button.choose_videos"), ["video"], "frame-interpolation-select-input",
                 )
                 clear_source = build_media_clear_button("frame-interpolation-clear-input")
             with gr.Row():
-                render = gr.Button("Interpolate video(s)", variant="primary")
-                preview = gr.Button("Preview 3 sec", visible=False)
-                stop = gr.Button("Stop", variant="stop")
-                reset = gr.Button("Reset settings")
+                render = gr.Button(ui_t("frame_interpolation.button.render"), variant="primary")
+                preview = gr.Button(ui_t("common.button.preview_clip"), visible=False)
+                stop = gr.Button(ui_t("common.button.stop"), variant="stop")
+                reset = gr.Button(ui_t("common.button.reset_settings"))
             with gr.Column():
                 with gr.Row():
                     target_fps = gr.Dropdown(
                         FPS_CHOICES, value=settings.frame_interpolation_target_fps,
-                        label="Output FPS",
+                        label=ui_t("frame_interpolation.label.output_fps"),
                     )
                     engine = gr.Radio(
-                        ENGINE_CHOICES, value=settings.frame_interpolation_engine, label="DLSS engine",
+                        [(option_label(choice, settings.language), choice) for choice in ENGINE_CHOICES],
+                        value=settings.frame_interpolation_engine,
+                        label=ui_t("frame_interpolation.label.engine"),
                     )
             input_path, output_path = build_path_controls()
             quality = gr.Radio(
-                QUALITY_CHOICES, value=settings.frame_interpolation_quality,
-                label="Encoding quality",
+                [(option_label(choice, settings.language), choice) for choice in QUALITY_CHOICES],
+                value=settings.frame_interpolation_quality,
+                label=ui_t("common.label.encoding_quality"),
             )
             with gr.Row():
                 codec = gr.Dropdown(
                     CODEC_CHOICES, value=settings.frame_interpolation_codec,
-                    label="Video codec",
+                    label=ui_t("common.label.video_codec"),
                 )
                 container = gr.Dropdown(
-                    CONTAINER_CHOICES, value=settings.frame_interpolation_container, label="Container"
+                    CONTAINER_CHOICES, value=settings.frame_interpolation_container, label=ui_t("common.label.container")
                 )
             with gr.Row():
                 rename_mode = gr.Radio(
-                    RENAME_MODES, value=settings.frame_interpolation_rename_mode, label="Rename",
+                    [(option_label(choice, settings.language), choice) for choice in RENAME_MODES],
+                    value=settings.frame_interpolation_rename_mode,
+                    label=ui_t("common.label.rename"),
                 )
                 custom_suffix = gr.Textbox(
-                    value=settings.frame_interpolation_custom_suffix, label="Custom suffix",
-                    placeholder="_Frame_Interpolation", interactive=settings.frame_interpolation_rename_mode == "Custom",
+                    value=settings.frame_interpolation_custom_suffix,
+                    label=ui_t("common.label.custom_suffix"),
+                    placeholder=ui_t("frame_interpolation.placeholder.custom_suffix"),
+                    interactive=settings.frame_interpolation_rename_mode == "Custom",
                 )
             hdr_mode = gr.Checkbox(
                 value=settings.frame_interpolation_hdr_mode and hdr_mode_supported(settings.frame_interpolation_codec),
-                label="HDR Mode",
+                label=ui_t("common.label.hdr_mode"),
                 interactive=hdr_mode_supported(settings.frame_interpolation_codec),
             )
         with gr.Column(scale=3):
             output_video = gr.Video(
-                label="Interpolated output", interactive=False, visible=True, height=520,
+                label=ui_t("frame_interpolation.label.output_video"), interactive=False, visible=True, height=520,
             )
             save_download, zip_button, zip_download = build_save_controls("video", "frame-interpolation")
-            status = gr.Textbox(label="Status", interactive=False, lines=5, max_lines=12)
+            status = gr.Textbox(label=ui_t("common.label.status"), interactive=False, lines=5, max_lines=12)
             results = gr.Dataframe(
-                headers=BATCH_HEADERS,
-                datatype=["str"] * len(BATCH_HEADERS), interactive=False,
-                label="Batch results", wrap=True,
+                headers=batch_headers(settings.language),
+                datatype=["str"] * len(batch_headers(settings.language)), interactive=False,
+                label=ui_t("common.label.batch_results"), wrap=True,
             )
     tab = FrameInterpolationTab(
         sources, input_preview, input_actions, select_source, clear_source, target_fps, engine, quality, codec, container, rename_mode,

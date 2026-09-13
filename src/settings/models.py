@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
+from ..core.i18n import detect_system_language, SUPPORTED_LANGUAGES, normalize_language
 from ..core.ffmpeg import CODEC_CHOICES as FFMPEG_CODEC_CHOICES, ENCODING_QUALITIES, HDR_ALLOWED_CODECS, hdr_mode_supported
 from ..core.naming import validate_rename
 from ..core.runtime import resolve_native_settings, resolve_upscaling_mode
@@ -20,6 +21,7 @@ PRESET_SCHEMA_VERSION = 6
 MAX_PRESET_BYTES = 1024 * 1024
 
 AUTOMATIC_MASK_CHOICES = ("Off", "On")
+LANGUAGE_CHOICES = SUPPORTED_LANGUAGES
 
 PREVIEW_ENCODING_CHOICES = ("Auto", "Always H.264", "Disabled")
 UPSCALE_MODE_CHOICES = ("Image", "Video")
@@ -41,6 +43,7 @@ def parse_automatic_mask(value: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class UISettings:
+    language: str = field(default_factory=detect_system_language)
     ai_gpu_uuid: str = "auto"
     video_gpu_uuid: str = "auto"
     nr_style: str = "Default"
@@ -143,6 +146,7 @@ DEFAULT_SETTINGS = UISettings()
 
 
 def _validate(settings: UISettings) -> UISettings:
+    settings = replace(settings, language=normalize_language(settings.language))
     options_from_settings(settings).validate(for_render=False)
     image_upscale_options(settings).validate(for_render=False)
     for label, value in (
@@ -171,6 +175,8 @@ def _validate(settings: UISettings) -> UISettings:
         raise ValueError("Frame Interpolation HDR Mode must be a boolean value.")
     if not isinstance(settings.full_size_image_previews, bool):
         raise ValueError("Full size quality preview must be a boolean value.")
+    if settings.language not in LANGUAGE_CHOICES:
+        raise ValueError(f"Unknown language: {settings.language!r}.")
     # Migrate old codec names before validation
     migrated_codec = _migrate_codec(settings.codec)
     migrated_fi_codec = _migrate_codec(settings.frame_interpolation_codec)

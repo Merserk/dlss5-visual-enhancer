@@ -10,6 +10,7 @@ from ...core.ffmpeg.preview import (
     is_browser_playable, make_browser_preview, normalize_preview_encoding,
     resolve_final_preview, resolve_preview_codec, wants_compat_preview,
 )
+from ...core.i18n import t
 from ...settings.models import coerce_hdr_mode, parse_automatic_mask
 from ...settings.storage import current_preview_encoding, processing_gpu_settings
 from .models import ConversionOptions
@@ -48,7 +49,7 @@ def _process_video(
     ephemeral_preview: bool = False,
 ) -> tuple[str | None, str]:
     if not input_path:
-        raise gr.Error("Choose a video first.")
+        raise gr.Error(t("neural.video.error.choose_video_single"))
     is_preview = preview_seconds is not None or preview_frames is not None
     ai_gpu_uuid, video_gpu_uuid = processing_gpu_settings()
     try:
@@ -106,10 +107,10 @@ def _process_video(
             controller=controller,
         )
     except Cancelled:
-        return None, "Preview cancelled."
+        return None, t("neural.video.status.preview_cancelled")
     except Exception as exc:
         traceback.print_exc()
-        return None, f"Failed: {exc}"
+        return None, t("neural.video.status.failed", error=exc)
 
     def finish(media_path: str | None, status: str) -> tuple[str | None, str]:
         if ephemeral_preview:
@@ -138,38 +139,56 @@ def _process_video(
                     output_preview = make_browser_preview(
                         result.output_path, dest_dir=output_dir, controller=controller,
                     )
-                    derived_note = " (browser preview transcoded to H.264)"
+                    derived_note = " " + t("neural.video.status.preview_proxy")
                 except Exception:
                     output_preview = result.output_path
         if preview_frames is not None:
             return finish(output_preview, (
-                f"One-frame preview complete for {source_name} on {result.gpu} "
-                f"in {result.elapsed_seconds:.1f}s. "
-                f"Neural dimensions {result.render_width}×{result.render_height}; "
-                f"{result.resize_method}, {result.memory_path}. Feature 18 confirmed."
-                f"{derived_note}"
+                t(
+                    "neural.video.status.preview_one_frame",
+                    source_name=source_name,
+                    gpu=result.gpu,
+                    elapsed=result.elapsed_seconds,
+                    render_width=result.render_width,
+                    render_height=result.render_height,
+                    resize_method=result.resize_method,
+                    memory_path=result.memory_path,
+                    derived_note=derived_note,
+                )
             ))
         return finish(output_preview, (
-            f"Preview complete for {source_name}: {result.frames} frames from the first "
-            f"{PREVIEW_SECONDS:g} seconds processed "
-            f"on {result.gpu} in {result.elapsed_seconds:.1f}s. Neural dimensions "
-            f"{result.render_width}×{result.render_height}; {result.resize_method}, "
-            f"{result.memory_path}. All frames returned feature-18 success."
-            f"{derived_note}"
+            t(
+                "neural.video.status.preview_clip",
+                source_name=source_name,
+                frames=result.frames,
+                seconds=PREVIEW_SECONDS,
+                gpu=result.gpu,
+                elapsed=result.elapsed_seconds,
+                render_width=result.render_width,
+                render_height=result.render_height,
+                resize_method=result.resize_method,
+                memory_path=result.memory_path,
+                derived_note=derived_note,
+            )
         ))
     output_preview, used_derivative = resolve_final_preview(
         result.output_path, preview_mode, bounded_proxy=True
     )
-    status = (
-        f"Complete: {result.frames} frames processed on {result.gpu} in {result.elapsed_seconds:.1f}s. "
-        f"All {result.nr_count_evidence} frames returned feature-18 success. "
-        f"Neural dimensions {result.render_width}×{result.render_height}; "
-        f"{result.resize_method}, {result.memory_path}."
+    status = t(
+        "neural.video.status.complete",
+        frames=result.frames,
+        gpu=result.gpu,
+        elapsed=result.elapsed_seconds,
+        nr_count=result.nr_count_evidence,
+        render_width=result.render_width,
+        render_height=result.render_height,
+        resize_method=result.resize_method,
+        memory_path=result.memory_path,
     )
     if used_derivative:
-        status += " A short H.264 browser proxy was created; the complete original output is unchanged."
+        status += t("neural.video.status.complete_proxy")
     elif output_preview is None:
-        status += f" {effective_container} output was created successfully, but browser preview is unavailable."
+        status += t("neural.video.status.complete_no_preview", container=effective_container)
     return finish(output_preview, status)
 
 def normalize_video_paths(paths: list[str] | str | None) -> list[str]:
@@ -188,7 +207,11 @@ def update_video_preview_mode(paths: list[str] | str | None):
     available = bool(normalized)
     single = len(normalized) == 1
     input_value = normalized[0] if available else None
-    input_label = "Input video preview" if len(normalized) <= 1 else f"Input video preview (first of {len(normalized)})"
+    input_label = (
+        t("neural.video.label.input_preview_single")
+        if len(normalized) <= 1
+        else t("neural.video.label.input_preview_first", count=len(normalized))
+    )
     return (
         gr.update(value=input_value, visible=True if available else "hidden", label=input_label),
         gr.update(value=None, visible=True),

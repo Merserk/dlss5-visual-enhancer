@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import gradio as gr
 
 from ..core.batch_ui import bind_input_surface_reactivation
+from ..core.i18n import option_label
 from ..settings.models import UPSCALE_MODE_CHOICES
 from .image.ui import build_image_tab
 from .video.ui import build_upscale_tab as build_video_tab
@@ -44,7 +45,7 @@ class UpscaleTab:
 def build_upscale_tab(settings):
     selected_mode = settings.upscale_mode
     mode = gr.Radio(
-        list(UPSCALE_MODE_CHOICES),
+        [(option_label(choice, settings.language), choice) for choice in UPSCALE_MODE_CHOICES],
         value=selected_mode,
         label=None,
         show_label=False,
