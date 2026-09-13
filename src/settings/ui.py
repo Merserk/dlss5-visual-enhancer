@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+import os
+import sys
+import threading
+import time
 from dataclasses import dataclass, replace
 
 import gradio as gr
 
+from ..core.i18n import (
+    DISPLAY_VALUE_RAM,
+    DISPLAY_VALUE_VRAM,
+    LANGUAGE_EN,
+    LANGUAGE_ZH_HANS,
+    language_display_name,
+    option_label,
+    t,
+    translator,
+)
 from ..core.ffmpeg import hdr_mode_supported, probe_nvenc_codecs
 from ..core.gpu_selection import gpu_choice_label
 from ..core.paths import CONFIG_PATH
@@ -24,20 +38,67 @@ _SKIN_STRUCTURE_INDEX = 5
 _AUTOMATIC_MASK_INDEX = 7
 _NR_COLOR_INDEX = 8
 _TONE_PRESERVATION_INDEX = 9
-PROCESSING_ENGINE_CHOICES = ("VRAM", "RAM")
+PROCESSING_ENGINE_CHOICES = (DISPLAY_VALUE_VRAM, DISPLAY_VALUE_RAM)
+_RESTART_LOCK = threading.Lock()
+_RESTART_PENDING = False
+
+
+def _language_choices(language: str) -> list[tuple[str, str]]:
+    return [
+        (language_display_name(LANGUAGE_EN, language), LANGUAGE_EN),
+        (language_display_name(LANGUAGE_ZH_HANS, language), LANGUAGE_ZH_HANS),
+    ]
+
+
+def _preview_encoding_choices(language: str) -> list[tuple[str, str]]:
+    return [(option_label(choice, language), choice) for choice in PREVIEW_ENCODING_CHOICES]
+
+
+def _processing_engine_choices(language: str) -> list[tuple[str, str]]:
+    return [(option_label(choice, language), choice) for choice in PROCESSING_ENGINE_CHOICES]
+
+
+def _upscale_mode_choices(language: str) -> list[tuple[str, str]]:
+    return [(option_label(choice, language), choice) for choice in UPSCALE_MODE_CHOICES]
+
+
+def _restart_application_later(delay_seconds: float = 0.6) -> None:
+    global _RESTART_PENDING
+    with _RESTART_LOCK:
+        if _RESTART_PENDING:
+            return
+        _RESTART_PENDING = True
+
+    def _runner() -> None:
+        time.sleep(delay_seconds)
+        app_path = CONFIG_PATH.parents[1] / "app.py"
+        os.environ["DLSS5_SKIP_BROWSER_OPEN"] = "1"
+        os.execv(sys.executable, [sys.executable, str(app_path)])
+
+    threading.Thread(target=_runner, name="language-restart", daemon=True).start()
+
+
+def restart_service() -> str:
+    global _RESTART_PENDING
+    with _RESTART_LOCK:
+        already_pending = _RESTART_PENDING
+    if already_pending:
+        return t("settings.language.restart_pending")
+    _restart_application_later()
+    return t("settings.language.restarting")
 
 
 def processing_engine_choice(enabled: bool) -> str:
     """Map the stored bool path to its visible VRAM/RAM label."""
-    return "VRAM" if enabled else "RAM"
+    return DISPLAY_VALUE_VRAM if enabled else DISPLAY_VALUE_RAM
 
 
 def parse_processing_engine(value: object) -> bool:
     """Map the visible VRAM/RAM selection back to its stored bool path."""
     if value not in PROCESSING_ENGINE_CHOICES:
         choices = ", ".join(PROCESSING_ENGINE_CHOICES)
-        raise ValueError(f"Processing Engine Path must be one of: {choices}.")
-    return value == "VRAM"
+        raise ValueError(t("settings.processing_engine.invalid", choices=choices))
+    return value == DISPLAY_VALUE_VRAM
 
 
 def automatic_mask_for_skin_input(
@@ -47,9 +108,9 @@ def automatic_mask_for_skin_input(
     try:
         skin = float(skin_structure_strength)
     except (TypeError, ValueError) as exc:
-        raise gr.Error("Skin Structure Strength must be between -1 and 2.") from exc
+        raise gr.Error(t("settings.error.skin_structure_range")) from exc
     if not -1.0 <= skin <= 2.0:
-        raise gr.Error("Skin Structure Strength must be between -1 and 2.")
+        raise gr.Error(t("settings.error.skin_structure_range"))
     return "On" if skin > -1.0 else automatic_mask
 
 
@@ -304,6 +365,20 @@ def persist_nr_gpu_mode(selection: object) -> bool:
     return enabled
 
 
+def persist_language(language: str) -> tuple:
+    language = language if language in (LANGUAGE_EN, LANGUAGE_ZH_HANS) else translator(language).language
+    with _CONFIG_LOCK:
+        current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
+        settings = replace(current, language=language)
+        if settings != current:
+            save_settings(CONFIG_PATH, settings)
+        SETTINGS_STATE.current = settings
+    return (
+        gr.update(value=language, choices=_language_choices(language)),
+        translator(language).t("settings.language.saved"),
+    )
+
+
 def persist_frame_interpolation_settings(
     target_fps: str,
     engine: str,
@@ -370,7 +445,7 @@ def persist_image_upscale_settings(*values) -> None:
 
 def persist_upscale_mode(mode: str) -> None:
     if mode not in UPSCALE_MODE_CHOICES:
-        raise gr.Error(f"Upscale mode must be one of: {', '.join(UPSCALE_MODE_CHOICES)}.")
+        raise gr.Error(t("settings.error.upscale_mode", choices=", ".join(UPSCALE_MODE_CHOICES)))
     with _CONFIG_LOCK:
         current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
         settings = replace(current, upscale_mode=mode)
@@ -383,6 +458,10 @@ def _settings_component_values(settings: UISettings) -> tuple:
     shared = _neural_values(settings)
     temporal = _video_live_values(settings)
     return (
+        gr.update(
+            value=settings.language,
+            choices=_language_choices(settings.language),
+        ),
         *shared,
         *temporal,
         settings.image_format,
@@ -414,12 +493,21 @@ def _settings_component_values(settings: UISettings) -> tuple:
         ),
         settings.ai_gpu_uuid,
         settings.video_gpu_uuid,
-        settings.preview_encoding,
+        gr.update(
+            value=settings.preview_encoding,
+            choices=_preview_encoding_choices(settings.language),
+        ),
         settings.full_size_image_previews,
-        processing_engine_choice(settings.nr_gpu_mode),
+        gr.update(
+            value=processing_engine_choice(settings.nr_gpu_mode),
+            choices=_processing_engine_choices(settings.language),
+        ),
         settings.nr_gpu_mode,
         *temporal,
-        settings.upscale_mode,
+        gr.update(
+            value=settings.upscale_mode,
+            choices=_upscale_mode_choices(settings.language),
+        ),
         *(getattr(settings, "upscale_" + name) for name in SETTING_FIELDS),
         *(getattr(settings, "upscale_image_" + name) for name in IMAGE_UPSCALE_FIELDS),
     )
@@ -449,10 +537,10 @@ def _normalize_gpu_settings(settings: UISettings, prepared) -> tuple[UISettings,
     ai_uuid = settings.ai_gpu_uuid
     video_uuid = settings.video_gpu_uuid
     if ai_uuid not in ai_values:
-        warnings.append("Saved AI Processing GPU is unavailable; using Auto.")
+        warnings.append(translator(settings.language).t("settings.gpu.unavailable_ai"))
         ai_uuid = "auto"
     if video_uuid not in video_values:
-        warnings.append("Saved Video Processing GPU is unavailable; using Auto.")
+        warnings.append(translator(settings.language).t("settings.gpu.unavailable_video"))
         video_uuid = "auto"
     return replace(settings, ai_gpu_uuid=ai_uuid, video_gpu_uuid=video_uuid), " ".join(warnings)
 
@@ -460,9 +548,7 @@ def _normalize_gpu_settings(settings: UISettings, prepared) -> tuple[UISettings,
 def persist_preview_encoding(preview_encoding: str) -> None:
     normalized = normalize_preview_encoding(preview_encoding)
     if not isinstance(preview_encoding, str) or preview_encoding.strip() not in PREVIEW_ENCODING_CHOICES:
-        raise gr.Error(
-            f"Preview Encoding must be one of: {', '.join(PREVIEW_ENCODING_CHOICES)}."
-        )
+        raise gr.Error(t("settings.error.preview_encoding", choices=", ".join(PREVIEW_ENCODING_CHOICES)))
     with _CONFIG_LOCK:
         current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
         settings = replace(current, preview_encoding=normalized)
@@ -473,7 +559,7 @@ def persist_preview_encoding(preview_encoding: str) -> None:
 
 def persist_full_size_image_previews(enabled: bool) -> None:
     if not isinstance(enabled, bool):
-        raise gr.Error("Full size quality preview must be enabled or disabled.")
+        raise gr.Error(t("settings.error.full_size_preview_toggle"))
     with _CONFIG_LOCK:
         current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
         settings = replace(current, full_size_image_previews=enabled)
@@ -486,9 +572,9 @@ def persist_gpu_settings(ai_gpu_uuid: str, video_gpu_uuid: str) -> str:
     prepared = prepare_runtime()
     ai_choices, video_choices = _gpu_choices(prepared)
     if ai_gpu_uuid not in {value for _label, value in ai_choices}:
-        raise gr.Error("Choose an available AI Processing GPU.")
+        raise gr.Error(t("settings.error.choose_ai_gpu"))
     if video_gpu_uuid not in {value for _label, value in video_choices}:
-        raise gr.Error("Choose an available Video Processing GPU.")
+        raise gr.Error(t("settings.error.choose_video_gpu"))
     with _CONFIG_LOCK:
         current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
         settings = replace(
@@ -503,7 +589,7 @@ def persist_gpu_settings(ai_gpu_uuid: str, video_gpu_uuid: str) -> str:
     video_name = "Auto" if video_gpu_uuid == "auto" else next(
         label for label, value in video_choices if value == video_gpu_uuid
     )
-    return f"AI Processing: {ai_name}\n\nVideo Processing: {video_name}"
+    return t("settings.gpu.saved", ai=ai_name, video=video_name)
 
 
 def reset_saved_settings() -> tuple:
@@ -511,11 +597,11 @@ def reset_saved_settings() -> tuple:
         current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
         # Custom NR Mask is session-scoped, so resetting persisted controls must
         # not silently detach the mask that remains visible in all three tabs.
-        settings = replace(DEFAULT_SETTINGS, nr_mask=current.nr_mask)
+        settings = replace(DEFAULT_SETTINGS, nr_mask=current.nr_mask, language=current.language)
         save_settings(CONFIG_PATH, settings)
         SETTINGS_STATE.current = settings
         _notify_live_effects(settings)
-    message = "All Neural Rendering, Upscale, and Frame Interpolation settings were reset to defaults."
+    message = t("settings.reset.success")
     return (
         *_settings_component_values(settings),
         message,
@@ -542,8 +628,8 @@ def settings_preset_export_status(name: str) -> str:
     try:
         filename = preset_filename(name)
     except ValueError as exc:
-        return f"Export failed: {exc}"
-    return f"Exported preset {name.strip()!r} as {filename}."
+        return t("settings.preset.export_failed", error=exc)
+    return t("settings.preset.exported", name=name.strip(), filename=filename)
 
 
 def apply_settings_preset(
@@ -563,19 +649,21 @@ def apply_settings_preset(
             return (
                 current_name,
                 *_settings_component_values(current),
-                f"Import failed: {exc}",
+                t("settings.preset.import_failed", error=exc),
             )
         SETTINGS_STATE.current = imported
         _notify_live_effects(imported)
+    translated_warning = f" {gpu_warning}" if gpu_warning else ""
     return (
         name,
         *_settings_component_values(imported),
-        f"Imported preset {name!r}; all modes, tabs, and saved startup settings were updated."
-        + (f" {gpu_warning}" if gpu_warning else ""),
+        translator(imported.language).t("settings.preset.imported", name=name, warning=translated_warning),
     )
 
 @dataclass(slots=True)
 class SettingsTab:
+    language_selector: object
+    restart_service_button: object
     ai_gpu_selector: object
     video_gpu_selector: object
     preview_encoding_selector: object
@@ -609,52 +697,74 @@ def build_settings_tab(
     video_gpu_choices: list[tuple[str, str]],
     processing_engine_state: object,
 ) -> SettingsTab:
-    gr.Markdown("## GPU Selection")
+    ui_t = translator(settings.language).t
+    localized_ai_gpu_choices = [
+        (option_label(label, settings.language), value) if value == "auto" else (label, value)
+        for label, value in ai_gpu_choices
+    ]
+    localized_video_gpu_choices = [
+        (option_label(label, settings.language), value) if value == "auto" else (label, value)
+        for label, value in video_gpu_choices
+    ]
+    gr.Markdown(ui_t("settings.section.language"))
+    with gr.Row():
+        language_selector = gr.Dropdown(
+            choices=_language_choices(settings.language),
+            value=settings.language,
+            label=ui_t("settings.language.label"),
+            scale=4,
+        )
+        restart_service_button = gr.Button(
+            ui_t("settings.language.restart_button"),
+            variant="secondary",
+            scale=1,
+        )
+    gr.Markdown(ui_t("settings.section.gpu_selection"))
     with gr.Row():
         ai_gpu_selector = gr.Dropdown(
-            choices=ai_gpu_choices,
+            choices=localized_ai_gpu_choices,
             value=settings.ai_gpu_uuid,
-            label="AI Processing GPU",
+            label=ui_t("settings.gpu.ai"),
         )
         video_gpu_selector = gr.Dropdown(
-            choices=video_gpu_choices,
+            choices=localized_video_gpu_choices,
             value=settings.video_gpu_uuid,
-            label="Video Processing GPU",
+            label=ui_t("settings.gpu.video"),
         )
-    gr.Markdown("## Processing Engine Path")
+    gr.Markdown(ui_t("settings.section.processing_engine"))
     gpu_mode = gr.Radio(
-        choices=list(PROCESSING_ENGINE_CHOICES),
+        choices=_processing_engine_choices(settings.language),
         value=processing_engine_choice(settings.nr_gpu_mode),
-        label="Processing Engine Path",
+        label=ui_t("settings.processing_engine.label"),
         show_label=False,
     )
-    gr.Markdown("## Preview Encoding")
+    gr.Markdown(ui_t("settings.section.preview_encoding"))
     preview_encoding_selector = gr.Radio(
-        choices=list(PREVIEW_ENCODING_CHOICES),
+        choices=_preview_encoding_choices(settings.language),
         value=normalize_preview_encoding(settings.preview_encoding),
-        label="Preview Encoding",
+        label=ui_t("settings.preview_encoding.label"),
         show_label=False,
     )
-    gr.Markdown("## Image Preview Quality")
+    gr.Markdown(ui_t("settings.section.image_preview_quality"))
     full_size_image_previews = gr.Checkbox(
         value=settings.full_size_image_previews,
-        label="Full size quality preview",
+        label=ui_t("settings.image_preview.full_quality"),
     )
-    gr.Markdown("## Settings Presets")
+    gr.Markdown(ui_t("settings.section.presets"))
     preset_name = gr.Textbox(
-        label="Preset name",
-        placeholder="Preset 13",
+        label=ui_t("settings.presets.name"),
+        placeholder=ui_t("settings.presets.placeholder"),
     )
     with gr.Row():
         preset_export = gr.DownloadButton(
-            "Export preset",
+            ui_t("settings.presets.export"),
             value=settings_preset_download,
             inputs=preset_name,
             variant="primary",
             scale=1,
         )
         preset_import = gr.UploadButton(
-            "Import preset",
+            ui_t("settings.presets.import"),
             file_count="single",
             file_types=[".json"],
             type="filepath",
@@ -663,6 +773,8 @@ def build_settings_tab(
         )
     preset_status = gr.Markdown("", elem_id="preset-status")
     return SettingsTab(
+        language_selector,
+        restart_service_button,
         ai_gpu_selector, video_gpu_selector, preview_encoding_selector, full_size_image_previews,
         gpu_mode, processing_engine_state, preset_name, preset_export, preset_import, preset_status
     )
@@ -671,6 +783,7 @@ def build_settings_tab(
 
 def settings_component_outputs(image_tab, video_tab, frame_tab, settings_tab, live_tab, upscale_tab) -> list[object]:
     return [
+        settings_tab.language_selector,
         *image_tab.neural,
         *video_tab.neural,
         image_tab.output_format,
@@ -794,6 +907,22 @@ def bind_settings_events(settings_tab, image_tab, video_tab, frame_tab, live_tab
         inputs=[settings_tab.preset_import, settings_tab.preset_name],
         outputs=[settings_tab.preset_name, *outputs, settings_tab.preset_status],
         queue=False,
+    )
+    settings_tab.language_selector.change(
+        persist_language,
+        inputs=settings_tab.language_selector,
+        outputs=[settings_tab.language_selector, settings_tab.preset_status],
+        queue=False,
+    )
+    settings_tab.restart_service_button.click(
+        restart_service,
+        outputs=settings_tab.preset_status,
+        queue=False,
+    ).success(
+        fn=None,
+        js="() => { window.setTimeout(() => window.location.reload(), 1200); }",
+        queue=False,
+        show_progress="hidden",
     )
     for selector in [settings_tab.ai_gpu_selector, settings_tab.video_gpu_selector]:
         selector.input(

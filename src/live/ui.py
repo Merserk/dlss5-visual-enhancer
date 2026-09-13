@@ -5,6 +5,7 @@ from pathlib import Path
 
 import gradio as gr
 
+from ..core.i18n import option_label, t, translator
 from ..settings.models import UISettings, parse_automatic_mask
 from ..neural_rendering.video.ui import build_neural_controls
 from ..neural_rendering.composition_ui import CompositionWidgets, build_composition_widgets
@@ -42,17 +43,17 @@ def start_live(
     local_video: str | None = None,
 ) -> str:
     if is_live_running():
-        raise gr.Error("A Live session is already running; Stop it first.")
+        raise gr.Error(t("live.error.already_running"))
     if source_mode == "Local":
         if not local_video or not Path(local_video).is_file():
-            raise gr.Error("Select a local video before starting Live.")
+            raise gr.Error(t("live.error.select_local_video"))
         selected_source = str(local_video)
     elif source_mode == "Online":
         selected_source = (source or "").strip()
         if not selected_source:
-            raise gr.Error("Enter an online URL, or select Local to use the uploaded video.")
+            raise gr.Error(t("live.error.enter_online_url"))
     else:
-        raise gr.Error("Choose Online or Local as the source.")
+        raise gr.Error(t("live.error.choose_source_mode"))
     try:
         height = int(max_height)
     except (TypeError, ValueError):
@@ -64,7 +65,7 @@ def start_live(
     try:
         factor = float(upscaling_factor)
     except (TypeError, ValueError):
-        raise gr.Error("Choose a valid scale.") from None
+        raise gr.Error(t("live.error.choose_valid_scale")) from None
     try:
         auto_mask = parse_automatic_mask(automatic_mask)
     except ValueError as exc:
@@ -112,28 +113,25 @@ def stop_live() -> str:
 def refresh_live_status() -> str:
     info = live_status()
     if not info.running and info.status == "Idle.":
-        return "Idle. Enter a source and press Start Live."
+        return t("live.status.idle")
     parts = [info.status]
     if info.playlist_url:
-        parts.append(f"Playlist: {info.playlist_url}")
+        parts.append(t("live.status.playlist", url=info.playlist_url))
     if info.mpv_running:
-        parts.append(f"MPV: {info.player_dropped_frames} dropped | {info.rebuffer_events} rebuffer events | "
-                     f"A/V offset {info.av_sync_ms:+.1f} ms")
+        parts.append(t("live.status.mpv", dropped=info.player_dropped_frames, rebuffer=info.rebuffer_events, offset=info.av_sync_ms))
     if info.output_size:
-        parts.append(f"Received {info.source_size} -> Processing {info.input_size} -> Output {info.output_size} | {info.encoder}")
+        parts.append(t("live.status.received", source=info.source_size, input=info.input_size, output=info.output_size, encoder=info.encoder))
     if info.source_quality_note:
         parts.append(info.source_quality_note)
-    parts.append(f"DLSS effects: {info.effects_status}")
+    parts.append(t("live.status.effects", status=info.effects_status))
     if info.applied_at_pts is not None:
-        parts.append(f"Latest applied change starts at video time {info.applied_at_pts / 90000:.2f}s; "
-                     "buffered video keeps its previous appearance until then.")
+        parts.append(t("live.status.latest_change", seconds=info.applied_at_pts / 90000))
     if info.effects_error:
-        parts.append(f"Effect update: {info.effects_error}")
+        parts.append(t("live.status.effect_update", error=info.effects_error))
     if info.processing and info.source_fps:
-        parts.append(f"Source: {info.source_fps:.2f} fps. Scene analysis: {info.guide_ms:.1f} ms | "
-                     f"DLSS: {info.dlss_ms:.1f} ms | Encode transport: {info.encode_ms:.1f} ms")
+        parts.append(t("live.status.processing", fps=info.source_fps, guide=info.guide_ms, dlss=info.dlss_ms, encode=info.encode_ms))
     if info.report_path:
-        parts.append(f"Diagnostics: {info.report_path}")
+        parts.append(t("live.status.diagnostics", path=info.report_path))
     return "\n".join(parts)
 
 
@@ -164,58 +162,60 @@ class LiveTab:
 
 
 def build_live_tab(settings: UISettings, gpu_mode_state: object, mask_state: object) -> LiveTab:
-    height_labels = {"1440": "1440p (2K)", "2160": "2160p (4K)"}
+    ui_t = translator(settings.language).t
+    height_labels = {"1440": ui_t("choice.height.1440"), "2160": ui_t("choice.height.2160")}
     with gr.Row():
         with gr.Column(scale=3):
             source_mode = gr.Radio(
-                choices=["Online", "Local"], value="Online", label="Source",
+                choices=[(option_label(choice, settings.language), choice) for choice in ["Online", "Local"]],
+                value="Online", label=ui_t("live.label.source"),
             )
             source = gr.Textbox(
-                label="Online URL",
-                placeholder="Direct stream URL, YouTube or Twitch URL",
+                label=ui_t("live.label.online_url"),
+                placeholder=ui_t("live.placeholder.online_url"),
             )
             local_video = gr.File(
-                label="Local video", file_count="single", file_types=["video"],
+                label=ui_t("live.label.local_video"), file_count="single", file_types=["video"],
                 type="filepath", interactive=True,
             )
             with gr.Row():
-                start = gr.Button("Start Live", variant="primary")
-                stop = gr.Button("Stop", variant="stop")
+                start = gr.Button(ui_t("live.button.start"), variant="primary")
+                stop = gr.Button(ui_t("common.button.stop"), variant="stop")
             with gr.Column(elem_classes=["neural-controls-unified"]):
                 neural = build_neural_controls(settings)
-                composition = build_composition_widgets()
+                composition = build_composition_widgets(settings.language)
             with gr.Row():
                 source_quality = gr.Dropdown(
-                    choices=[("Auto (follow Max input height)" if height == "Auto" else
+                    choices=[(ui_t("choice.source_quality.auto") if height == "Auto" else
                               height_labels.get(height, f"{height}p"), height)
                              for height in LIVE_SOURCE_QUALITY_CHOICES],
-                    value="Auto", label="Source quality",
+                    value="Auto", label=ui_t("live.label.source_quality"),
                 )
                 max_height = gr.Dropdown(
                     choices=[(height_labels.get(height, height), height) for height in LIVE_MAX_HEIGHT_CHOICES],
                     value="720",
-                    label="Max input height",
+                    label=ui_t("live.label.max_input_height"),
                 )
                 segment = gr.Dropdown(
                     choices=list(LIVE_SEGMENT_CHOICES),
                     value="2",
-                    label="Segment length (s)",
+                    label=ui_t("live.label.segment_length"),
                 )
             with gr.Row():
                 target_fps = gr.Dropdown(
-                    choices=list(LIVE_FPS_CHOICES), value="Auto", label="Live frame rate",
+                    choices=[(option_label(choice, settings.language), choice) for choice in LIVE_FPS_CHOICES], value="Auto", label=ui_t("live.label.frame_rate"),
                 )
                 buffer = gr.Slider(
-                    minimum=2, maximum=30, step=1, value=6, label="Playback buffer (seconds)",
+                    minimum=2, maximum=30, step=1, value=6, label=ui_t("live.label.playback_buffer"),
                 )
             open_mpv = gr.Checkbox(
                 value=True,
-                label="Open in MPV",
+                label=ui_t("live.label.open_mpv"),
             )
         with gr.Column(scale=3):
             status = gr.Textbox(
-                label="Live status",
-                value="Idle. Enter a source and press Start Live.",
+                label=ui_t("live.label.status"),
+                value=ui_t("live.status.idle"),
                 interactive=False,
                 lines=10,
             )

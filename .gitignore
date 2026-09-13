@@ -1,0 +1,26 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local IDE / agent metadata
+.trae/
+.vscode/
+.idea/
+
+# Runtime temp output
+temp/
+bin/
+config/
+jobs/
+live/
+logs/
