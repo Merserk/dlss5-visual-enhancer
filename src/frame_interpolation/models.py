@@ -47,7 +47,7 @@ class FrameInterpolationOptions:
     video_gpu_uuid: str = "auto"
     target_fps: str = "60"
     engine: str = "Auto"
-    codec: str = "H.264"
+    codec: str = "H.264 (NVIDIA NVENC)"
     container: str = "MP4"
     quality: str = "Auto (Default)"
     hdr_mode: bool = False
@@ -73,7 +73,10 @@ class FrameInterpolationCapabilities:
     native_multiplier: int
     cascade_available: bool
     runtime_version: str
-    worker_version: str
+    bridge_version: str
+    bridge_abi_version: int
+    nvof_available: bool
+    cuda_interop: bool
     signature_status: str
     detail: str = ""
     gpu_uuid: str = "auto"
@@ -106,6 +109,16 @@ class FrameInterpolationResult:
     scene_cuts: int
     elapsed_seconds: float
     timings: dict[str, float] = field(default_factory=dict)
+    bridge_version: str = ""
+    bridge_abi_version: int = 0
+    nvof_available: bool = False
+    memory_path: str = ""
+    decode_backend: str = ""
+    encode_backend: str = ""
+    upload_bytes: int = 0
+    download_bytes: int = 0
+    surface_pool_pressure: dict[str, int] = field(default_factory=dict)
+    diagnostics: dict = field(default_factory=dict)
 
 
 @dataclass(slots=True)

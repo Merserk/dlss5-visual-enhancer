@@ -17,7 +17,7 @@ CONTAINER_CHOICES = ("MP4", "MKV", "MOV")
 IMAGE_FORMAT_CHOICES = ("PNG", "JPEG", "WebP", "AVIF", "TIFF")
 CONFIG_SECTION = "Settings"
 PRESET_FORMAT = "dlss5-visual-enhancer-settings-preset"
-PRESET_SCHEMA_VERSION = 6
+PRESET_SCHEMA_VERSION = 7
 MAX_PRESET_BYTES = 1024 * 1024
 
 AUTOMATIC_MASK_CHOICES = ("Off", "On")
@@ -78,10 +78,12 @@ class UISettings:
     nr_gpu_mode: bool = True
     frame_interpolation_target_fps: str = "60"
     frame_interpolation_engine: str = "Auto"
-    frame_interpolation_codec: str = "H.264"
+    # Factory default only. Existing saved selections are loaded unchanged.
+    frame_interpolation_codec: str = "H.264 (NVIDIA NVENC)"
     frame_interpolation_container: str = "MP4"
     frame_interpolation_quality: str = "Auto (Default)"
     frame_interpolation_hdr_mode: bool = False
+    frame_interpolation_gpu_mode: bool = True
     frame_interpolation_rename_mode: str = "Auto"
     frame_interpolation_custom_suffix: str = "_Frame_Interpolation"
     preview_encoding: str = "Auto"
@@ -112,7 +114,7 @@ class UISettings:
     upscale_hdr_peak_luminance: int = 1000
     upscale_hdr_precision: str = "Packed 10-bit"
     upscale_codec: str = "H.265 (NVIDIA NVENC)"
-    upscale_container: str = "MP4"
+    upscale_container: str = "MKV"
     upscale_quality: str = "Auto (Default)"
     upscale_rename_mode: str = "Auto"
     upscale_custom_suffix: str = "_Upscale"
@@ -173,6 +175,8 @@ def _validate(settings: UISettings) -> UISettings:
         raise ValueError("HDR Mode must be a boolean value.")
     if not isinstance(settings.frame_interpolation_hdr_mode, bool):
         raise ValueError("Frame Interpolation HDR Mode must be a boolean value.")
+    if not isinstance(settings.frame_interpolation_gpu_mode, bool):
+        raise ValueError("Frame Interpolation GPU mode must be a boolean value.")
     if not isinstance(settings.full_size_image_previews, bool):
         raise ValueError("Full size quality preview must be a boolean value.")
     if settings.language not in LANGUAGE_CHOICES:

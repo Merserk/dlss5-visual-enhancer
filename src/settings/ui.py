@@ -18,7 +18,7 @@ from ..core.i18n import (
     t,
     translator,
 )
-from ..core.ffmpeg import hdr_mode_supported, probe_nvenc_codecs
+from ..core.ffmpeg import container_for_codec, hdr_mode_supported, probe_nvenc_codecs
 from ..core.gpu_selection import gpu_choice_label
 from ..core.paths import CONFIG_PATH
 from ..core.runtime import UPSCALING_MODES, prepare_runtime
@@ -235,6 +235,7 @@ def persist_video_settings(
 ) -> tuple:
     with _CONFIG_LOCK:
         current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
+        container = container_for_codec(codec)
         coerced_hdr = coerce_hdr_mode(codec, hdr_mode)
         settings = replace(
             current,
@@ -346,25 +347,6 @@ def apply_detail_only_settings() -> tuple:
     return (*shared, *temporal, *temporal)
 
 
-def persist_nr_gpu_mode(selection: object) -> bool:
-    """Persist the global Processing Engine Path switch and update Live effects."""
-    if isinstance(selection, bool):
-        enabled = selection
-    else:
-        try:
-            enabled = parse_processing_engine(selection)
-        except ValueError as exc:
-            raise gr.Error(str(exc)) from exc
-    with _CONFIG_LOCK:
-        current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
-        settings = replace(current, nr_gpu_mode=enabled)
-        if settings != current:
-            save_settings(CONFIG_PATH, settings)
-        SETTINGS_STATE.current = settings
-        _notify_live_effects(settings)
-    return enabled
-
-
 def persist_language(language: str) -> tuple:
     language = language if language in (LANGUAGE_EN, LANGUAGE_ZH_HANS) else translator(language).language
     with _CONFIG_LOCK:
@@ -391,6 +373,7 @@ def persist_frame_interpolation_settings(
 ) -> None:
     with _CONFIG_LOCK:
         current = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
+        container = container_for_codec(codec)
         coerced_hdr = coerce_hdr_mode(codec, hdr_mode)
         settings = replace(
             current,
@@ -410,6 +393,7 @@ def persist_frame_interpolation_settings(
 
 def persist_upscale_settings(*values) -> None:
     chosen = dict(zip(SETTING_FIELDS, values))
+    chosen["container"] = container_for_codec(chosen["codec"])
     if not hdr_mode_supported(chosen["codec"]):
         chosen["hdr_enabled"] = False
     options = UpscaleOptions(**chosen)
@@ -472,7 +456,7 @@ def _settings_component_values(settings: UISettings) -> tuple:
             interactive=settings.image_rename_mode == "Custom",
         ),
         settings.codec,
-        settings.container,
+        container_for_codec(settings.codec),
         settings.quality,
         gr.update(value=settings.hdr_mode, interactive=hdr_mode_supported(settings.codec)),
         settings.video_rename_mode,
@@ -483,7 +467,7 @@ def _settings_component_values(settings: UISettings) -> tuple:
         settings.frame_interpolation_target_fps,
         settings.frame_interpolation_engine,
         settings.frame_interpolation_codec,
-        settings.frame_interpolation_container,
+        container_for_codec(settings.frame_interpolation_codec),
         settings.frame_interpolation_quality,
         gr.update(value=settings.frame_interpolation_hdr_mode, interactive=hdr_mode_supported(settings.frame_interpolation_codec)),
         settings.frame_interpolation_rename_mode,
@@ -508,7 +492,8 @@ def _settings_component_values(settings: UISettings) -> tuple:
             value=settings.upscale_mode,
             choices=_upscale_mode_choices(settings.language),
         ),
-        *(getattr(settings, "upscale_" + name) for name in SETTING_FIELDS),
+        *(container_for_codec(settings.upscale_codec) if name == "container"
+          else getattr(settings, "upscale_" + name) for name in SETTING_FIELDS),
         *(getattr(settings, "upscale_image_" + name) for name in IMAGE_UPSCALE_FIELDS),
     )
 
@@ -542,7 +527,19 @@ def _normalize_gpu_settings(settings: UISettings, prepared) -> tuple[UISettings,
     if video_uuid not in video_values:
         warnings.append(translator(settings.language).t("settings.gpu.unavailable_video"))
         video_uuid = "auto"
-    return replace(settings, ai_gpu_uuid=ai_uuid, video_gpu_uuid=video_uuid), " ".join(warnings)
+    # Old presets may contain manual path flags. They are retained by the
+    # storage schema for compatibility but normalized so they cannot affect
+    # the now-automatic runtime choice.
+    return replace(
+        settings,
+        ai_gpu_uuid=ai_uuid,
+        video_gpu_uuid=video_uuid,
+        nr_gpu_mode=True,
+        frame_interpolation_gpu_mode=True,
+        container=container_for_codec(settings.codec),
+        frame_interpolation_container=container_for_codec(settings.frame_interpolation_codec),
+        upscale_container=container_for_codec(settings.upscale_codec),
+    ), " ".join(warnings)
 
 
 def persist_preview_encoding(preview_encoding: str) -> None:
@@ -668,8 +665,6 @@ class SettingsTab:
     video_gpu_selector: object
     preview_encoding_selector: object
     full_size_image_previews: object
-    gpu_mode: object
-    processing_engine_state: object
     preset_name: object
     preset_export: object
     preset_import: object
@@ -695,7 +690,6 @@ def build_settings_tab(
     settings: UISettings,
     ai_gpu_choices: list[tuple[str, str]],
     video_gpu_choices: list[tuple[str, str]],
-    processing_engine_state: object,
 ) -> SettingsTab:
     ui_t = translator(settings.language).t
     localized_ai_gpu_choices = [
@@ -776,7 +770,7 @@ def build_settings_tab(
         language_selector,
         restart_service_button,
         ai_gpu_selector, video_gpu_selector, preview_encoding_selector, full_size_image_previews,
-        gpu_mode, processing_engine_state, preset_name, preset_export, preset_import, preset_status
+        preset_name, preset_export, preset_import, preset_status
     )
 
 
@@ -808,8 +802,6 @@ def settings_component_outputs(image_tab, video_tab, frame_tab, settings_tab, li
         settings_tab.video_gpu_selector,
         settings_tab.preview_encoding_selector,
         settings_tab.full_size_image_previews,
-        settings_tab.gpu_mode,
-        settings_tab.processing_engine_state,
         *live_tab.neural,
         upscale_tab.mode,
         *upscale_tab.video.settings_inputs,
@@ -940,15 +932,16 @@ def bind_settings_events(settings_tab, image_tab, video_tab, frame_tab, live_tab
         inputs=settings_tab.full_size_image_previews,
         queue=False,
     )
-    settings_tab.gpu_mode.input(
-        persist_nr_gpu_mode,
-        inputs=settings_tab.gpu_mode,
-        outputs=settings_tab.processing_engine_state,
-        queue=False,
-    )
     reset_outputs = [*outputs, image_tab.status, video_tab.status, frame_tab.status, upscale_tab.video.status, upscale_tab.image.status]
-    image_tab.reset.click(reset_saved_settings, outputs=reset_outputs, queue=False)
-    video_tab.reset.click(reset_saved_settings, outputs=reset_outputs, queue=False)
+    image_reset = image_tab.reset.click(reset_saved_settings, outputs=reset_outputs, queue=False)
+    video_reset = video_tab.reset.click(reset_saved_settings, outputs=reset_outputs, queue=False)
+    # Reset writes every shared Neural Rendering control programmatically, which
+    # does not emit the direct input/release events used by automatic previews.
+    # Refresh both workflows so a prepared preview in the hidden mode cannot
+    # remain rendered with the pre-reset settings.
+    for reset_event in (image_reset, video_reset):
+        image_tab.refresh_realtime_preview_after(reset_event)
+        video_tab.refresh_realtime_preview_after(reset_event)
     frame_tab.reset.click(reset_saved_settings, outputs=reset_outputs, queue=False)
     upscale_tab.video.reset.click(reset_saved_settings, outputs=reset_outputs, queue=False)
     upscale_tab.image.reset.click(reset_saved_settings, outputs=reset_outputs, queue=False)

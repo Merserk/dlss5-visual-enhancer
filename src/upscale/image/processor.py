@@ -71,11 +71,12 @@ def preview_upscale_image(input_path, options=None, progress=None, *, controller
         caps = probe_capabilities(options.ai_gpu_uuid, controller=controller)
         update(.24, f"RTX VSR: {width}×{height} → {ow}×{oh}")
         with RTXVideoSession(
-            width, height, ow, oh, options.native_options(), 1, caps, controller
+            width, height, ow, oh, options.native_options(), 1, caps, controller,
+            image_srgb=True,
         ) as session:
-            processed = worker_to_srgb(
-                session.process_frame(srgb_to_worker(decoded.rgba)), ow, oh, decoded.alpha
-            )
+            processed = np.frombuffer(
+                session.process_frame(np.ascontiguousarray(decoded.rgba)), dtype=np.uint8
+            ).reshape(oh, ow, 4).copy()
             if session.completed_frames != 1:
                 raise RuntimeError("RTX VSR did not process exactly one image.")
             last_results = tuple(session.last_results)
@@ -102,17 +103,20 @@ def preview_upscale_image(input_path, options=None, progress=None, *, controller
 
 
 def upscale_image(input_path, options=None, progress=None, *, output_dir=None, controller=None,
-                  generate_previews=True, _owns_slot=False, _capabilities=None):
+                   generate_previews=True, _owns_slot=False, _capabilities=None,
+                   _session_cache=None):
     options = replace(options) if options else ImageUpscaleOptions()
     options.validate()
     source = Path(input_path).resolve()
     if not source.is_file():
         raise FileNotFoundError(source)
     with nullcontext(controller) if _owns_slot else active_job(controller) as controller:
-        return _process(source, options, progress, output_dir, controller, generate_previews, _capabilities)
+        return _process(source, options, progress, output_dir, controller, generate_previews,
+                        _capabilities, _session_cache)
 
 
-def _process(source, options, progress, output_dir, controller, generate_previews, capabilities):
+def _process(source, options, progress, output_dir, controller, generate_previews, capabilities,
+             session_cache):
     started = time.monotonic()
     stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
     report_path = app_log.session_path()
@@ -137,9 +141,25 @@ def _process(source, options, progress, output_dir, controller, generate_preview
             f"{source.stem}_RTXIMAGE_{stamp}")
         destination_file = OutputFile(output)
         update(.15, f"RTX VSR: {width}×{height} → {ow}×{oh}")
-        with RTXVideoSession(width, height, ow, oh, options.native_options(), 1, caps, controller) as session:
-            processed = worker_to_srgb(session.process_frame(srgb_to_worker(decoded.rgba)), ow, oh, decoded.alpha)
-            if session.completed_frames != 1:
+        key = (width, height, ow, oh, int(options.vsr_quality), str(caps.gpu.get("uuid", "")))
+        if session_cache is None:
+            session_context = RTXVideoSession(
+                width, height, ow, oh, options.native_options(), 1, caps, controller,
+                image_srgb=True)
+        else:
+            session = session_cache.get(key)
+            if session is None or session.closed:
+                session = RTXVideoSession(
+                    width, height, ow, oh, options.native_options(), 1, caps, controller,
+                    image_srgb=True)
+                session_cache[key] = session
+            session_context = nullcontext(session)
+        with session_context as session:
+            before = session.completed_frames
+            processed = np.frombuffer(
+                session.process_frame(np.ascontiguousarray(decoded.rgba)), dtype=np.uint8
+            ).reshape(oh, ow, 4).copy()
+            if session.completed_frames != before + 1:
                 raise RuntimeError("RTX VSR did not process exactly one image.")
         update(.80, "Saving image")
         export = ImageConversionOptions(output_format=options.output_format, quality=int(options.quality),

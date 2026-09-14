@@ -11,7 +11,7 @@ from ..core.batch_ui import (
 )
 from ..core.i18n import option_label, t, translator
 
-from ..core.ffmpeg import hdr_mode_supported
+from ..core.ffmpeg import container_for_codec, hdr_mode_supported
 from ..core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
 from ..core.naming import RENAME_MODES
 from ..settings.models import CODEC_CHOICES, CONTAINER_CHOICES, QUALITY_CHOICES, UISettings, coerce_hdr_mode
@@ -26,6 +26,10 @@ def hdr_mode_update(codec: str):
     if not allowed:
         return gr.update(value=False, interactive=False)
     return gr.update(interactive=True)
+
+
+def codec_settings_update(codec: str):
+    return gr.update(value=container_for_codec(codec)), hdr_mode_update(codec)
 
 
 def rename_suffix_update(mode: str):
@@ -80,7 +84,12 @@ def render_frame_interpolation_batch(
             f"{value.elapsed_seconds:.1f}s; processing {value.output_frames / max(value.elapsed_seconds, 0.001):.1f} frames/s; "
             f"native {value.native_multiplier}×; cascade stages {value.cascade_stages}; "
             f"copied {value.copied_frames}, DLSSG {value.generated_frames}, "
-            f"cuts {value.scene_cuts}; report: {value.report_path}"
+            f"cuts {value.scene_cuts}; {value.decode_backend} → {value.encode_backend}; "
+            f"memory {value.memory_path}; transfers {value.upload_bytes}/{value.download_bytes} bytes; "
+            f"pool {value.surface_pool_pressure.get('allocated', 0)}/"
+            f"{value.surface_pool_pressure.get('capacity', 0)} "
+            f"(waits {value.surface_pool_pressure.get('waits', 0)}); "
+            f"bridge {value.bridge_version}/ABI {value.bridge_abi_version}; report: {value.report_path}"
         )
         ordered.append(
             (item.index, [Path(item.input_path).name, "Complete", Path(value.output_path).name, details])
@@ -207,7 +216,9 @@ def build_frame_interpolation_tab(settings: UISettings) -> FrameInterpolationTab
                     label=ui_t("common.label.video_codec"),
                 )
                 container = gr.Dropdown(
-                    CONTAINER_CHOICES, value=settings.frame_interpolation_container, label=ui_t("common.label.container")
+                    CONTAINER_CHOICES,
+                    value=container_for_codec(settings.frame_interpolation_codec),
+                    label=ui_t("common.label.container"), interactive=False,
                 )
             with gr.Row():
                 rename_mode = gr.Radio(
@@ -238,9 +249,13 @@ def build_frame_interpolation_tab(settings: UISettings) -> FrameInterpolationTab
                 label=ui_t("common.label.batch_results"), wrap=True,
             )
     tab = FrameInterpolationTab(
-        sources, input_preview, input_actions, select_source, clear_source, target_fps, engine, quality, codec, container, rename_mode,
-        custom_suffix, hdr_mode, preview, render, stop, reset, output_video, save_download, zip_button, zip_download, status, results
-    )
+        sources=sources, input_preview=input_preview, input_actions=input_actions,
+        select_source=select_source, clear_source=clear_source, target_fps=target_fps,
+        engine=engine, quality=quality, codec=codec,
+        container=container, rename_mode=rename_mode, custom_suffix=custom_suffix,
+        hdr_mode=hdr_mode, preview=preview, render=render, stop=stop, reset=reset,
+        output_video=output_video, save_download=save_download, zip_button=zip_button,
+        zip_download=zip_download, status=status, results=results)
     tab.input_path, tab.output_path = input_path, output_path
     bind_frame_interpolation_events(tab)
     return tab
@@ -252,5 +267,8 @@ def bind_frame_interpolation_events(tab: FrameInterpolationTab) -> None:
         preview_mode=update_frame_interpolation_preview_mode, archive_prefix="DLSSFG_VIDEO_BATCH",
         preview_actions=[(tab.preview, preview_frame_interpolation)],
     )
-    tab.codec.change(hdr_mode_update, inputs=tab.codec, outputs=tab.hdr_mode, queue=False)
+    tab.codec.change(
+        codec_settings_update, inputs=tab.codec,
+        outputs=[tab.container, tab.hdr_mode], queue=False,
+    )
     tab.rename_mode.change(rename_suffix_update, inputs=tab.rename_mode, outputs=tab.custom_suffix, queue=False)

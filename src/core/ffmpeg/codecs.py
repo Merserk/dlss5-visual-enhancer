@@ -45,6 +45,16 @@ _NVENC_ENCODERS = {
     "AV1 (NVIDIA NVENC)": "av1_nvenc",
 }
 
+_AUTOMATIC_CONTAINERS = {
+    "H.264": "MP4",
+    "H.264 (NVIDIA NVENC)": "MP4",
+    "H.265": "MKV",
+    "H.265 (NVIDIA NVENC)": "MKV",
+    "AV1": "MKV",
+    "AV1 (NVIDIA NVENC)": "MKV",
+    "ProRes Proxy": "MOV",
+}
+
 # Keep AUTO_BITRATE_DIVISORS keyed by base codec; "HEVC" alias preserved for compat.
 AUTO_BITRATE_DIVISORS = {
     "H.264": 165_888,
@@ -88,6 +98,15 @@ def _is_hdr_allowed_codec(codec: str) -> bool:
 def hdr_mode_supported(codec: str) -> bool:
     """Public helper for UI: is HDR Mode toggle meaningful for this codec?"""
     return _is_hdr_allowed_codec(codec)
+
+
+def container_for_codec(codec: str) -> str:
+    """Return the single application container selected for a video codec."""
+    normalized = _normalize_codec(codec)
+    try:
+        return _AUTOMATIC_CONTAINERS[normalized]
+    except KeyError as exc:
+        raise ValueError(f"Unknown video codec: {codec!r}.") from exc
 
 
 def _hdr_color_args(metadata: dict | None) -> list[str]:

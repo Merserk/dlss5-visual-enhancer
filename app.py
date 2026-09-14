@@ -354,10 +354,9 @@ def build_app() -> gr.Blocks:
         # are covered by cleanup_old_caches() at startup in main().
         delete_cache=(CACHE_SWEEP_INTERVAL_SECONDS, CACHE_MAX_AGE_SECONDS),
     ) as demo:
-        # One runtime source of truth for the global Neural Rendering processing
-        # path.  The visible control lives in Settings, while render/start events
-        # consume this State so each queued operation snapshots the selected mode.
-        processing_engine_state = gr.State(value=settings.nr_gpu_mode)
+        # Image and Live have no output-codec choice and remain GPU-resident.
+        # Video processors derive CUDA versus host staging from their codec.
+        processing_engine_state = gr.State(value=True)
         nr_mask_state = gr.State(value=None)
         with gr.Tabs(selected="neural-rendering", elem_id="main-tabs"):
             # Keep every tab tree mounted from first paint. Stateful File/Gallery/Video
@@ -372,9 +371,7 @@ def build_app() -> gr.Blocks:
             with gr.Tab(ui_t("app.tab.live"), id="live", render_children=True) as live_root_tab:
                 live_tab = build_live_tab(settings, processing_engine_state, nr_mask_state)
             with gr.Tab(ui_t("app.tab.settings"), id="settings", render_children=True) as settings_root_tab:
-                settings_tab = build_settings_tab(
-                    settings, ai_gpu_choices, video_gpu_choices, processing_engine_state
-                )
+                settings_tab = build_settings_tab(settings, ai_gpu_choices, video_gpu_choices)
             with gr.Tab(ui_t("app.tab.about"), id="about", render_children=True) as about_root_tab:
                 build_about_tab(settings.language)
 

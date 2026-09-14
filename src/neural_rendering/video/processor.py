@@ -34,6 +34,11 @@ from .sizing import resolve_native_settings, resolve_output_size, resolve_upscal
 validate_codec_container = ffmpeg.validate_codec_container
 _BATCH_CONTEXT = threading.local()
 
+
+def automatic_gpu_mode(codec: str) -> bool:
+    """Use CUDA transport exactly when the selected encoder is NVENC."""
+    return ffmpeg._is_nvenc_codec(codec)
+
 def _validate_preview_options(
     options: ConversionOptions,
 ) -> tuple[float | None, int | None]:
@@ -68,6 +73,7 @@ def convert_video(
     *, output_dir: str | os.PathLike[str] | None = None, controller=None,
 ) -> ConversionResult:
     options = replace(options) if options is not None else ConversionOptions()
+    options.container = ffmpeg.container_for_codec(options.codec)
     source = Path(input_path).resolve()
     if not source.is_file():
         raise FileNotFoundError(source)
@@ -78,6 +84,10 @@ def convert_video(
     # Compat previews use the forced H.264 SDR 8-bit path; user-encoded previews
     # (Preview Encoding Auto-playable / Disabled) preserve the HDR choice.
     compat_preview = is_preview and bool(getattr(options, "preview_compat", True))
+    # Processing-engine selection is codec-driven. Keep the legacy option in
+    # the data model for preset/API compatibility, but never let an old saved
+    # value override the automatic NVENC/CPU routing decision.
+    options.nr_gpu_mode = automatic_gpu_mode(options.codec)
     hdr_requested = bool(options.preserve_hdr)
     if compat_preview:
         hdr_requested = False
@@ -94,7 +104,7 @@ def convert_video(
 
     with job_context as controller:
         assert controller is not None
-        if options.nr_gpu_mode and ffmpeg._is_nvenc_codec(options.codec):
+        if options.nr_gpu_mode:
             from .cuda_pipeline import convert_video_cuda_nvenc
 
             return convert_video_cuda_nvenc(

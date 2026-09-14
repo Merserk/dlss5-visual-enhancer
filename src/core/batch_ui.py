@@ -852,3 +852,30 @@ def bind_batch_ui(
         show_progress="hidden",
         api_visibility="private",
     )
+
+    def refresh_realtime_preview_after(trigger):
+        """Regenerate this tab's preview after a successful programmatic update."""
+        reset_invalidated = trigger.success(
+            invalidate_auto_preview,
+            inputs=[tab.job_state, tab.sources],
+            outputs=auto_token,
+            queue=False,
+            show_progress="hidden",
+            trigger_mode="always_last",
+            api_visibility="private",
+        )
+        return reset_invalidated.then(
+            automatic_preview,
+            inputs=[
+                tab.job_state, auto_token, tab.input_path, tab.output_path,
+                *tab.preview_inputs,
+            ],
+            outputs=[display_media, tab.status, direct_save, archive_button, archive_download],
+            concurrency_limit=1,
+            concurrency_id="neural-realtime-preview",
+            trigger_mode="always_last",
+            show_progress="hidden",
+            api_visibility="private",
+        )
+
+    return refresh_realtime_preview_after

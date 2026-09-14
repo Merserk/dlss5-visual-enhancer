@@ -217,6 +217,8 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
             DEFAULT_SETTINGS.frame_interpolation_quality,
         ),
         frame_interpolation_hdr_mode=fi_hdr_mode_value(),
+        frame_interpolation_gpu_mode=boolean(
+            "frame_interpolation_gpu_mode", DEFAULT_SETTINGS.frame_interpolation_gpu_mode),
         frame_interpolation_rename_mode=frame_interpolation_rename_mode,
         frame_interpolation_custom_suffix=frame_interpolation_custom_suffix,
         preview_encoding=choice(
@@ -312,6 +314,7 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         "frame_interpolation_container": settings.frame_interpolation_container,
         "frame_interpolation_quality": settings.frame_interpolation_quality,
         "frame_interpolation_hdr_mode": str(settings.frame_interpolation_hdr_mode).lower(),
+        "frame_interpolation_gpu_mode": str(settings.frame_interpolation_gpu_mode).lower(),
         "frame_interpolation_rename_mode": settings.frame_interpolation_rename_mode,
         "frame_interpolation_custom_suffix": settings.frame_interpolation_custom_suffix,
         "preview_encoding": settings.preview_encoding,

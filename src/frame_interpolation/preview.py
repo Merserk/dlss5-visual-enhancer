@@ -43,7 +43,10 @@ def frame_interpolation_capability_text() -> str:
     detail = f"\n{capabilities.detail}" if capabilities.detail else ""
     return (
         f"{state} — GPU: {capabilities.gpu} | Driver: {capabilities.driver} | "
-        f"HAGS: {hags}\nNative maximum: {native} | Experimental cascade: {cascade} | "
+        f"HAGS: {hags}\nNative maximum: {native} | Cascade: {cascade} | "
+        f"NVOF: {'SLOW/available' if capabilities.nvof_available else 'unavailable'}\n"
+        f"Bridge: {capabilities.bridge_version} (ABI {capabilities.bridge_abi_version}) | "
+        f"CUDA interop: {'ready' if capabilities.cuda_interop else 'unavailable'} | "
         f"DLSSG runtime: {capabilities.runtime_version}{detail}"
     )
 
@@ -57,7 +60,7 @@ def describe_frame_interpolation_plan(
     if not selected:
         return t("frame_interpolation.error.choose_one_video")
     try:
-        metadata = probe_video(selected, count_mode="metadata")
+        metadata = probe_video(selected, count_mode="metadata", inspect_timestamps=True)
         ai_gpu_uuid, _video_gpu_uuid = processing_gpu_settings()
         capabilities = probe_frame_interpolation_capabilities(ai_gpu_uuid)
         plan = choose_interpolation_plan(

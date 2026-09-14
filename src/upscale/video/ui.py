@@ -10,7 +10,7 @@ from ...core.batch_ui import (
     build_path_controls, build_save_controls,
 )
 from ...core.disk_paths import resolve_inputs
-from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, hdr_mode_supported
+from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, container_for_codec, hdr_mode_supported
 from ...core.i18n import option_label, t, translator
 from ...core.naming import RENAME_MODES
 from ...settings.storage import processing_gpu_settings
@@ -24,7 +24,9 @@ from .preview import display_result, preview_mode, preview_upscale
 
 def options_from_values(values):
     ai, video = processing_gpu_settings()
-    return UpscaleOptions(**dict(zip(SETTING_FIELDS, values)), ai_gpu_uuid=ai, video_gpu_uuid=video)
+    selected = dict(zip(SETTING_FIELDS, values))
+    selected["container"] = container_for_codec(selected["codec"])
+    return UpscaleOptions(**selected, ai_gpu_uuid=ai, video_gpu_uuid=video)
 
 
 def render_upscale_batch(paths, *values, progress=None, output_dir=None, controller=None, on_item_update=None, direct_disk=False):
@@ -162,7 +164,10 @@ def build_upscale_tab(settings):
             c["quality"] = gr.Radio([(option_label(choice, settings.language), choice) for choice in ENCODING_QUALITIES], value=opts.quality, label=ui_t("common.label.encoding_quality"))
             with gr.Row():
                 c["codec"] = gr.Dropdown(CODEC_CHOICES, value=opts.codec, label=ui_t("common.label.video_codec"))
-                c["container"] = gr.Dropdown(("MP4", "MKV", "MOV"), value=opts.container, label=ui_t("common.label.container"))
+                c["container"] = gr.Dropdown(
+                    ("MP4", "MKV", "MOV"), value=container_for_codec(opts.codec),
+                    label=ui_t("common.label.container"), interactive=False,
+                )
             with gr.Row():
                 c["rename_mode"] = gr.Radio([(option_label(choice, settings.language), choice) for choice in RENAME_MODES], value=opts.rename_mode, label=ui_t("common.label.rename"))
                 c["custom_suffix"] = gr.Textbox(value=opts.custom_suffix, label=ui_t("common.label.custom_suffix"), interactive=opts.rename_mode == "Custom")
@@ -181,8 +186,14 @@ def build_upscale_tab(settings):
         preview_actions=[(tab.preview_frame, preview_frame), (tab.preview, preview_clip)],
     )
     c["hdr_enabled"].change(lambda enabled: gr.update(visible=enabled), inputs=c["hdr_enabled"], outputs=hdr_controls, queue=False)
-    c["codec"].change(lambda codec: gr.update(interactive=True) if hdr_mode_supported(codec) else gr.update(value=False, interactive=False),
-                        inputs=c["codec"], outputs=c["hdr_enabled"], queue=False)
+    c["codec"].change(
+        lambda codec: (
+            gr.update(value=container_for_codec(codec)),
+            gr.update(interactive=True) if hdr_mode_supported(codec)
+            else gr.update(value=False, interactive=False),
+        ),
+        inputs=c["codec"], outputs=[c["container"], c["hdr_enabled"]], queue=False,
+    )
     c["rename_mode"].change(lambda mode: gr.update(interactive=mode == "Custom"), inputs=c["rename_mode"], outputs=c["custom_suffix"], queue=False)
     def sizing_controls(enabled, mode, lock):
         custom = mode == "Custom dimensions"

@@ -103,7 +103,7 @@ def _coerce_preset_value(field_name: str, value: Any, current: UISettings) -> An
 def import_settings_preset(
     path: str | os.PathLike[str], current: UISettings
 ) -> tuple[str, UISettings]:
-    """Load and migrate schema-v1 through v6 presets, then validate atomically."""
+    """Load and migrate all supported preset schemas, then validate atomically."""
     preset_path = Path(path)
     if preset_path.suffix.casefold() != ".json":
         raise ValueError("Choose a JSON preset file.")
@@ -157,6 +157,8 @@ def import_settings_preset(
         changes["nr_passes"] = DEFAULT_SETTINGS.nr_passes
     if version < 6:
         changes["shimmer_suppression"] = DEFAULT_SETTINGS.shimmer_suppression
+    if version < 7:
+        changes["frame_interpolation_gpu_mode"] = DEFAULT_SETTINGS.frame_interpolation_gpu_mode
     # NR Preset was removed entirely (non-functional). Old preset files still
     # carry it; ignore so imports from previous builds keep working.
     # (Unknown keys are already filtered above; this covers any edge case where

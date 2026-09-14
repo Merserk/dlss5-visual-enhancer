@@ -21,6 +21,7 @@ from typing import Any, Callable
 import numpy as np
 
 from .paths import DLSSNR_BRIDGE, DLSSNR_DIR
+from .ngx_runtime import NGX_RUNTIME_LOCK
 
 
 BRIDGE_ABI_VERSION = 6
@@ -603,7 +604,8 @@ class NeuralBridgeManager:
     """One serialized bridge instance shared by every logical render session."""
 
     def __init__(self) -> None:
-        self._lock = threading.RLock()
+        # NGX is process-wide even when feature APIs use different backends.
+        self._lock = NGX_RUNTIME_LOCK
         self._library: Any | None = None
         self._initialized_ordinal: int | None = None
         self._cuda_driver: _CudaDriver | None = None
@@ -927,8 +929,22 @@ class NeuralBridgeManager:
     def initialize(self, gpu: dict[str, Any], *, require_cuda: bool) -> dict[str, Any]:
         with self._lock:
             self._guard_poison()
-            self._load()
             ordinal = int(gpu.get("cuda_ordinal", gpu.get("index", 0)))
+            if self._initialized_ordinal is None:
+                # The NVIDIA D3D12 NGX core keeps the first feature search path
+                # for the lifetime of the process. If Neural Rendering starts
+                # first, a later DLSSG initialization succeeds superficially
+                # but reports Frame Generation as unavailable. Prime DLSSG on
+                # the same adapter before Feature 18; failure remains isolated
+                # so systems without the optional DLSSG runtime can still use
+                # Neural Rendering.
+                try:
+                    from ..frame_interpolation.native import initialize_bridge
+
+                    initialize_bridge(ordinal)
+                except Exception:
+                    pass
+            self._load()
             if self._initialized_ordinal is None:
                 assert self._library is not None
                 error = ctypes.create_string_buffer(4096)

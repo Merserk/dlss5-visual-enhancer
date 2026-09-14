@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from fractions import Fraction
 
-from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, hdr_mode_supported, validate_codec_container
+from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, container_for_codec, hdr_mode_supported, validate_codec_container
 from ...core.naming import validate_rename
 
 VSR_QUALITIES = [("1 - Low", 1), ("2 - Medium", 2), ("3 - High", 3), ("4 - Ultra", 4)]
@@ -31,7 +31,7 @@ class UpscaleOptions:
     hdr_peak_luminance: int = 1000
     hdr_precision: str = "Packed 10-bit"
     codec: str = "H.265 (NVIDIA NVENC)"
-    container: str = "MP4"
+    container: str = "MKV"
     quality: str = "Auto (Default)"
     rename_mode: str = "Auto"
     custom_suffix: str = "_Upscale"
@@ -86,7 +86,9 @@ SETTING_FIELDS = tuple(f.name for f in fields(UpscaleOptions) if f.name not in {
 
 
 def options_from_settings(settings) -> UpscaleOptions:
-    return UpscaleOptions(**{name: getattr(settings, "upscale_" + name) for name in SETTING_FIELDS},
+    values = {name: getattr(settings, "upscale_" + name) for name in SETTING_FIELDS}
+    values["container"] = container_for_codec(values["codec"])
+    return UpscaleOptions(**values,
                           ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid)
 
 
@@ -119,6 +121,8 @@ class UpscaleCapabilities:
     hdr: dict
     sdk_version: str = "1.1.0"
     worker_version: str = "1.0.0"
+    bridge_version: str = ""
+    bridge_status: dict = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -130,6 +134,12 @@ class UpscaleResult:
     output_height: int
     hdr: bool
     elapsed_seconds: float
+    bridge_version: str = ""
+    memory_path: str = "host_staging"
+    decode_backend: str = "software"
+    encode_backend: str = ""
+    timings: dict = field(default_factory=dict)
+    bridge_status: dict = field(default_factory=dict)
 
 
 @dataclass(slots=True)

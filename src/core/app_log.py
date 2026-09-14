@@ -7,6 +7,7 @@ small ``.err`` file only on failure (see :func:`fail`).
 """
 from __future__ import annotations
 
+import atexit
 import io
 import re
 import threading
@@ -22,6 +23,21 @@ _session_path: Path | None = None
 MAX_MSG = 300
 MAX_TAIL = 500
 RETENTION_DAYS = 14
+
+
+def _close_handle() -> None:
+    """Flush and close the process log without trying to write another event."""
+    global _handle
+    with _lock:
+        handle, _handle = _handle, None
+    if handle is not None:
+        try:
+            handle.close()
+        except OSError:
+            pass
+
+
+atexit.register(_close_handle)
 
 
 def _compact(text: object, limit: int) -> str:
@@ -87,11 +103,16 @@ def _write(level: str, tag: str, msg: str) -> None:
         handle = _handle
     if handle is None:
         try:
-            handle = open(init_session(), "a", encoding="utf-8", errors="replace")
+            # init_session owns creation of the one process-wide handle. Opening
+            # the returned path again here replaced that handle without closing
+            # it whenever the first log call initialized the session.
+            init_session()
         except OSError:
             return
         with _lock:
-            _handle = handle
+            handle = _handle
+        if handle is None:
+            return
     try:
         with _lock:
             handle.write(line)

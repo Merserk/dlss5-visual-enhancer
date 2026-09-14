@@ -22,6 +22,7 @@ def upscale_images(input_paths, options=None, progress=None, *, output_dir=None,
     controller = controller or JobController()
     reporter = BatchProgress(paths, on_item_update, progress)
     successes, failures = [], []
+    session_cache = {}
     try:
         destination = prepare_output_dir(output_dir)
         with active_job(controller):
@@ -35,7 +36,8 @@ def upscale_images(input_paths, options=None, progress=None, *, output_dir=None,
                 try:
                     result = upscale_image(path, options, lambda v, m, i=i: reporter.advance(i, v, m),
                                            output_dir=destination, controller=controller, _owns_slot=True,
-                                           _capabilities=caps, generate_previews=generate_previews)
+                                           _capabilities=caps, generate_previews=generate_previews,
+                                           _session_cache=session_cache)
                 except Exception as exc:
                     cancelled = controller.cancel.is_set() or isinstance(exc, Cancelled)
                     failures.append(ImageUpscaleFailure(i, str(path), str(exc), cancelled))
@@ -60,3 +62,7 @@ def upscale_images(input_paths, options=None, progress=None, *, output_dir=None,
     except BaseException as exc:
         reporter.finish(cancelled=controller.cancel.is_set(), error=str(exc))
         raise
+    finally:
+        for session in session_cache.values():
+            if not session.closed:
+                session.close(abort=controller.cancel.is_set())
