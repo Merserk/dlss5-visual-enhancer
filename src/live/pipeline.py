@@ -20,6 +20,7 @@ import numpy as np
 from av.codec.hwaccel import HWAccel
 
 from ..core.gpu_selection import resolve_runtime_ai_gpu
+from ..core.i18n import t
 from ..core.jobs import BoundedLogBuffer, Cancelled, JobController, active_job, drain_bounded_text
 from ..core import app_log
 from ..core.paths import FFMPEG, LIVE_DIR
@@ -48,19 +49,19 @@ def _fit_height(width: int, height: int, max_height: int) -> tuple[int, int]:
 
 def validate_options(options: LiveOptions) -> None:
     if not options.source.strip():
-        raise ValueError("Enter a video file or a stream URL.")
+        raise ValueError(t("live.error.enter_source"))
     if options.max_height not in LIVE_MAX_HEIGHTS:
-        raise ValueError(f"Max input height must be one of: {', '.join(map(str, LIVE_MAX_HEIGHTS))}.")
+        raise ValueError(t("live.error.invalid_max_height", choices=", ".join(map(str, LIVE_MAX_HEIGHTS))))
     if options.source_quality not in LIVE_SOURCE_QUALITY_CHOICES:
-        raise ValueError("Choose a valid Source quality.")
+        raise ValueError(t("live.error.invalid_source_quality"))
     if options.target_fps not in LIVE_FPS_CHOICES:
-        raise ValueError("Choose a valid frame rate.")
+        raise ValueError(t("live.error.invalid_frame_rate"))
     if options.segment_seconds not in (1, 2, 4, 6):
-        raise ValueError("Segment length must be 1, 2, 4 or 6 seconds.")
+        raise ValueError(t("live.error.invalid_segment_length"))
     if not math.isfinite(options.buffer_seconds) or not 2 <= options.buffer_seconds <= 30:
-        raise ValueError("Playback buffer must be between 2 and 30 seconds.")
+        raise ValueError(t("live.error.invalid_buffer"))
     if not 1 <= options.queue_frames <= 8 or not 5 <= options.network_timeout <= 60:
-        raise ValueError("Invalid Live queue size or network timeout.")
+        raise ValueError(t("live.error.invalid_queue_network"))
     resolve_upscaling_mode(options.upscaling_factor)
     resolve_native_settings(options)
 
@@ -78,7 +79,7 @@ class LiveSession(threading.Thread):
         self.options = replace(options)
         self.effects = EffectUpdates(options)
         self.controller = JobController()
-        self.info = LiveSessionInfo(running=True, processing=True, status="Starting...")
+        self.info = LiveSessionInfo(running=True, processing=True, status=t("live.status.starting"))
         self._info_lock = threading.Lock()
         self._ready = threading.Event()
         self._produced = threading.Event()
@@ -121,7 +122,7 @@ class LiveSession(threading.Thread):
     def stop(self) -> None:
         self.effects.finish()
         if self.info.processing:
-            self._set(status="Stopping...")
+            self._set(status=t("live.status.stopping"))
         self.controller.stop()
 
     def _stage_error(self, stage: str, exc: Exception) -> None:
@@ -734,11 +735,21 @@ class LiveSession(threading.Thread):
         position = (float(self._player_state.get("position", 0)) if self._mpv
                     else max(0, now - self._playback_started) if self._playback_started else 0)
         buffer = max(0, published - position)
-        status = (f"Playing: {self._title}" if self._player_attempted else f"Buffering: {self._title}")
+        status = (
+            t("live.status.playing", title=self._title)
+            if self._player_attempted
+            else t("live.status.buffering", title=self._title)
+        )
         if finished:
-            status = f"Finished processing: {self._title}. Playback available until Stop."
-        status += (f"\n{info.target_fps:.2f} fps target | {info.effective_fps:.1f} fps processing | "
-                   f"{info.processed_frames} enhanced | {info.sampled_frames} sampled out | {buffer:.1f}s buffered")
+            status = t("live.status.finished_playback", title=self._title)
+        status += "\n" + t(
+            "live.status.metrics",
+            target_fps=info.target_fps,
+            effective_fps=info.effective_fps,
+            processed_frames=info.processed_frames,
+            sampled_frames=info.sampled_frames,
+            buffer=buffer,
+        )
         self._set(status=status, segments=self._segment_count, buffer_seconds=buffer,
                   elapsed_seconds=now - self._started_at)
 
@@ -770,11 +781,11 @@ class LiveSession(threading.Thread):
 
     def _produce(self) -> None:
         options = self.options
-        self._set(status="Resolving source...")
+        self._set(status=t("live.status.resolving"))
         resolved = resolve_source(options.source, options.max_height, self.controller,
                                   source_quality=options.source_quality)
         self._title = resolved.title
-        self._set(status=f"Probing {resolved.title}...")
+        self._set(status=t("live.status.probing", title=resolved.title))
         metadata = probe_source(resolved, self.controller, options.network_timeout)
         source_size = f"{metadata['width']}x{metadata['height']}"
         source_limit = options.max_height if options.source_quality == "Auto" else int(options.source_quality)
@@ -789,7 +800,7 @@ class LiveSession(threading.Thread):
         in_w, in_h = _fit_height(metadata["width"], metadata["height"], options.max_height)
         factor, mode = resolve_upscaling_mode(options.upscaling_factor)
         out_w, out_h = resolve_output_size(in_w, in_h, factor)
-        self._set(status=f"Preparing Neural Rendering: {in_w}x{in_h} -> {out_w}x{out_h}...")
+        self._set(status=t("live.status.preparing", input_width=in_w, input_height=in_h, output_width=out_w, output_height=out_h))
         prepared_runtime = prepare_runtime()
         ai_uuid, video_uuid = processing_gpu_settings()
         gpu = resolve_runtime_ai_gpu(prepared_runtime.gpus, prepared_runtime.runtime_bundle, ai_uuid)
@@ -965,10 +976,10 @@ class LiveSession(threading.Thread):
                     if tail:
                         tails["mpv"] = tail
                 err_path = app_log.fail("live", f"live-{stamp}", error, tails)
-                self._set(report_path=str(err_path), status=f"Failed: {error}", failures=[error])
+                self._set(report_path=str(err_path), status=t("neural.video.status.failed", error=error), failures=[error])
             else:
                 app_log.info("live", "cancelled")
-                self._set(status="Stopped.")
+                self._set(status=t("live.status.stopped"))
         finally:
             self.effects.finish()
             self.controller.terminate_processes()
@@ -984,10 +995,10 @@ class LiveSession(threading.Thread):
             self._set(running=False, processing=False, mpv_running=False, playlist_url="",
                       elapsed_seconds=time.monotonic() - started)
             if self._finished and not self.snapshot().failures:
-                self._set(status=f"Finished: {self._title}. {self.info.processed_frames} frames enhanced.")
+                self._set(status=t("live.status.finished", title=self._title, frames=self.info.processed_frames))
                 app_log.info("live", f"done frames={self.info.processed_frames} elapsed={self.info.elapsed_seconds:.0f}s")
             elif not self.snapshot().failures:
-                self._set(status="Stopped.")
+                self._set(status=t("live.status.stopped"))
             self._write_report()
             if self._session_dir and not self.options.keep_files:
                 shutil.rmtree(self._session_dir, ignore_errors=True)
@@ -1010,7 +1021,7 @@ def start_live_session(options: LiveOptions) -> LiveSessionInfo:
     global _CURRENT
     with _LOCK:
         if _CURRENT is not None and _CURRENT.is_alive():
-            raise RuntimeError("A Live session is already running; Stop it first.")
+            raise RuntimeError(t("live.error.already_running"))
         session = LiveSession(options)
         _CURRENT = session
         session.start()

@@ -7,6 +7,7 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
+from ..core.i18n import normalize_language
 from ..core.ffmpeg import HDR_ALLOWED_CODECS
 from ..core.paths import CONFIG_PATH
 from ..core.naming import RENAME_MODES, validate_rename
@@ -145,6 +146,7 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         frame_interpolation_custom_suffix = DEFAULT_SETTINGS.frame_interpolation_custom_suffix
 
     settings = UISettings(
+        language=normalize_language(section.get("language")),
         ai_gpu_uuid=section.get("ai_gpu_uuid", DEFAULT_SETTINGS.ai_gpu_uuid).strip()
         or DEFAULT_SETTINGS.ai_gpu_uuid,
         video_gpu_uuid=section.get("video_gpu_uuid", DEFAULT_SETTINGS.video_gpu_uuid).strip()
@@ -278,6 +280,7 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         **{"upscale_image_" + name: str(getattr(settings, "upscale_image_" + name)) for name in IMAGE_UPSCALE_FIELDS},
         **{"upscale_" + name: str(getattr(settings, "upscale_" + name)) for name in SETTING_FIELDS},
         "upscale_mode": settings.upscale_mode,
+        "language": settings.language,
         "ai_gpu_uuid": settings.ai_gpu_uuid,
         "video_gpu_uuid": settings.video_gpu_uuid,
         "nr_style": settings.nr_style,
@@ -335,6 +338,11 @@ class _SettingsState:
 
 
 SETTINGS_STATE = _SettingsState()
+
+
+def current_settings() -> UISettings:
+    with SETTINGS_STATE.lock:
+        return SETTINGS_STATE.current or load_settings(CONFIG_PATH)
 
 
 def processing_gpu_settings() -> tuple[str, str]:

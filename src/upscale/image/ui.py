@@ -6,8 +6,9 @@ from types import SimpleNamespace
 import gradio as gr
 from PIL import Image
 
-from ...core.batch_ui import (BATCH_HEADERS, bind_batch_ui, build_media_clear_button,
-                             build_media_select_button, build_path_controls, build_save_controls)
+from ...core.batch_ui import (bind_batch_ui, build_media_clear_button,
+                             build_media_select_button, build_path_controls, build_save_controls, batch_headers)
+from ...core.i18n import option_label, t, translator
 from ...core.disk_paths import resolve_inputs
 from ...core.naming import RENAME_MODES
 from ...neural_rendering.image.decoder import decode_image, full_size_image_preview_path
@@ -62,7 +63,7 @@ def render_image_batch(paths, *values, progress=None, output_dir=None, controlle
 def preview_image(paths, *values, progress=gr.Progress(track_tqdm=False)):
     selected = [paths] if isinstance(paths, str) else list(paths or [])
     if len(selected) != 1:
-        raise gr.Error("Choose exactly one image to preview.")
+        raise gr.Error(t("upscale.image.error.choose_exactly_one"))
     full_size = full_size_image_previews_enabled()
     image, status = preview_upscale_image(
         selected[0], options_from_values(values),
@@ -70,7 +71,7 @@ def preview_image(paths, *values, progress=gr.Progress(track_tqdm=False)):
         full_size_preview=full_size,
     )
     return (
-        gr.update(value=[(image, f"Preview — {Path(selected[0]).name}")], visible=True),
+        gr.update(value=[(image, t("upscale.image.status.preview_title", name=Path(selected[0]).name))], visible=True),
         status,
     )
 
@@ -88,69 +89,74 @@ def describe_size(paths, input_path, *values):
             ow, oh = output_size(w, h, options)
             lines.append(f"**{Path(path).name}**: {w}×{h} → **{ow}×{oh}**")
         if len(sources) > 8:
-            lines.append(f"{len(sources)-8} more images; dimensions are calculated for each source.")
+            lines.append(t("upscale.image.status.more_images", count=len(sources) - 8))
         return "\n\n".join(lines)
     except Exception as exc:
         return str(exc)
 
 
 def build_image_tab(settings):
+    ui_t = translator(settings.language).t
     opts = options_from_settings(settings)
     upload_types = ["image", ".svg", ".heic", ".heif", *sorted(RAW_EXTENSIONS)]
     c = {}
     with gr.Row():
         with gr.Column(scale=3):
-            sources = gr.File(label="Input image(s)", file_count="multiple", file_types=upload_types,
+            sources = gr.File(label=ui_t("common.label.input_image_plural"), file_count="multiple", file_types=upload_types,
                               type="filepath",
                               allow_reordering=True, elem_id="upscale-image-upload-list",
                               elem_classes=["media-upload-surface"])
             input_gallery = gr.Gallery(
-                label="Input images", columns=3, height=520, object_fit="contain",
+                label=ui_t("common.label.input_images"), columns=3, height=520, object_fit="contain",
                 visible="hidden", interactive=False, type="pil", buttons=["fullscreen"],
                 elem_id="upscale-image-input-preview",
             )
             with gr.Row(visible=False, elem_classes=["media-input-actions"]) as input_actions:
                 select_source = build_media_select_button(
-                    "Choose Images", upload_types, "upscale-image-select-input",
+                    ui_t("common.button.choose_images"), upload_types, "upscale-image-select-input",
                 )
                 clear_source = build_media_clear_button("upscale-image-clear-input")
             with gr.Row():
-                render = gr.Button("Upscale image(s)", variant="primary")
-                stop = gr.Button("Stop", variant="stop")
-                preview = gr.Button("Preview", visible=False)
-                reset = gr.Button("Reset settings")
+                render = gr.Button(ui_t("upscale.image.button.render"), variant="primary")
+                stop = gr.Button(ui_t("common.button.stop"), variant="stop")
+                preview = gr.Button(ui_t("common.button.preview"), visible=False)
+                reset = gr.Button(ui_t("common.button.reset_settings"))
             with gr.Column(elem_id="upscale-image-vsr-box"):
-                c["vsr_quality"] = gr.Dropdown(VSR_QUALITIES, value=opts.vsr_quality, label="VSR quality")
-                c["size_mode"] = gr.Radio(SIZE_MODES, value=opts.size_mode, label="Output sizing")
+                c["vsr_quality"] = gr.Dropdown(
+                    [(option_label(label, settings.language), value) for label, value in VSR_QUALITIES],
+                    value=opts.vsr_quality,
+                    label=ui_t("upscale.label.vsr_quality"),
+                )
+                c["size_mode"] = gr.Radio([(option_label(choice, settings.language), choice) for choice in SIZE_MODES], value=opts.size_mode, label=ui_t("upscale.label.output_sizing"))
                 c["scale_factor"] = gr.Dropdown(
-                    SCALE_FACTORS, value=opts.scale_factor, label="Scale factor",
+                    SCALE_FACTORS, value=opts.scale_factor, label=ui_t("upscale.label.scale_factor"),
                 )
                 with gr.Row(
                     visible=opts.size_mode == "Custom dimensions",
                     elem_id="upscale-image-custom-dimensions",
                 ) as custom_dimensions_row:
-                    c["width"] = gr.Number(value=opts.width, minimum=1, maximum=16384, precision=0, label="Output width")
-                    c["height"] = gr.Number(value=opts.height, minimum=1, maximum=16384, precision=0, label="Output height")
-                c["aspect_lock"] = gr.Checkbox(value=opts.aspect_lock, label="Lock aspect ratio")
+                    c["width"] = gr.Number(value=opts.width, minimum=1, maximum=16384, precision=0, label=ui_t("upscale.label.output_width"))
+                    c["height"] = gr.Number(value=opts.height, minimum=1, maximum=16384, precision=0, label=ui_t("upscale.label.output_height"))
+                c["aspect_lock"] = gr.Checkbox(value=opts.aspect_lock, label=ui_t("upscale.label.lock_aspect_ratio"))
                 dimensions = gr.Markdown(visible=False, elem_id="upscale-image-dimensions")
             input_path, output_path = build_path_controls()
-            c["output_format"] = gr.Dropdown(IMAGE_FORMATS, value=opts.output_format, label="Output format")
-            c["quality"] = gr.Slider(1, 100, value=opts.quality, step=1, precision=0, label="Image quality")
-            c["preserve_metadata"] = gr.Checkbox(value=opts.preserve_metadata, label="Preserve metadata")
+            c["output_format"] = gr.Dropdown(IMAGE_FORMATS, value=opts.output_format, label=ui_t("common.label.output_format"))
+            c["quality"] = gr.Slider(1, 100, value=opts.quality, step=1, precision=0, label=ui_t("common.label.image_quality"))
+            c["preserve_metadata"] = gr.Checkbox(value=opts.preserve_metadata, label=ui_t("upscale.label.preserve_metadata"))
             with gr.Row():
-                c["rename_mode"] = gr.Radio(RENAME_MODES, value=opts.rename_mode, label="Rename")
-                c["custom_suffix"] = gr.Textbox(value=opts.custom_suffix, label="Custom suffix", interactive=opts.rename_mode == "Custom")
+                c["rename_mode"] = gr.Radio([(option_label(choice, settings.language), choice) for choice in RENAME_MODES], value=opts.rename_mode, label=ui_t("common.label.rename"))
+                c["custom_suffix"] = gr.Textbox(value=opts.custom_suffix, label=ui_t("common.label.custom_suffix"), interactive=opts.rename_mode == "Custom")
         with gr.Column(scale=3):
             output_gallery = gr.Gallery(
-                label="Upscaled images", columns=2, height=520, object_fit="contain",
+                label=ui_t("upscale.image.label.output_gallery"), columns=2, height=520, object_fit="contain",
                 interactive=False, type="pil",
                 buttons=["download", "download_all", "fullscreen"],
                 elem_id="upscale-image-output-preview",
             )
             save_download, zip_button, zip_download = build_save_controls("image", "upscale-image")
-            status = gr.Textbox(label="Status", interactive=False, lines=5)
-            results = gr.Dataframe(headers=BATCH_HEADERS, datatype=["str"] * len(BATCH_HEADERS), interactive=False,
-                                   label="Batch results", wrap=True)
+            status = gr.Textbox(label=ui_t("common.label.status"), interactive=False, lines=5)
+            results = gr.Dataframe(headers=batch_headers(settings.language), datatype=["str"] * len(batch_headers(settings.language)), interactive=False,
+                                   label=ui_t("common.label.batch_results"), wrap=True)
     tab = SimpleNamespace(sources=sources, input_gallery=input_gallery, input_actions=input_actions,
                           select_source=select_source, clear_source=clear_source, input_path=input_path,
                           output_path=output_path, render=render, stop=stop, preview=preview, reset=reset, output_gallery=output_gallery,

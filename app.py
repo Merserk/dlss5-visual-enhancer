@@ -30,6 +30,7 @@ except Exception:
 import gradio as gr
 
 from src.about.ui import build_about_tab
+from src.core.i18n import translator
 from src.core.batch_ui import bind_input_surface_reactivation
 from src.core.cache_cleanup import (
     CACHE_MAX_AGE_SECONDS,
@@ -344,8 +345,9 @@ def build_app() -> gr.Blocks:
     prepared = prepare_runtime()
     initialize_image_runtime()
     settings, _gpu_warning, ai_gpu_choices, video_gpu_choices = initialize_settings(prepared)
+    ui_t = translator(settings.language).t
     with gr.Blocks(
-        title="DLSS 5 Visual Enhancer",
+        title=ui_t("app.title"),
         # Official Gradio cache cleanup (see guides/resource-cleanup): every
         # CACHE_SWEEP_INTERVAL_SECONDS, delete tracked temp files older than
         # CACHE_MAX_AGE_SECONDS; full wipe on graceful shutdown. Crash orphans
@@ -360,18 +362,18 @@ def build_app() -> gr.Blocks:
             # Keep every tab tree mounted from first paint. Stateful File/Gallery/Video
             # components otherwise get lazily mounted when a tab is first selected,
             # which can briefly restore their construction-time visibility/value state.
-            with gr.Tab("Neural Rendering", id="neural-rendering", render_children=True) as neural_root_tab:
+            with gr.Tab(ui_t("app.tab.neural_rendering"), id="neural-rendering", render_children=True) as neural_root_tab:
                 neural_rendering_tab = build_neural_rendering_tab(settings, processing_engine_state, nr_mask_state)
-            with gr.Tab("Upscale", id="upscale", render_children=True) as upscale_root_tab:
+            with gr.Tab(ui_t("app.tab.upscale"), id="upscale", render_children=True) as upscale_root_tab:
                 upscale_tab = build_upscale_tab(settings)
-            with gr.Tab("Frame Interpolation", id="frame-interpolation", render_children=True) as frame_root_tab:
+            with gr.Tab(ui_t("app.tab.frame_interpolation"), id="frame-interpolation", render_children=True) as frame_root_tab:
                 frame_tab = build_frame_interpolation_tab(settings)
-            with gr.Tab("Live", id="live", render_children=True) as live_root_tab:
+            with gr.Tab(ui_t("app.tab.live"), id="live", render_children=True) as live_root_tab:
                 live_tab = build_live_tab(settings, processing_engine_state, nr_mask_state)
-            with gr.Tab("Settings", id="settings", render_children=True) as settings_root_tab:
+            with gr.Tab(ui_t("app.tab.settings"), id="settings", render_children=True) as settings_root_tab:
                 settings_tab = build_settings_tab(settings, ai_gpu_choices, video_gpu_choices)
-            with gr.Tab("About", id="about", render_children=True) as about_root_tab:
-                build_about_tab()
+            with gr.Tab(ui_t("app.tab.about"), id="about", render_children=True) as about_root_tab:
+                build_about_tab(settings.language)
 
         # Mounted video elements can otherwise keep decoding/playing while their
         # workflow is hidden. Pause media whenever the user changes top-level tabs.
@@ -523,7 +525,7 @@ def main() -> None:
             css=APP_CSS,
             theme=gr.themes.Ocean(),
             server_name="127.0.0.1",
-            inbrowser=True,
+            inbrowser=os.environ.get("DLSS5_SKIP_BROWSER_OPEN") != "1",
             share=False,
             allowed_paths=[str(OUTPUTS.resolve())],
             show_error=True,

@@ -9,12 +9,25 @@ from pathlib import Path
 
 import gradio as gr
 
+from .i18n import t, translator
 from .batch_progress import BatchProgress
 from .disk_paths import create_media_archive, direct_disk_mode, prepare_output_dir, resolve_inputs
 from .jobs import JobController, use_job_controller
 from .paths import GRADIO_TEMP
 
 BATCH_HEADERS = ["File", "State", "Progress", "Elapsed", "Output path", "Details"]
+
+
+def batch_headers(language: str | None = None) -> list[str]:
+    ui_t = translator(language).t
+    return [
+        ui_t("batch.header.file"),
+        ui_t("batch.header.state"),
+        ui_t("batch.header.progress"),
+        ui_t("batch.header.elapsed"),
+        ui_t("batch.header.output_path"),
+        ui_t("batch.header.details"),
+    ]
 
 
 def build_path_controls():
@@ -25,10 +38,10 @@ def build_path_controls():
     # styling), so the path fields retain their existing native appearance.
     with gr.Column():
         source = gr.Textbox(
-            label="Input path (Optional)", placeholder=r"D:\Render\inputs",
+            label=t("batch.path.input"), placeholder=r"D:\Render\inputs",
         )
         destination = gr.Textbox(
-            label="Output path (Optional)", placeholder=r"D:\Render\outputs",
+            label=t("batch.path.output"), placeholder=r"D:\Render\outputs",
         )
     return source, destination
 
@@ -52,7 +65,7 @@ def build_media_select_button(label: str, file_types: list[str], elem_id: str):
 def build_media_clear_button(elem_id: str):
     """Build the clear action displayed to the right of a replacement picker."""
     return gr.Button(
-        "Clear",
+        t("common.button.clear"),
         visible=True,
         size="lg",
         scale=1,
@@ -65,17 +78,17 @@ def build_media_clear_button(elem_id: str):
 def build_save_controls(kind: str, elem_id: str):
     """Build direct-save and lazy-archive controls for an image/video batch tab."""
     if kind not in {"image", "video"}:
-        raise ValueError(f"Unknown media type: {kind}")
+        raise ValueError(t("batch.error.unknown_media_type", kind=kind))
     direct = gr.DownloadButton(
-        f"Save {kind.title()}", value=None, visible=False, elem_id=f"{elem_id}-direct-save"
+        t(f"batch.save.{kind}"), value=None, visible=False, elem_id=f"{elem_id}-direct-save"
     )
-    archive = gr.Button("Save as ZIP", visible=False, elem_id=f"{elem_id}-save-zip")
+    archive = gr.Button(t("batch.save.zip"), visible=False, elem_id=f"{elem_id}-save-zip")
     # Keep the internal download target permanently rendered so the chained JS
     # action can click it after lazy ZIP creation.  It is hidden exclusively by
     # application CSS instead of Gradio's visibility state; tab remounts can
     # otherwise leak a `visible="hidden"` DownloadButton into the normal UI.
     archive_download = gr.DownloadButton(
-        "Download ZIP",
+        t("batch.download.zip"),
         value=None,
         visible=True,
         elem_id=f"{elem_id}-zip-download",
@@ -245,7 +258,7 @@ def bind_input_surface_reactivation(trigger, tab, *, kind: str, event_name: str 
     state.
     """
     if kind not in {"image", "video"}:
-        raise ValueError(f"Unknown media type: {kind}")
+        raise ValueError(t("batch.error.unknown_media_type", kind=kind))
     input_media = tab.input_gallery if kind == "image" else tab.input_preview
     preview_buttons = [
         component for name in ("preview_frame", "preview")
@@ -316,10 +329,7 @@ def _identity(path: str) -> _FileIdentity:
 def _validate_download_state(state: _DownloadState) -> None:
     current = tuple(_identity(path) for path in state.paths)
     if current != state.identities:
-        raise ValueError(
-            "One or more rendered outputs changed or were removed after rendering. "
-            "Render the batch again before creating its ZIP."
-        )
+        raise ValueError(t("batch.error.output_changed"))
 
 
 def _archive_trigger_js(elem_id: str) -> str:
@@ -406,7 +416,7 @@ def bind_batch_ui(
         if input_count == 1:
             return [
                 display_value,
-                gr.update(value=successful_paths[0], visible=True, label=f"Save {kind.title()}"),
+                gr.update(value=successful_paths[0], visible=True, label=t(f"batch.save.{kind}")),
                 gr.update(visible=False),
                 gr.update(value=None),
             ]
@@ -509,7 +519,7 @@ def bind_batch_ui(
         view = _view(key)
         with view.lock:
             if view.job is not None:
-                raise gr.Error("A job is already running in this tab.")
+                raise gr.Error(t("batch.error.job_running"))
             job = BatchRun([])
             view.job = job
             view.download = None
@@ -541,7 +551,7 @@ def bind_batch_ui(
                         return
                 row_values, status = job.progress.display(destination)
                 if job.controller.cancel.is_set():
-                    status += "\nStopping — cleaning up the current job. Completed outputs will be kept."
+                    status += "\n" + t("batch.status.stopping")
                 # No media postprocessing/cache transfer during progress refreshes.
                 yield (*[gr.skip() for _ in media_outputs], row_values, status,
                        *[gr.skip() for _ in controls])
@@ -595,9 +605,9 @@ def bind_batch_ui(
             state = view.download
             busy = view.job is not None and not view.job.done.is_set()
         if busy:
-            raise gr.Error("Wait for the current render to finish before creating its ZIP.")
+            raise gr.Error(t("batch.error.wait_zip"))
         if state is None or state.input_count < 2 or not state.paths:
-            raise gr.Error("There is no completed multi-file batch to save as ZIP.")
+            raise gr.Error(t("batch.error.no_zip_batch"))
         with state.archive_lock:
             try:
                 _validate_download_state(state)
@@ -614,7 +624,7 @@ def bind_batch_ui(
             except gr.Error:
                 raise
             except Exception as exc:
-                raise gr.Error(f"Could not create ZIP: {exc}") from exc
+                raise gr.Error(t("batch.error.create_zip", error=exc)) from exc
 
     archive_event = archive_button.click(
         create_lazy_archive,
@@ -642,12 +652,12 @@ def bind_batch_ui(
                     view.download = None
                 yield empty_preview(
                     gr.update(value=None, visible=False),
-                    "Previews are disabled when a path is supplied.",
+                    t("batch.status.preview_disabled_path"),
                 )
                 return
             with view.lock:
                 if view.job is not None:
-                    raise gr.Error("A job is already running in this tab.")
+                    raise gr.Error(t("batch.error.job_running"))
                 job = BatchRun([])
                 job.is_preview = True
                 view.job = job
@@ -661,7 +671,7 @@ def bind_batch_ui(
                 with use_job_controller(job.controller):
                     result = function(*args, progress=progress)
                 if job.controller.cancel.is_set():
-                    yield empty_preview(gr.update(value=None, visible=False), "Preview cancelled.")
+                    yield empty_preview(gr.update(value=None, visible=False), t("batch.status.preview_cancelled"))
                     return
                 with view.lock:
                     stale = view.revision != revision or view.disk
@@ -805,7 +815,7 @@ def bind_batch_ui(
             else:
                 yield (
                     gr.skip(),
-                    f"Automatic preview failed: {exc}",
+                    t("batch.status.auto_preview_failed", error=exc),
                     *empty_save_controls(),
                 )
         finally:

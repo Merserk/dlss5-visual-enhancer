@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import gradio as gr
 
 from ..core.nr_composition import inspect_nr_mask, mask_status
+from ..core.i18n import t as current_t, translator
 from ..settings.models import UISettings
 
 
@@ -16,40 +17,41 @@ class CompositionWidgets:
     detail_only: object
 
 
-def build_composition_sliders(settings: UISettings) -> list[object]:
+def build_composition_sliders(settings: UISettings, t) -> list[object]:
     # Created directly in the parent Column (no gr.Row): each slider spans the
     # full width in one vertical stack. Return order is unchanged.
     color = gr.Slider(
         0.0, 1.0, value=settings.nr_color_strength, step=0.05, precision=2,
-        label="NR Color Strength", buttons=["reset"],
+        label=t("neural.label.nr_color_strength"), buttons=["reset"],
     )
     tone = gr.Slider(
         0.0, 1.0, value=settings.tone_preservation, step=0.05, precision=2,
-        label="Tone Preservation", buttons=["reset"],
+        label=t("neural.label.tone_preservation"), buttons=["reset"],
     )
     face_skin = gr.Slider(
         0.0, 1.0, value=settings.face_skin_protection, step=0.05, precision=2,
-        label="Face/Skin Protection", buttons=["reset"],
+        label=t("neural.label.face_skin_protection"), buttons=["reset"],
     )
     grain = gr.Slider(
         0.0, 1.0, value=settings.grain_preservation, step=0.05, precision=2,
-        label="Grain Preservation", buttons=["reset"],
+        label=t("neural.label.grain_preservation"), buttons=["reset"],
     )
     feather = gr.Slider(
         0, 128, value=settings.mask_feather, step=1, precision=0,
-        label="Mask Feather (output pixels)", buttons=["reset"],
+        label=t("neural.label.mask_feather"), buttons=["reset"],
     )
     return [color, tone, face_skin, grain, feather]
 
 
-def build_composition_widgets() -> CompositionWidgets:
+def build_composition_widgets(language: str | None = None) -> CompositionWidgets:
+    t = translator(language).t
     detail_only = gr.Button(
-        "Detail-Only",
+        t("neural.button.detail_only"),
         size="sm",
         variant="secondary",
     )
     mask = gr.Image(
-        label="Custom NR Mask",
+        label=t("neural.label.custom_mask"),
         type="filepath",
         # Preserve the uploaded bytes and original filename for EXIF/animation
         # handling plus report hashing; decoding/conversion belongs to our mask

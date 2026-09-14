@@ -5,6 +5,7 @@ from dataclasses import dataclass, field, fields
 from fractions import Fraction
 
 from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, container_for_codec, hdr_mode_supported, validate_codec_container
+from ...core.i18n import t
 from ...core.naming import validate_rename
 
 VSR_QUALITIES = [("1 - Low", 1), ("2 - Medium", 2), ("3 - High", 3), ("4 - Ultra", 4)]
@@ -43,7 +44,7 @@ class UpscaleOptions:
     def validate(self, *, for_render: bool = True) -> None:
         for name in ("vsr_enabled", "hdr_enabled", "aspect_lock"):
             if not isinstance(getattr(self, name), bool):
-                raise ValueError(f"{name} must be on or off.")
+                raise ValueError(t("upscale.error.toggle_bool", label=name.replace("_", " ")))
         for name, low, high in (
             ("vsr_quality", 0, 4), ("width", 2, TEXTURE_LIMIT), ("height", 2, TEXTURE_LIMIT),
             ("hdr_contrast", 0, 200), ("hdr_saturation", 0, 200),
@@ -51,33 +52,33 @@ class UpscaleOptions:
         ):
             v = getattr(self, name)
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or int(v) != v or not low <= v <= high:
-                raise ValueError(f"{name.replace('_', ' ')} must be an integer from {low} to {high}.")
+                raise ValueError(t("upscale.error.integer_range", label=name.replace("_", " "), low=low, high=high))
         if isinstance(self.scale_factor, bool) or not isinstance(self.scale_factor, (int, float)) or not math.isfinite(self.scale_factor) or self.scale_factor < 1:
-            raise ValueError("Scale factor must be a finite number of at least 1.")
+            raise ValueError(t("upscale.error.scale_factor"))
         for value, choices, name in ((self.size_mode, SIZE_MODES, "size mode"), (self.hdr_precision, HDR_PRECISIONS, "HDR precision"),
                                       (self.codec, CODEC_CHOICES, "codec"), (self.quality, ENCODING_QUALITIES, "encoding quality")):
             if value not in choices:
-                raise ValueError(f"Unknown {name}: {value!r}.")
+                raise ValueError(t("upscale.error.unknown_value", label=name, value=value))
         if self.container not in ("MP4", "MKV", "MOV"):
-            raise ValueError("Unknown output container.")
+            raise ValueError(t("upscale.error.unknown_container"))
         if for_render:
             validate_codec_container(self.codec, self.container)
         validate_rename(self.rename_mode, self.custom_suffix)
         if for_render and not (self.vsr_enabled or self.hdr_enabled):
-            raise ValueError("Enable RTX Video Super Resolution or RTX Video HDR.")
+            raise ValueError(t("upscale.error.enable_feature"))
         if self.hdr_enabled and not hdr_mode_supported(self.codec):
-            raise ValueError("RTX Video HDR requires H.265, AV1, or ProRes. H.264 cannot store this HDR output.")
+            raise ValueError(t("upscale.error.hdr_codec"))
         if self.preview_frames is not None and (isinstance(self.preview_frames, bool) or
                                                not isinstance(self.preview_frames, (int, float)) or
                                                not math.isfinite(self.preview_frames) or
                                                int(self.preview_frames) != self.preview_frames or self.preview_frames < 1):
-            raise ValueError("Preview frame count must be a positive integer.")
+            raise ValueError(t("upscale.error.preview_frame_count"))
         if self.preview_seconds is not None and (isinstance(self.preview_seconds, bool) or
                                                 not isinstance(self.preview_seconds, (int, float)) or
                                                 not math.isfinite(self.preview_seconds) or self.preview_seconds <= 0):
-            raise ValueError("Preview duration must be positive and finite.")
+            raise ValueError(t("upscale.error.preview_duration"))
         if self.preview_seconds is not None and self.preview_frames is not None:
-            raise ValueError("Select one preview limit.")
+            raise ValueError(t("upscale.error.preview_limit"))
 
 
 SETTING_FIELDS = tuple(f.name for f in fields(UpscaleOptions) if f.name not in {
@@ -104,11 +105,11 @@ def output_size(width: int, height: int, options: UpscaleOptions, sar: Fraction 
         w = float(options.width)
         h = w * height / display_width if options.aspect_lock else float(options.height)
     if not math.isfinite(w) or not math.isfinite(h) or max(w, h) > TEXTURE_LIMIT:
-        raise ValueError("Requested output exceeds D3D11's 16384-pixel texture dimension. Choose a smaller size.")
+        raise ValueError(t("upscale.error.texture_limit"))
     # All offered delivery codecs accept even dimensions. Never round below source.
     ow, oh = max(2, math.ceil(w / 2) * 2), max(2, math.ceil(h / 2) * 2)
     if options.vsr_enabled and (ow < math.ceil(display_width) or oh < height):
-        raise ValueError("Upscale output must not be smaller than the source. Use 1× for native-resolution enhancement.")
+        raise ValueError(t("upscale.error.output_smaller"))
     rounding = " (rounded up to even dimensions for encoding)" if (ow != w or oh != h) else ""
     return ow, oh, rounding
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import gradio as gr
 
 from ..core.batch_ui import bind_input_surface_reactivation
+from ..core.i18n import option_label
 from ..settings.models import UISettings
 from .image.ui import ImageTab, build_image_tab
 from .video.ui import VideoTab, build_video_tab
@@ -53,7 +54,7 @@ def build_neural_rendering_tab(
     settings: UISettings, gpu_mode_state: object, mask_state: object,
 ) -> NeuralRenderingTab:
     mode = gr.Radio(
-        choices=list(MODE_CHOICES),
+        choices=[(option_label(choice, settings.language), choice) for choice in MODE_CHOICES],
         value="Image",
         label=None,
         show_label=False,

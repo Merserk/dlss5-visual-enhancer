@@ -6,9 +6,10 @@ from pathlib import Path
 
 import gradio as gr
 from ...core.batch_ui import (
-    BATCH_HEADERS, bind_batch_ui, build_media_clear_button, build_media_select_button,
+    batch_headers, bind_batch_ui, build_media_clear_button, build_media_select_button,
     build_path_controls, build_save_controls,
 )
+from ...core.i18n import batch_state_label, option_label, t, translator
 from ...core.ffmpeg import container_for_codec, hdr_mode_supported
 from ...core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
 from ...core.naming import RENAME_MODES
@@ -41,12 +42,16 @@ UPSCALING_CHOICES = tuple((mode["label"], factor) for factor, mode in UPSCALING_
 
 
 def build_neural_controls(settings: UISettings):
+    ui_t = translator(settings.language).t
     nr_style = gr.Radio(
-        list(NR_STYLES), value=settings.nr_style, label="NR Style",
+        choices=[(option_label(choice, settings.language), choice) for choice in NR_STYLES],
+        value=settings.nr_style,
+        label=ui_t("neural.label.nr_style"),
     )
     upscaling_factor = gr.Dropdown(
-        choices=list(UPSCALING_CHOICES), value=settings.upscaling_factor,
-        label="Scale",
+        choices=[(option_label(label, settings.language), value) for label, value in UPSCALING_CHOICES],
+        value=settings.upscaling_factor,
+        label=ui_t("neural.label.scale"),
     )
     # Each control is created directly in the parent Column (no gr.Row), so
     # every slider spans the full width in one vertical stack. Creation order
@@ -54,34 +59,34 @@ def build_neural_controls(settings: UISettings):
     # order consumed by render/persist/settings-mirror code.
     nr_intensity = gr.Slider(
         0.0, 2.0, value=settings.nr_intensity, step=0.05, precision=2,
-        label="NR Intensity", buttons=["reset"],
+        label=ui_t("neural.label.nr_intensity"), buttons=["reset"],
     )
     nr_passes = gr.Slider(
         1, 4, value=settings.nr_passes, step=1, precision=0,
-        label="NR Passes", buttons=["reset"],
+        label=ui_t("neural.label.nr_passes"), buttons=["reset"],
     )
     local_tone_strength = gr.Slider(
         0.0, 2.0, value=settings.local_tone_strength, step=0.05, precision=2,
-        label="Local Tone Strength", buttons=["reset"]
+        label=ui_t("neural.label.local_tone_strength"), buttons=["reset"]
     )
     local_structure_strength = gr.Slider(
         0.0, 2.0, value=settings.local_structure_strength, step=0.05, precision=2,
-        label="Local Structure Strength", buttons=["reset"],
+        label=ui_t("neural.label.local_structure_strength"), buttons=["reset"],
     )
     skin_structure_strength = gr.Slider(
         -1.0, 2.0, value=settings.skin_structure_strength, step=0.05, precision=2,
-        label="Skin Structure Strength",
+        label=ui_t("neural.label.skin_structure_strength"),
         buttons=["reset"],
     )
-    composition = build_composition_sliders(settings)
+    composition = build_composition_sliders(settings, ui_t)
     shimmer_suppression = gr.Slider(
         0.0, 1.0, value=settings.shimmer_suppression, step=0.05, precision=2,
-        label="Shimmer Suppression", buttons=["reset"],
+        label=ui_t("neural.label.shimmer_suppression"), buttons=["reset"],
     )
     automatic_mask = gr.Radio(
-        choices=AUTOMATIC_MASK_CHOICES,
+        choices=[(option_label(choice, settings.language), choice) for choice in AUTOMATIC_MASK_CHOICES],
         value=automatic_mask_choice(settings.automatic_mask),
-        label="Automatic Mask",
+        label=ui_t("neural.label.automatic_mask"),
     )
     controls = [
         nr_style, nr_intensity, nr_passes, local_tone_strength, local_structure_strength,
@@ -152,7 +157,7 @@ def render_video_batch(
 ) -> tuple[object, list[str], list[list[str]], str]:
     paths = normalize_video_paths(input_paths)
     if not paths:
-        raise gr.Error("Choose at least one video first.")
+        raise gr.Error(t("neural.video.error.choose_video"))
     effective_hdr = coerce_hdr_mode(codec, hdr_mode)
     options = ConversionOptions(
         ai_gpu_uuid=processing_gpu_settings()[0],
@@ -193,23 +198,29 @@ def render_video_batch(
         traceback.print_exc()
         if on_item_update is not None:
             raise
-        return gr.update(value=None, visible=not direct_disk), None, [], f"Failed: {exc}"
+        return gr.update(value=None, visible=not direct_disk), None, [], t("neural.video.status.failed", error=exc)
 
     ordered_rows: list[tuple[int, list[str]]] = []
     for item in result.successes:
         conversion = item.result
         details = (
-            f"{conversion.frames} frames in {conversion.elapsed_seconds:.1f}s; "
-            f"Neural {conversion.render_width}×{conversion.render_height}; "
-            f"{conversion.resize_method}, {conversion.memory_path}; "
-            f"report: {conversion.report_path}"
+            t(
+                "neural.video.status.row_details",
+                frames=conversion.frames,
+                elapsed=conversion.elapsed_seconds,
+                render_width=conversion.render_width,
+                render_height=conversion.render_height,
+                resize_method=conversion.resize_method,
+                memory_path=conversion.memory_path,
+                report_path=conversion.report_path,
+            )
         )
         ordered_rows.append(
             (
                 item.index,
                 [
                     Path(item.input_path).name,
-                    "Complete",
+                    batch_state_label("Complete"),
                     Path(conversion.output_path).name,
                     details,
                 ],
@@ -220,7 +231,7 @@ def render_video_batch(
             "Cancelled" if item.cancelled else "Failed"
         )
         ordered_rows.append(
-            (item.index, [Path(item.input_path).name, state, "", item.error])
+            (item.index, [Path(item.input_path).name, batch_state_label(state), "", item.error])
         )
     rows = [row for _index, row in sorted(ordered_rows, key=lambda entry: entry[0])]
     try:
@@ -242,16 +253,19 @@ def render_video_batch(
     skipped_count = sum(
         item.error == "Cancelled before rendering." for item in result.failures
     )
-    state = "Cancelled" if result.cancelled else "Complete"
-    status = (
-        f"{state}: {len(result.successes)} completed, {failed_count} failed, "
-        f"{cancelled_count} cancelled, {skipped_count} skipped. "
-        f"Batch manifest: {result.manifest_path}"
+    status = t(
+        "neural.video.status.batch",
+        state=batch_state_label("Cancelled" if result.cancelled else "Complete"),
+        successes=len(result.successes),
+        failed=failed_count,
+        cancelled=cancelled_count,
+        skipped=skipped_count,
+        manifest=result.manifest_path,
     )
     if result.failures:
-        status += f"\nFirst error: {result.failures[0].error}"
+        status += "\n" + t("neural.video.status.first_error", error=result.failures[0].error)
     if used_derivative:
-        status += "\nA short H.264 browser proxy was created; the complete original output is unchanged."
+        status += "\n" + t("neural.video.status.output_proxy")
     files = [item.result.output_path for item in result.successes]
     return gr.update(value=output_preview, visible=not direct_disk), files, rows, status
 
@@ -311,66 +325,73 @@ class VideoTab:
 
 
 def build_video_tab(settings: UISettings, gpu_mode_state: object, mask_state: object) -> VideoTab:
+    ui_t = translator(settings.language).t
     with gr.Row():
         with gr.Column(scale=3):
             sources = gr.File(
-                label="Input video(s)", file_count="multiple", file_types=["video"],
+                label=ui_t("common.label.input_video_plural"), file_count="multiple", file_types=["video"],
                 type="filepath", allow_reordering=True, elem_id="video-upload-list",
                 elem_classes=["media-upload-surface"],
             )
-            input_preview = gr.Video(label="Input video preview", interactive=False, visible="hidden")
+            input_preview = gr.Video(label=ui_t("common.label.input_video_preview"), interactive=False, visible="hidden")
             with gr.Row(
                 visible=False, elem_id="video-input-actions",
                 elem_classes=["media-input-actions"],
             ) as input_actions:
                 select_source = build_media_select_button(
-                    "Choose Videos", ["video"], "video-select-input",
+                    ui_t("common.button.choose_videos"), ["video"], "video-select-input",
                 )
                 clear_source = build_media_clear_button("video-clear-input")
             with gr.Row():
-                render = gr.Button("Render video(s)", variant="primary")
-                stop = gr.Button("Stop", variant="stop")
-                preview_frame = gr.Button("Preview 1 frame", visible=False)
-                preview = gr.Button("Preview 3 sec", visible=False)
-                reset = gr.Button("Reset settings")
+                render = gr.Button(ui_t("neural.video.button.render"), variant="primary")
+                stop = gr.Button(ui_t("common.button.stop"), variant="stop")
+                preview_frame = gr.Button(ui_t("common.button.preview_frame"), visible=False)
+                preview = gr.Button(ui_t("common.button.preview_clip"), visible=False)
+                reset = gr.Button(ui_t("common.button.reset_settings"))
             with gr.Column(elem_classes=["neural-controls-unified"]):
                 neural = build_neural_controls(settings)
-                composition = build_composition_widgets()
+                composition = build_composition_widgets(settings.language)
             input_path, output_path = build_path_controls()
             quality = gr.Radio(
-                QUALITY_CHOICES, value=settings.quality, label="Encoding quality",
+                [(option_label(choice, settings.language), choice) for choice in QUALITY_CHOICES],
+                value=settings.quality,
+                label=ui_t("common.label.encoding_quality"),
             )
             with gr.Row():
                 codec = gr.Dropdown(
-                    CODEC_CHOICES, value=settings.codec, label="Video codec",
+                    CODEC_CHOICES, value=settings.codec, label=ui_t("common.label.video_codec"),
                 )
                 container = gr.Dropdown(
                     CONTAINER_CHOICES, value=container_for_codec(settings.codec),
-                    label="Container (automatic)", interactive=False,
+                    label=ui_t("common.label.container"), interactive=False,
                 )
             with gr.Row():
                 rename_mode = gr.Radio(
-                    RENAME_MODES, value=settings.video_rename_mode, label="Rename",
+                    [(option_label(choice, settings.language), choice) for choice in RENAME_MODES],
+                    value=settings.video_rename_mode,
+                    label=ui_t("common.label.rename"),
                 )
                 custom_suffix = gr.Textbox(
-                    value=settings.video_custom_suffix, label="Custom suffix", placeholder="_Neural_Rendering",
+                    value=settings.video_custom_suffix,
+                    label=ui_t("common.label.custom_suffix"),
+                    placeholder=ui_t("neural.image.placeholder.custom_suffix"),
                     interactive=settings.video_rename_mode == "Custom",
                 )
             hdr_mode = gr.Checkbox(
                 value=settings.hdr_mode and hdr_mode_supported(settings.codec),
-                label="HDR Mode",
+                label=ui_t("common.label.hdr_mode"),
                 interactive=hdr_mode_supported(settings.codec),
             )
         with gr.Column(scale=3):
             output_video = gr.Video(
-                label="Output video", interactive=False, visible=True, height=520,
+                label=ui_t("neural.video.label.output_video"), interactive=False, visible=True, height=520,
             )
             save_download, zip_button, zip_download = build_save_controls("video", "nr-video")
-            status = gr.Textbox(label="Status", interactive=False, lines=5, max_lines=12)
+            status = gr.Textbox(label=ui_t("common.label.status"), interactive=False, lines=5, max_lines=12)
             results = gr.Dataframe(
-                headers=BATCH_HEADERS,
-                datatype=["str"] * len(BATCH_HEADERS), interactive=False,
-                label="Batch results", wrap=True,
+                headers=batch_headers(settings.language),
+                datatype=["str"] * len(batch_headers(settings.language)), interactive=False,
+                label=ui_t("common.label.batch_results"), wrap=True,
             )
     tab = VideoTab(
         sources, input_preview, input_actions, select_source, clear_source, neural, composition, mask_state, gpu_mode_state, quality, codec, container, rename_mode,

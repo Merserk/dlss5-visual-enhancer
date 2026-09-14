@@ -6,9 +6,10 @@ from pathlib import Path
 
 import gradio as gr
 from ...core.batch_ui import (
-    BATCH_HEADERS, bind_batch_ui, build_media_clear_button, build_media_select_button,
+    batch_headers, bind_batch_ui, build_media_clear_button, build_media_select_button,
     build_path_controls, build_save_controls,
 )
+from ...core.i18n import batch_state_label, option_label, t, translator
 from PIL import Image
 
 from ...core.naming import RENAME_MODES
@@ -31,12 +32,16 @@ UPSCALING_CHOICES = tuple((mode["label"], factor) for factor, mode in UPSCALING_
 
 
 def build_neural_controls(settings: UISettings):
+    ui_t = translator(settings.language).t
     nr_style = gr.Radio(
-        list(NR_STYLES), value=settings.nr_style, label="NR Style",
+        choices=[(option_label(choice, settings.language), choice) for choice in NR_STYLES],
+        value=settings.nr_style,
+        label=ui_t("neural.label.nr_style"),
     )
     upscaling_factor = gr.Dropdown(
-        choices=list(UPSCALING_CHOICES), value=settings.upscaling_factor,
-        label="Scale",
+        choices=[(option_label(label, settings.language), value) for label, value in UPSCALING_CHOICES],
+        value=settings.upscaling_factor,
+        label=ui_t("neural.label.scale"),
     )
     # Each control is created directly in the parent Column (no gr.Row), so
     # every slider spans the full width in one vertical stack. Creation order
@@ -44,30 +49,30 @@ def build_neural_controls(settings: UISettings):
     # order consumed by render/persist/settings-mirror code.
     nr_intensity = gr.Slider(
         0.0, 2.0, value=settings.nr_intensity, step=0.05, precision=2,
-        label="NR Intensity", buttons=["reset"],
+        label=ui_t("neural.label.nr_intensity"), buttons=["reset"],
     )
     nr_passes = gr.Slider(
         1, 4, value=settings.nr_passes, step=1, precision=0,
-        label="NR Passes", buttons=["reset"],
+        label=ui_t("neural.label.nr_passes"), buttons=["reset"],
     )
     local_tone_strength = gr.Slider(
         0.0, 2.0, value=settings.local_tone_strength, step=0.05, precision=2,
-        label="Local Tone Strength", buttons=["reset"]
+        label=ui_t("neural.label.local_tone_strength"), buttons=["reset"]
     )
     local_structure_strength = gr.Slider(
         0.0, 2.0, value=settings.local_structure_strength, step=0.05, precision=2,
-        label="Local Structure Strength", buttons=["reset"]
+        label=ui_t("neural.label.local_structure_strength"), buttons=["reset"]
     )
     skin_structure_strength = gr.Slider(
         -1.0, 2.0, value=settings.skin_structure_strength, step=0.05, precision=2,
-        label="Skin Structure Strength",
+        label=ui_t("neural.label.skin_structure_strength"),
         buttons=["reset"],
     )
-    composition = build_composition_sliders(settings)
+    composition = build_composition_sliders(settings, ui_t)
     automatic_mask = gr.Radio(
-        choices=AUTOMATIC_MASK_CHOICES,
+        choices=[(option_label(choice, settings.language), choice) for choice in AUTOMATIC_MASK_CHOICES],
         value=automatic_mask_choice(settings.automatic_mask),
-        label="Automatic Mask",
+        label=ui_t("neural.label.automatic_mask"),
     )
     return [
         nr_style, nr_intensity, nr_passes, local_tone_strength, local_structure_strength,
@@ -165,7 +170,7 @@ def render_image_batch(
     *, output_dir=None, controller=None, on_item_update=None, direct_disk=False,
 ):
     if not input_paths:
-        raise gr.Error("Choose at least one image first.")
+        raise gr.Error(t("neural.image.error.choose_image"))
     if isinstance(input_paths, str):
         input_paths = [input_paths]
     options = _image_options(
@@ -188,7 +193,7 @@ def render_image_batch(
         traceback.print_exc()
         if on_item_update is not None:
             raise
-        return [], None, [], f"Failed: {exc}"
+        return [], None, [], f"{t('neural.video.status.failed', error=exc)}"
 
     gallery = []
     for item in ([] if direct_disk else result.successes):
@@ -208,19 +213,25 @@ def render_image_batch(
                 preview = preview.copy()
         gallery.append((preview, Path(item.output_path).name))
     rows = [
-        [Path(item.input_path).name, "Complete", Path(item.output_path).name, "; ".join(item.warnings)]
+        [
+            Path(item.input_path).name,
+            batch_state_label("Complete"),
+            Path(item.output_path).name,
+            t("neural.image.status.row_details", warnings="; ".join(item.warnings)),
+        ]
         for item in result.successes
     ]
     rows.extend(
-        [Path(item.input_path).name, "Failed", "", item.error] for item in result.failures
+        [Path(item.input_path).name, batch_state_label("Failed"), "", item.error] for item in result.failures
     )
-    state = "Cancelled" if result.cancelled else "Complete"
-    status = (
-        f"{state}: {len(result.successes)} image(s) rendered, {len(result.failures)} failed. "
-        "Every successful output returned feature-18 success and has a diagnostic report."
+    status = t(
+        "neural.image.status.batch",
+        state=batch_state_label("Cancelled" if result.cancelled else "Complete"),
+        successes=len(result.successes),
+        failures=len(result.failures),
     )
     if result.failures:
-        status += f"\nFirst error: {result.failures[0].error}"
+        status += "\n" + t("neural.image.status.first_error", error=result.failures[0].error)
     return gallery, [item.output_path for item in result.successes], rows, status
 
 
@@ -251,7 +262,7 @@ def preview_rendered_image(
     del output_dir, ephemeral_preview
     paths = [input_paths] if isinstance(input_paths, str) else list(input_paths or [])
     if len(paths) != 1:
-        raise gr.Error("Choose exactly one image to preview.")
+        raise gr.Error(t("neural.image.error.choose_exactly_one"))
     options = _image_options(
         nr_style, nr_intensity, nr_passes, local_tone_strength, local_structure_strength,
         skin_structure_strength, upscaling_factor, automatic_mask,
@@ -265,7 +276,7 @@ def preview_rendered_image(
         controller=controller, full_size_preview=full_size,
     )
     return (
-        gr.update(value=[(image, f"Preview — {Path(paths[0]).name}")], visible=True),
+        gr.update(value=[(image, t("neural.image.status.preview_title", name=Path(paths[0]).name))], visible=True),
         status,
     )
 
@@ -314,16 +325,17 @@ class ImageTab:
 
 
 def build_image_tab(settings: UISettings, gpu_mode_state: object, mask_state: object) -> ImageTab:
+    ui_t = translator(settings.language).t
     upload_types = ["image", ".svg", ".heic", ".heif", *sorted(RAW_EXTENSIONS)]
     with gr.Row():
         with gr.Column(scale=3):
             sources = gr.File(
-                label="Input image(s)", file_count="multiple", file_types=upload_types,
+                label=ui_t("common.label.input_image_plural"), file_count="multiple", file_types=upload_types,
                 type="filepath", allow_reordering=True, elem_id="image-upload-list",
                 elem_classes=["media-upload-surface"],
             )
             input_gallery = gr.Gallery(
-                label="Input preview", columns=3, height=520, object_fit="contain",
+                label=ui_t("common.label.input_preview"), columns=3, height=520, object_fit="contain",
                 interactive=False, visible="hidden", buttons=["fullscreen"], elem_id="image-input-preview",
             )
             with gr.Row(
@@ -331,46 +343,50 @@ def build_image_tab(settings: UISettings, gpu_mode_state: object, mask_state: ob
                 elem_classes=["media-input-actions"],
             ) as input_actions:
                 select_source = build_media_select_button(
-                    "Choose Images", upload_types, "image-select-input",
+                    ui_t("common.button.choose_images"), upload_types, "image-select-input",
                 )
                 clear_source = build_media_clear_button("image-clear-input")
             with gr.Row():
-                render = gr.Button("Render image(s)", variant="primary")
-                stop = gr.Button("Stop", variant="stop")
-                preview = gr.Button("Preview", visible=False)
-                reset = gr.Button("Reset settings")
+                render = gr.Button(ui_t("neural.image.button.render"), variant="primary")
+                stop = gr.Button(ui_t("common.button.stop"), variant="stop")
+                preview = gr.Button(ui_t("common.button.preview"), visible=False)
+                reset = gr.Button(ui_t("common.button.reset_settings"))
             with gr.Column(elem_classes=["neural-controls-unified"]):
                 neural = build_neural_controls(settings)
-                composition = build_composition_widgets()
+                composition = build_composition_widgets(settings.language)
             input_path, output_path = build_path_controls()
             with gr.Row():
                 output_format = gr.Dropdown(
-                    list(IMAGE_FORMATS), value=settings.image_format, label="Output format",
+                    list(IMAGE_FORMATS), value=settings.image_format, label=ui_t("neural.image.label.output_format"),
                 )
                 quality = gr.Slider(
                     1, 100, value=settings.image_quality, step=1, precision=0,
-                    label="Lossy quality",
+                    label=ui_t("common.label.lossy_quality"),
                 )
             with gr.Row():
                 rename_mode = gr.Radio(
-                    RENAME_MODES, value=settings.image_rename_mode, label="Rename",
+                    [(option_label(choice, settings.language), choice) for choice in RENAME_MODES],
+                    value=settings.image_rename_mode,
+                    label=ui_t("common.label.rename"),
                 )
                 custom_suffix = gr.Textbox(
-                    value=settings.image_custom_suffix, label="Custom suffix", placeholder="_Neural_Rendering",
+                    value=settings.image_custom_suffix,
+                    label=ui_t("common.label.custom_suffix"),
+                    placeholder=ui_t("neural.image.placeholder.custom_suffix"),
                     interactive=settings.image_rename_mode == "Custom",
                 )
         with gr.Column(scale=3):
             output_gallery = gr.Gallery(
-                label="Enhanced previews", columns=2, height=520, object_fit="contain",
+                label=ui_t("neural.image.label.output_gallery"), columns=2, height=520, object_fit="contain",
                 interactive=False, buttons=["download", "download_all", "fullscreen"],
                 elem_id="image-output-preview",
             )
             save_download, zip_button, zip_download = build_save_controls("image", "nr-image")
-            status = gr.Textbox(label="Status", interactive=False, lines=5, max_lines=12)
+            status = gr.Textbox(label=ui_t("common.label.status"), interactive=False, lines=5, max_lines=12)
             results = gr.Dataframe(
-                headers=BATCH_HEADERS,
-                datatype=["str"] * len(BATCH_HEADERS), interactive=False,
-                label="Batch results", wrap=True,
+                headers=batch_headers(settings.language),
+                datatype=["str"] * len(batch_headers(settings.language)), interactive=False,
+                label=ui_t("common.label.batch_results"), wrap=True,
             )
     tab = ImageTab(
         sources, input_gallery, input_actions, select_source, clear_source, neural, composition, mask_state, gpu_mode_state, output_format, quality, rename_mode,

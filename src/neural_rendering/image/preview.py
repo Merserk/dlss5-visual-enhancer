@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from ...core.i18n import t
 from ...core.gpu_selection import resolve_runtime_ai_gpu
 from ...core.jobs import Cancelled, JobController, active_job
 from ...core.runtime import (
@@ -132,11 +133,11 @@ def render_image_preview(
                 )
             elapsed = time.monotonic() - started
             status = (
-                f"Preview complete: {source.name} | {width}×{height} → "
+                f"{t('common.button.preview')}: {source.name} | {width}×{height} -> "
                 f"{output_width}×{output_height} | render {render_width}×{render_height} | "
                 f"{resize_method} resize | {memory_path} | GPU: {gpu_name} | "
                 f"{elapsed:.2f}s. Feature-18 execution verified.\n"
-                "Preview only — no production output image was saved."
+                "Preview only - no production output image was saved."
             )
             _update(controller, progress, 1.0, "Preview ready")
             return preview, status

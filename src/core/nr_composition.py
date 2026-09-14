@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+from .i18n import t
 
 _REVISION_COUNTER = itertools.count(1)
 _REVISION_LOCK = threading.Lock()
@@ -51,7 +52,7 @@ def inspect_nr_mask(path: str | Path | None) -> NRMaskSelection | None:
         return None
     source = Path(path)
     if not source.is_file():
-        raise ValueError("The selected Custom NR Mask is no longer available.")
+        raise ValueError(t("composition.error.mask_missing"))
     try:
         with Image.open(source) as opened:
             opened.seek(0)
@@ -59,9 +60,9 @@ def inspect_nr_mask(path: str | Path | None) -> NRMaskSelection | None:
             width, height = oriented.size
             oriented.load()
     except Exception as exc:
-        raise ValueError(f"Custom NR Mask is not a readable image: {exc}") from exc
+        raise ValueError(t("composition.error.mask_unreadable", error=exc)) from exc
     if width <= 0 or height <= 0:
-        raise ValueError("Custom NR Mask has invalid dimensions.")
+        raise ValueError(t("composition.error.mask_invalid_dimensions"))
     return NRMaskSelection(
         path=str(source.resolve()),
         source_name=source.name,
@@ -82,7 +83,7 @@ def mask_selection(value: object | None) -> NRMaskSelection | None:
     if isinstance(value, dict):
         required = {"path", "source_name", "sha256", "width", "height", "revision"}
         if not required.issubset(value):
-            raise ValueError("Custom NR Mask session state is incomplete.")
+            raise ValueError(t("composition.error.mask_state_incomplete"))
         return NRMaskSelection(
             path=str(value["path"]),
             source_name=str(value["source_name"]),
@@ -91,7 +92,7 @@ def mask_selection(value: object | None) -> NRMaskSelection | None:
             height=int(value["height"]),
             revision=int(value["revision"]),
         )
-    raise ValueError("Custom NR Mask session state is invalid.")
+    raise ValueError(t("composition.error.mask_state_invalid"))
 
 
 def prepare_nr_mask(
@@ -102,7 +103,7 @@ def prepare_nr_mask(
     if selected is None:
         return None
     if isinstance(feather, bool) or int(feather) != feather or not 0 <= int(feather) <= 128:
-        raise ValueError("Mask Feather must be an integer from 0 to 128.")
+        raise ValueError(t("composition.error.mask_feather_range"))
     try:
         with Image.open(selected.path) as opened:
             opened.seek(0)
@@ -110,9 +111,7 @@ def prepare_nr_mask(
                 ImageOps.exif_transpose(opened).convert("RGBA"), dtype=np.float32
             )
     except Exception as exc:
-        raise ValueError(
-            f"Custom NR Mask {selected.source_name!r} could not be decoded."
-        ) from exc
+        raise ValueError(t("composition.error.mask_decode_failed", source_name=selected.source_name)) from exc
     rgb = rgba[..., :3] * (1.0 / 255.0)
     alpha = rgba[..., 3] * (1.0 / 255.0)
     mask = (
@@ -136,7 +135,7 @@ def prepare_nr_mask(
 def mask_report(selection: object | None, feather: int) -> dict[str, Any]:
     selected = mask_selection(selection)
     if selected is None:
-        return {"active": False, "feather_px": int(feather), "feather_status": "inactive — no mask"}
+        return {"active": False, "feather_px": int(feather), "feather_status": t("composition.status.inactive")}
     return {
         "active": True,
         "source_name": selected.source_name,
@@ -159,4 +158,9 @@ def mask_status(selection: object | None) -> str:
     selected = mask_selection(selection)
     if selected is None:
         return ""
-    return f"Active: {selected.source_name} — {selected.width}×{selected.height}."
+    return t(
+        "composition.status.active",
+        source_name=selected.source_name,
+        width=selected.width,
+        height=selected.height,
+    )
