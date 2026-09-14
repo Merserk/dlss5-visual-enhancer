@@ -9,7 +9,7 @@ from ..core.batch_ui import (
     batch_headers, bind_batch_ui, build_media_clear_button, build_media_select_button,
     build_path_controls, build_save_controls,
 )
-from ..core.i18n import option_label, t, translator
+from ..core.i18n import batch_state_label, option_label, t, translator
 
 from ..core.ffmpeg import container_for_codec, hdr_mode_supported
 from ..core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
@@ -80,25 +80,38 @@ def render_frame_interpolation_batch(
     for item in result.successes:
         value = item.result
         details = (
-            f"{value.output_frames} frames; {value.selected_path}; "
-            f"{value.elapsed_seconds:.1f}s; processing {value.output_frames / max(value.elapsed_seconds, 0.001):.1f} frames/s; "
-            f"native {value.native_multiplier}×; cascade stages {value.cascade_stages}; "
-            f"copied {value.copied_frames}, DLSSG {value.generated_frames}, "
-            f"cuts {value.scene_cuts}; {value.decode_backend} → {value.encode_backend}; "
-            f"memory {value.memory_path}; transfers {value.upload_bytes}/{value.download_bytes} bytes; "
-            f"pool {value.surface_pool_pressure.get('allocated', 0)}/"
-            f"{value.surface_pool_pressure.get('capacity', 0)} "
-            f"(waits {value.surface_pool_pressure.get('waits', 0)}); "
-            f"bridge {value.bridge_version}/ABI {value.bridge_abi_version}; report: {value.report_path}"
+            t(
+                "frame_interpolation.status.row_details",
+                output_frames=value.output_frames,
+                selected_path=value.selected_path,
+                elapsed=value.elapsed_seconds,
+                fps=value.output_frames / max(value.elapsed_seconds, 0.001),
+                native_multiplier=value.native_multiplier,
+                cascade_stages=value.cascade_stages,
+                copied_frames=value.copied_frames,
+                generated_frames=value.generated_frames,
+                scene_cuts=value.scene_cuts,
+                decode_backend=value.decode_backend,
+                encode_backend=value.encode_backend,
+                memory_path=value.memory_path,
+                upload_bytes=value.upload_bytes,
+                download_bytes=value.download_bytes,
+                pool_allocated=value.surface_pool_pressure.get("allocated", 0),
+                pool_capacity=value.surface_pool_pressure.get("capacity", 0),
+                pool_waits=value.surface_pool_pressure.get("waits", 0),
+                bridge_version=value.bridge_version,
+                bridge_abi_version=value.bridge_abi_version,
+                report_path=value.report_path,
+            )
         )
         ordered.append(
-            (item.index, [Path(item.input_path).name, "Complete", Path(value.output_path).name, details])
+            (item.index, [Path(item.input_path).name, batch_state_label("Complete"), Path(value.output_path).name, details])
         )
     for item in result.failures:
         state = "Skipped" if item.error == "Cancelled before rendering." else (
             "Cancelled" if item.cancelled else "Failed"
         )
-        ordered.append((item.index, [Path(item.input_path).name, state, "", item.error]))
+        ordered.append((item.index, [Path(item.input_path).name, batch_state_label(state), "", item.error]))
     rows = [row for _index, row in sorted(ordered, key=lambda entry: entry[0])]
     files = [item.result.output_path for item in result.successes]
     try:
@@ -111,15 +124,15 @@ def render_frame_interpolation_batch(
         preview, used_derivative = resolve_final_preview(files[0], preview_mode, controller=controller)
     status = t(
         "frame_interpolation.status.batch",
-        state="Cancelled" if result.cancelled else "Complete",
+        state=batch_state_label("Cancelled" if result.cancelled else "Complete"),
         successes=len(result.successes),
         failures=len(result.failures),
         manifest=result.manifest_path,
     )
     if result.failures:
-        status += f"\nFirst error: {result.failures[0].error}"
+        status += "\n" + t("frame_interpolation.status.first_error", error=result.failures[0].error)
     if used_derivative:
-        status += "\nBrowser preview transcoded to H.264; the original file is unchanged."
+        status += "\n" + t("frame_interpolation.status.proxy_created")
     return gr.update(value=preview, visible=not direct_disk), files, rows, status
 
 @dataclass(slots=True)

@@ -17,6 +17,7 @@ import numpy as np
 
 from .gpu_detection import detect_gpus
 from .gpu_selection import resolve_runtime_ai_gpu
+from .i18n import t
 from .jobs import Cancelled, JobController
 from .neural_bridge import (
     BRIDGE_ABI_VERSION,
@@ -62,13 +63,13 @@ def resolve_upscaling_mode(raw_factor: float) -> tuple[float, dict[str, str | in
     try:
         factor = float(raw_factor)
     except (TypeError, ValueError) as exc:
-        raise ValueError("Scale must be one of: Source, 75%, 50%, 25%.") from exc
+        raise ValueError(t("runtime.error.scale_choices")) from exc
     if not math.isfinite(factor):
-        raise ValueError("Scale must be one of: Source, 75%, 50%, 25%.")
+        raise ValueError(t("runtime.error.scale_choices"))
     for supported, mode in UPSCALING_MODES.items():
         if math.isclose(factor, supported, rel_tol=0.0, abs_tol=1e-9):
             return supported, mode
-    raise ValueError("Scale must be one of: Source, 75%, 50%, 25%.")
+    raise ValueError(t("runtime.error.scale_choices"))
 
 
 def _nearest_even(value: float) -> int:
@@ -80,17 +81,11 @@ def resolve_output_size(width: int, height: int, factor: float) -> tuple[int, in
     output_width = _nearest_even(int(width) * factor)
     output_height = _nearest_even(int(height) * factor)
     if min(output_width, output_height) < 64:
-        raise ValueError(
-            f"The requested {output_width}×{output_height} output is below the supported "
-            f"64×64 minimum. Choose Source, 75%, or 50% for this input."
-        )
+        raise ValueError(t("runtime.error.output_too_small", width=output_width, height=output_height))
     long_edge = max(output_width, output_height)
     short_edge = min(output_width, output_height)
     if long_edge > 7680 or short_edge > 4320:
-        raise ValueError(
-            f"The requested {output_width}×{output_height} output exceeds the supported "
-            f"7680×4320 boundary. The source already exceeds the supported 8K boundary."
-        )
+        raise ValueError(t("runtime.error.output_too_large", width=output_width, height=output_height))
     return output_width, output_height
 
 
@@ -98,9 +93,7 @@ def resolve_native_settings(options: Any) -> dict[str, int | float | bool]:
     try:
         style = NR_STYLES[options.nr_style]
     except KeyError as exc:
-        raise ValueError(
-            f"Unknown NR Style: {options.nr_style!r}. Choose one of: {', '.join(NR_STYLES)}."
-        ) from exc
+        raise ValueError(t("runtime.error.unknown_nr_style", value=options.nr_style, choices=", ".join(NR_STYLES))) from exc
 
     controls = {
         "NR Intensity": (options.nr_intensity, 0.0, 2.0),
@@ -118,28 +111,26 @@ def resolve_native_settings(options: Any) -> dict[str, int | float | bool]:
         try:
             value = float(raw_value)
         except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"{label} must be a number between {minimum:g} and {maximum:g}."
-            ) from exc
+            raise ValueError(t("runtime.error.control_number", label=label, minimum=minimum, maximum=maximum)) from exc
         if not math.isfinite(value) or not minimum <= value <= maximum:
-            raise ValueError(f"{label} must be between {minimum:g} and {maximum:g}.")
+            raise ValueError(t("runtime.error.control_range", label=label, minimum=minimum, maximum=maximum))
         validated[label] = value
 
     if not isinstance(options.automatic_mask, bool):
-        raise ValueError("Automatic Mask must be a boolean value.")
+        raise ValueError(t("runtime.error.automatic_mask_bool"))
     mask_feather = getattr(options, "mask_feather", 0)
     if isinstance(mask_feather, bool) or int(mask_feather) != mask_feather:
-        raise ValueError("Mask Feather must be an integer from 0 to 128.")
+        raise ValueError(t("runtime.error.mask_feather_integer"))
     if not 0 <= int(mask_feather) <= 128:
-        raise ValueError("Mask Feather must be between 0 and 128 pixels.")
+        raise ValueError(t("runtime.error.mask_feather_range"))
     gpu_mode = getattr(options, "nr_gpu_mode", True)
     if not isinstance(gpu_mode, bool):
-        raise ValueError("Neural Rendering GPU mode must be a boolean value.")
+        raise ValueError(t("runtime.error.gpu_mode_bool"))
     nr_passes = getattr(options, "nr_passes", 1)
     if isinstance(nr_passes, bool) or not isinstance(nr_passes, int):
-        raise ValueError("NR Passes must be an integer from 1 to 4.")
+        raise ValueError(t("runtime.error.nr_passes_integer"))
     if not 1 <= nr_passes <= 4:
-        raise ValueError("NR Passes must be between 1 and 4.")
+        raise ValueError(t("runtime.error.nr_passes_range"))
 
     codec_name = str(getattr(options, "codec", ""))
     prefer_nvof = bool(codec_name and "NVENC" not in codec_name.upper())

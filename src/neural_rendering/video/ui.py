@@ -9,7 +9,7 @@ from ...core.batch_ui import (
     batch_headers, bind_batch_ui, build_media_clear_button, build_media_select_button,
     build_path_controls, build_save_controls,
 )
-from ...core.i18n import option_label, t, translator
+from ...core.i18n import batch_state_label, option_label, t, translator
 from ...core.ffmpeg import container_for_codec, hdr_mode_supported
 from ...core.ffmpeg.preview import normalize_preview_encoding, resolve_final_preview
 from ...core.naming import RENAME_MODES
@@ -44,10 +44,13 @@ UPSCALING_CHOICES = tuple((mode["label"], factor) for factor, mode in UPSCALING_
 def build_neural_controls(settings: UISettings):
     ui_t = translator(settings.language).t
     nr_style = gr.Radio(
-        list(NR_STYLES), value=settings.nr_style, label=ui_t("neural.label.nr_style"),
+        choices=[(option_label(choice, settings.language), choice) for choice in NR_STYLES],
+        value=settings.nr_style,
+        label=ui_t("neural.label.nr_style"),
     )
     upscaling_factor = gr.Dropdown(
-        choices=list(UPSCALING_CHOICES), value=settings.upscaling_factor,
+        choices=[(option_label(label, settings.language), value) for label, value in UPSCALING_CHOICES],
+        value=settings.upscaling_factor,
         label=ui_t("neural.label.scale"),
     )
     # Each control is created directly in the parent Column (no gr.Row), so
@@ -201,17 +204,23 @@ def render_video_batch(
     for item in result.successes:
         conversion = item.result
         details = (
-            f"{conversion.frames} frames in {conversion.elapsed_seconds:.1f}s; "
-            f"Neural {conversion.render_width}×{conversion.render_height}; "
-            f"{conversion.resize_method}, {conversion.memory_path}; "
-            f"report: {conversion.report_path}"
+            t(
+                "neural.video.status.row_details",
+                frames=conversion.frames,
+                elapsed=conversion.elapsed_seconds,
+                render_width=conversion.render_width,
+                render_height=conversion.render_height,
+                resize_method=conversion.resize_method,
+                memory_path=conversion.memory_path,
+                report_path=conversion.report_path,
+            )
         )
         ordered_rows.append(
             (
                 item.index,
                 [
                     Path(item.input_path).name,
-                    "Complete",
+                    batch_state_label("Complete"),
                     Path(conversion.output_path).name,
                     details,
                 ],
@@ -222,7 +231,7 @@ def render_video_batch(
             "Cancelled" if item.cancelled else "Failed"
         )
         ordered_rows.append(
-            (item.index, [Path(item.input_path).name, state, "", item.error])
+            (item.index, [Path(item.input_path).name, batch_state_label(state), "", item.error])
         )
     rows = [row for _index, row in sorted(ordered_rows, key=lambda entry: entry[0])]
     try:
@@ -244,16 +253,19 @@ def render_video_batch(
     skipped_count = sum(
         item.error == "Cancelled before rendering." for item in result.failures
     )
-    state = "Cancelled" if result.cancelled else "Complete"
-    status = (
-        f"{state}: {len(result.successes)} completed, {failed_count} failed, "
-        f"{cancelled_count} cancelled, {skipped_count} skipped. "
-        f"Batch manifest: {result.manifest_path}"
+    status = t(
+        "neural.video.status.batch",
+        state=batch_state_label("Cancelled" if result.cancelled else "Complete"),
+        successes=len(result.successes),
+        failed=failed_count,
+        cancelled=cancelled_count,
+        skipped=skipped_count,
+        manifest=result.manifest_path,
     )
     if result.failures:
-        status += f"\nFirst error: {result.failures[0].error}"
+        status += "\n" + t("neural.video.status.first_error", error=result.failures[0].error)
     if used_derivative:
-        status += "\nA short H.264 browser proxy was created; the complete original output is unchanged."
+        status += "\n" + t("neural.video.status.output_proxy")
     files = [item.result.output_path for item in result.successes]
     return gr.update(value=output_preview, visible=not direct_disk), files, rows, status
 

@@ -11,7 +11,7 @@ from ...core.batch_ui import (
 )
 from ...core.disk_paths import resolve_inputs
 from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, container_for_codec, hdr_mode_supported
-from ...core.i18n import option_label, t, translator
+from ...core.i18n import batch_state_label, option_label, t, translator
 from ...core.naming import RENAME_MODES
 from ...settings.storage import processing_gpu_settings
 from .batch import upscale_videos
@@ -38,7 +38,7 @@ def render_upscale_batch(paths, *values, progress=None, output_dir=None, control
         output, detail = display_result(result.successes[0].result, options, controller)
     status = t(
         "upscale.video.status.batch",
-        state="Cancelled" if result.cancelled else "Complete",
+        state=batch_state_label("Cancelled" if result.cancelled else "Complete"),
         completed=len(files),
         failed=len(result.failures),
         detail=detail,
@@ -137,7 +137,11 @@ def build_upscale_tab(settings):
                 reset = gr.Button(ui_t("common.button.reset_settings"))
             with gr.Column():
                 c["vsr_enabled"] = gr.Checkbox(value=opts.vsr_enabled, label=ui_t("upscale.video.label.enable"))
-                c["vsr_quality"] = gr.Dropdown(VSR_QUALITIES, value=opts.vsr_quality, label=ui_t("upscale.label.vsr_quality"))
+                c["vsr_quality"] = gr.Dropdown(
+                    [(option_label(label, settings.language), value) for label, value in VSR_QUALITIES],
+                    value=opts.vsr_quality,
+                    label=ui_t("upscale.label.vsr_quality"),
+                )
                 c["size_mode"] = gr.Radio([(option_label(choice, settings.language), choice) for choice in SIZE_MODES], value=opts.size_mode, label=ui_t("upscale.label.output_sizing"))
                 c["scale_factor"] = gr.Dropdown(
                     SCALE_FACTORS, value=opts.scale_factor, label=ui_t("upscale.label.scale_factor"),

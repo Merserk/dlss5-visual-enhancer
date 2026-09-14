@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .i18n import t
+
 
 RENAME_MODES = ("Auto", "Copy", "Custom")
 _INVALID_FILENAME_CHARACTERS = set('<>:"/\\|?*')
@@ -10,16 +12,16 @@ _INVALID_FILENAME_CHARACTERS = set('<>:"/\\|?*')
 def validate_rename(mode: str, custom_suffix: str) -> str:
     if mode not in RENAME_MODES:
         choices = ", ".join(RENAME_MODES)
-        raise ValueError(f"Rename must be one of: {choices}.")
+        raise ValueError(t("naming.error.rename_choices", choices=choices))
     suffix = str(custom_suffix or "")
     if mode != "Custom":
         return suffix
     if not suffix:
-        raise ValueError("Enter a suffix when Rename is set to Custom.")
+        raise ValueError(t("naming.error.custom_suffix_required"))
     if any(character in _INVALID_FILENAME_CHARACTERS or ord(character) < 32 for character in suffix):
-        raise ValueError('Custom suffix cannot contain < > : " / \\ | ? * or control characters.')
+        raise ValueError(t("naming.error.custom_suffix_invalid_chars"))
     if suffix.endswith((" ", ".")):
-        raise ValueError("Custom suffix cannot end with a space or period.")
+        raise ValueError(t("naming.error.custom_suffix_trailing"))
     return suffix
 
 
@@ -32,7 +34,7 @@ def output_filename(
 ) -> str:
     suffix = validate_rename(mode, custom_suffix)
     if not extension.startswith("."):
-        raise ValueError("Output extension must start with a period.")
+        raise ValueError(t("naming.error.output_extension"))
     if mode == "Auto":
         stem = auto_stem
     else:
@@ -44,6 +46,4 @@ def output_filename(
 
 def require_available_output(path: Path) -> None:
     if path.exists():
-        raise FileExistsError(
-            f"Output already exists: {path.name}. Rename or remove the existing file first."
-        )
+        raise FileExistsError(t("naming.error.output_exists", name=path.name))

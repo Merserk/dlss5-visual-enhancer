@@ -33,21 +33,29 @@ def first_video_path(paths: list[str] | str | None) -> str | None:
 def frame_interpolation_capability_text() -> str:
     ai_gpu_uuid, _video_gpu_uuid = processing_gpu_settings()
     capabilities = probe_frame_interpolation_capabilities(ai_gpu_uuid)
-    hags = "Enabled" if capabilities.hags_enabled else "Disabled"
-    native = (
-        f"{capabilities.native_multiplier}× "
-        f"({capabilities.native_generated_frame_max} generated frame per evaluation)"
+    hags = t("common.value.enabled") if capabilities.hags_enabled else t("common.value.disabled")
+    native = t(
+        "frame_interpolation.capability.native_max",
+        multiplier=capabilities.native_multiplier,
+        generated_frames=capabilities.native_generated_frame_max,
     )
-    cascade = "Available" if capabilities.cascade_available else "Unavailable"
-    state = "Ready" if capabilities.available else "Unavailable"
+    cascade = t("common.value.available") if capabilities.cascade_available else t("common.value.unavailable")
+    state = t("common.value.ready") if capabilities.available else t("common.value.unavailable")
     detail = f"\n{capabilities.detail}" if capabilities.detail else ""
-    return (
-        f"{state} — GPU: {capabilities.gpu} | Driver: {capabilities.driver} | "
-        f"HAGS: {hags}\nNative maximum: {native} | Cascade: {cascade} | "
-        f"NVOF: {'SLOW/available' if capabilities.nvof_available else 'unavailable'}\n"
-        f"Bridge: {capabilities.bridge_version} (ABI {capabilities.bridge_abi_version}) | "
-        f"CUDA interop: {'ready' if capabilities.cuda_interop else 'unavailable'} | "
-        f"DLSSG runtime: {capabilities.runtime_version}{detail}"
+    return t(
+        "frame_interpolation.capability.summary",
+        state=state,
+        gpu=capabilities.gpu,
+        driver=capabilities.driver,
+        hags=hags,
+        native=native,
+        cascade=cascade,
+        nvof=t("common.value.slow_available") if capabilities.nvof_available else t("common.value.unavailable"),
+        bridge_version=capabilities.bridge_version,
+        bridge_abi_version=capabilities.bridge_abi_version,
+        cuda_interop=t("common.value.ready") if capabilities.cuda_interop else t("common.value.unavailable"),
+        runtime_version=capabilities.runtime_version,
+        detail=detail,
     )
 
 

@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Callable
 
+from .i18n import batch_state_label, t
+
 TERMINAL = {"Complete", "Failed", "Cancelled", "Skipped"}
 
 
@@ -84,21 +86,27 @@ class BatchProgress:
             except Exception:
                 self.legacy_progress = None
 
-    def advance(self, index: int, value: float = 0.0, detail: str = "Preparing") -> None:
+    def advance(self, index: int, value: float = 0.0, detail: str | None = None) -> None:
+        if detail is None:
+            detail = t("batch.detail.preparing")
         self.emit(BatchItemUpdate(index, "Running", value, detail, elapsed_seconds=self.elapsed(index)))
 
     def elapsed(self, index: int) -> float:
         item = self.items[index]
         return time.monotonic() - item.started if item.started is not None else 0.0
 
-    def complete(self, index: int, output_path: str, detail: str = "Saved and verified") -> None:
+    def complete(self, index: int, output_path: str, detail: str | None = None) -> None:
+        if detail is None:
+            detail = t("batch.detail.saved_verified")
         self.emit(BatchItemUpdate(index, "Complete", 1.0, detail, str(output_path), self.elapsed(index)))
 
     def fail(self, index: int, error, *, cancelled: bool = False) -> None:
         self.emit(BatchItemUpdate(index, "Cancelled" if cancelled else "Failed",
                                  self.items[index].progress, str(error), elapsed_seconds=self.elapsed(index)))
 
-    def skip_from(self, index: int, detail: str = "Cancelled before rendering.") -> None:
+    def skip_from(self, index: int, detail: str | None = None) -> None:
+        if detail is None:
+            detail = t("batch.detail.cancelled_before_rendering")
         for item in self.items[index:]:
             if item.state == "Queued":
                 self.emit(BatchItemUpdate(item.index, "Skipped", detail=detail))
@@ -109,8 +117,13 @@ class BatchProgress:
         if cancelled or error:
             for item in self.items:
                 if item.state == "Running":
-                    self.fail(item.index, error or "Stopped by user.", cancelled=cancelled)
-            self.skip_from(0, "Cancelled before rendering." if cancelled else "Batch could not continue.")
+                    self.fail(item.index, error or t("batch.detail.stopped_by_user"), cancelled=cancelled)
+            self.skip_from(
+                0,
+                t("batch.detail.cancelled_before_rendering")
+                if cancelled
+                else t("batch.detail.batch_could_not_continue"),
+            )
         failures = sum(item.state == "Failed" for item in self.items)
         successes = sum(item.state == "Complete" for item in self.items)
         state = ("Cancelled" if cancelled else "Failed" if error or (failures and not successes)
@@ -145,21 +158,30 @@ class BatchProgress:
             items = [replace(item) for item in self.items]
             stats = self.statistics()
             detail, manifest = self.detail, self.manifest_path
-        rows = [[Path(item.input_path).name, item.state,
+        rows = [[Path(item.input_path).name, batch_state_label(item.state),
                  f"{min(99, int(item.progress * 100)) if item.state != 'Complete' else 100}%",
                  f"{self.elapsed(item.index) if item.state == 'Running' else item.elapsed_seconds:.1f}s",
                  item.output_path, (item.detail if len(item.detail) <= 600 else
-                                    item.detail[:600] + "… (full details in the batch report)")] for item in items]
+                                    item.detail[:600] + t("batch.detail.full_report"))] for item in items]
         current = next((f"{item.index + 1}/{len(items)} — {Path(item.input_path).name}" for item in items
-                        if item.state == "Running"), "None")
-        status = (f"{stats['state']} — {stats['progress']:.0%}\n"
-                  f"Files: {stats['total']} | Completed: {stats['complete']} | Failed: {stats['failed']} | "
-                  f"Cancelled: {stats['cancelled']} | Skipped: {stats['skipped']} | Queued: {stats['queued']}\n"
-                  f"Current: {current} | Elapsed: {stats['elapsed_seconds']:.1f}s")
+                        if item.state == "Running"), t("batch.current.none"))
+        status = t(
+            "batch.status.summary",
+            state=batch_state_label(stats["state"]),
+            progress=f"{stats['progress']:.0%}",
+            total=stats["total"],
+            complete=stats["complete"],
+            failed=stats["failed"],
+            cancelled=stats["cancelled"],
+            skipped=stats["skipped"],
+            queued=stats["queued"],
+            current=current,
+            elapsed=stats["elapsed_seconds"],
+        )
         if output_dir:
-            status += f"\nOutput folder: {output_dir}"
+            status += "\n" + t("batch.status.output_folder", path=output_dir)
         if detail:
             status += f"\n{detail}"
         if manifest:
-            status += f"\nBatch report: {manifest}"
+            status += "\n" + t("batch.status.report", path=manifest)
         return rows, status

@@ -122,7 +122,11 @@ def build_image_tab(settings):
                 preview = gr.Button(ui_t("common.button.preview"), visible=False)
                 reset = gr.Button(ui_t("common.button.reset_settings"))
             with gr.Column(elem_id="upscale-image-vsr-box"):
-                c["vsr_quality"] = gr.Dropdown(VSR_QUALITIES, value=opts.vsr_quality, label=ui_t("upscale.label.vsr_quality"))
+                c["vsr_quality"] = gr.Dropdown(
+                    [(option_label(label, settings.language), value) for label, value in VSR_QUALITIES],
+                    value=opts.vsr_quality,
+                    label=ui_t("upscale.label.vsr_quality"),
+                )
                 c["size_mode"] = gr.Radio([(option_label(choice, settings.language), choice) for choice in SIZE_MODES], value=opts.size_mode, label=ui_t("upscale.label.output_sizing"))
                 c["scale_factor"] = gr.Dropdown(
                     SCALE_FACTORS, value=opts.scale_factor, label=ui_t("upscale.label.scale_factor"),

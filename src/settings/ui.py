@@ -499,7 +499,7 @@ def _settings_component_values(settings: UISettings) -> tuple:
 
 
 def _gpu_choices(prepared) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    automatic = [("Auto", "auto")]
+    automatic = [(option_label("Auto"), "auto")]
     ai = []
     for gpu in prepared.gpus:
         if not gpu.get("ai_compatible"):
@@ -580,10 +580,10 @@ def persist_gpu_settings(ai_gpu_uuid: str, video_gpu_uuid: str) -> str:
         if settings != current:
             save_settings(CONFIG_PATH, settings)
         SETTINGS_STATE.current = settings
-    ai_name = "Auto" if ai_gpu_uuid == "auto" else next(
+    ai_name = option_label("Auto") if ai_gpu_uuid == "auto" else next(
         label for label, value in ai_choices if value == ai_gpu_uuid
     )
-    video_name = "Auto" if video_gpu_uuid == "auto" else next(
+    video_name = option_label("Auto") if video_gpu_uuid == "auto" else next(
         label for label, value in video_choices if value == video_gpu_uuid
     )
     return t("settings.gpu.saved", ai=ai_name, video=video_name)

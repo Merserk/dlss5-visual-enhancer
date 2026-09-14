@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from ..core.i18n import detect_system_language, SUPPORTED_LANGUAGES, normalize_language
+from ..core.i18n import detect_system_language, SUPPORTED_LANGUAGES, normalize_language, t
 from ..core.ffmpeg import CODEC_CHOICES as FFMPEG_CODEC_CHOICES, ENCODING_QUALITIES, HDR_ALLOWED_CODECS, hdr_mode_supported
 from ..core.naming import validate_rename
 from ..core.runtime import resolve_native_settings, resolve_upscaling_mode
@@ -38,7 +38,7 @@ def automatic_mask_choice(enabled: bool) -> str:
 def parse_automatic_mask(value: str) -> bool:
     if value not in AUTOMATIC_MASK_CHOICES:
         choices = ", ".join(AUTOMATIC_MASK_CHOICES)
-        raise ValueError(f"Automatic Mask must be one of: {choices}.")
+        raise ValueError(t("settings.error.automatic_mask", choices=choices))
     return value == "On"
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +156,7 @@ def _validate(settings: UISettings) -> UISettings:
         ("Video Processing GPU", settings.video_gpu_uuid),
     ):
         if not isinstance(value, str) or not value.strip() or len(value) > 160:
-            raise ValueError(f"{label} selection must be Automatic or a valid GPU UUID.")
+            raise ValueError(t("settings.error.gpu_selection", label=label))
     resolve_native_settings(settings)
     if isinstance(settings.nr_passes, bool) or not isinstance(settings.nr_passes, int):
         raise ValueError("NR Passes must be an integer from 1 to 4.")
@@ -180,7 +180,7 @@ def _validate(settings: UISettings) -> UISettings:
     if not isinstance(settings.full_size_image_previews, bool):
         raise ValueError("Full size quality preview must be a boolean value.")
     if settings.language not in LANGUAGE_CHOICES:
-        raise ValueError(f"Unknown language: {settings.language!r}.")
+        raise ValueError(t("settings.error.unknown_language", value=settings.language))
     # Migrate old codec names before validation
     migrated_codec = _migrate_codec(settings.codec)
     migrated_fi_codec = _migrate_codec(settings.frame_interpolation_codec)

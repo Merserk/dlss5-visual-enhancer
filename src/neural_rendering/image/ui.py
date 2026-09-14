@@ -9,7 +9,7 @@ from ...core.batch_ui import (
     batch_headers, bind_batch_ui, build_media_clear_button, build_media_select_button,
     build_path_controls, build_save_controls,
 )
-from ...core.i18n import option_label, t, translator
+from ...core.i18n import batch_state_label, option_label, t, translator
 from PIL import Image
 
 from ...core.naming import RENAME_MODES
@@ -34,10 +34,13 @@ UPSCALING_CHOICES = tuple((mode["label"], factor) for factor, mode in UPSCALING_
 def build_neural_controls(settings: UISettings):
     ui_t = translator(settings.language).t
     nr_style = gr.Radio(
-        list(NR_STYLES), value=settings.nr_style, label=ui_t("neural.label.nr_style"),
+        choices=[(option_label(choice, settings.language), choice) for choice in NR_STYLES],
+        value=settings.nr_style,
+        label=ui_t("neural.label.nr_style"),
     )
     upscaling_factor = gr.Dropdown(
-        choices=list(UPSCALING_CHOICES), value=settings.upscaling_factor,
+        choices=[(option_label(label, settings.language), value) for label, value in UPSCALING_CHOICES],
+        value=settings.upscaling_factor,
         label=ui_t("neural.label.scale"),
     )
     # Each control is created directly in the parent Column (no gr.Row), so
@@ -210,19 +213,25 @@ def render_image_batch(
                 preview = preview.copy()
         gallery.append((preview, Path(item.output_path).name))
     rows = [
-        [Path(item.input_path).name, "Complete", Path(item.output_path).name, "; ".join(item.warnings)]
+        [
+            Path(item.input_path).name,
+            batch_state_label("Complete"),
+            Path(item.output_path).name,
+            t("neural.image.status.row_details", warnings="; ".join(item.warnings)),
+        ]
         for item in result.successes
     ]
     rows.extend(
-        [Path(item.input_path).name, "Failed", "", item.error] for item in result.failures
+        [Path(item.input_path).name, batch_state_label("Failed"), "", item.error] for item in result.failures
     )
-    state = "Cancelled" if result.cancelled else "Complete"
-    status = (
-        f"{state}: {len(result.successes)} image(s) rendered, {len(result.failures)} failed. "
-        "Every successful output returned feature-18 success and has a diagnostic report."
+    status = t(
+        "neural.image.status.batch",
+        state=batch_state_label("Cancelled" if result.cancelled else "Complete"),
+        successes=len(result.successes),
+        failures=len(result.failures),
     )
     if result.failures:
-        status += f"\nFirst error: {result.failures[0].error}"
+        status += "\n" + t("neural.image.status.first_error", error=result.failures[0].error)
     return gallery, [item.output_path for item in result.successes], rows, status
 
 
