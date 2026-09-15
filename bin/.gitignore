@@ -3,3 +3,5 @@
 *
 !.gitignore
 !README.md
+!python-3.13.15-embed-amd64/dlssg_sm86.ini
+!python-3.13.15-embed-amd64/version.dll
