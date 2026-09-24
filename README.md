@@ -101,6 +101,15 @@ Image processing applies EXIF orientation, handles supported color profiles, pre
 - **RTX Video:** RTX Video Super Resolution and RTX Video HDR require compatible NVIDIA RTX hardware and driver support.
 - **NVIDIA NVENC:** NVIDIA NVENC output requires hardware encoding support for the selected codec and output settings. CPU encoding options are also available.
 
+### Laptop GPUs
+
+Notebook RTX GPUs (for example the GeForce RTX 5050 Laptop GPU) are supported. Visual Enhancer detects them automatically, tolerates the extra start-up time while an Optimus dGPU wakes up and loads the neural model, keeps Windows from throttling or sleeping during renders, and reports the GPU profile in Diagnostics. For best results:
+
+- Keep the charger connected; laptop GPUs run at much lower power limits on battery.
+- Enable **Hardware-accelerated GPU scheduling** (required for DLSS Frame Generation).
+- In **Windows Settings → System → Display → Graphics**, set Visual Enhancer to **High performance**.
+- On 8 GB GPUs, prefer 1 NR pass, Source or 75% Scale for 4K sources, and Live at 1080p or lower.
+
 ## Settings
 
 ### DLSS 5 Neural Rendering

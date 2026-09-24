@@ -24,6 +24,8 @@ from ..core.paths import CONFIG_PATH, OUTPUTS, LOGS, FFMPEG, FFPROBE, MPV, APP_T
 from ..core.disk_paths import prepare_output_dir, supported_file as _is_supported_media_file
 from ..core.cache_cleanup import cleanup_old_caches
 from ..core import app_log
+from ..core.power import on_battery
+from ..core.gpu_detection import LOW_VRAM_THRESHOLD_MB
 from ..core.runtime import prepare_runtime, NR_STYLES, UPSCALING_MODES, resolve_upscaling_mode, resolve_output_size
 from ..core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, FIXED_QUALITY_CODECS, container_for_codec, hdr_mode_supported, probe_video
 from ..core.naming import RENAME_MODES, validate_rename
@@ -982,6 +984,39 @@ class AppBridge(QObject):
                     return gpu
         return self._prepared.gpu
 
+    def _gpu_profile_text(self) -> str:
+        gpu = self._display_gpu()
+        if not gpu:
+            return "unknown"
+        parts = ["Laptop GPU" if gpu.get("is_laptop") else "Desktop GPU"]
+        if gpu.get("low_vram"):
+            parts.append("low-VRAM (8 GB class)")
+        battery = on_battery()
+        if battery is not None:
+            parts.append("on battery" if battery else "on AC power")
+        return ", ".join(parts)
+
+    def _laptop_startup_warnings(self) -> list[str]:
+        """Actionable hints for notebook GPUs; never blocks startup."""
+        gpu = self._display_gpu()
+        if not gpu.get("is_laptop"):
+            return []
+        warnings: list[str] = []
+        if on_battery():
+            warnings.append(
+                f"{gpu.get('display_name', 'The laptop GPU')} is running on battery. Windows and "
+                "the NVIDIA driver limit GPU power on battery; plug in the charger for full "
+                "Neural Rendering, RTX Video, and Frame Generation performance."
+            )
+        mb = int(gpu.get("memory_mb", 0) or 0)
+        if 0 < mb <= LOW_VRAM_THRESHOLD_MB:
+            warnings.append(
+                f"{round(mb / 1024)} GB laptop GPU detected. For smooth results keep Neural "
+                "Rendering at 1 pass and Source/75% scale for 4K sources, Live at 1080p or "
+                "lower, and close other GPU-heavy applications while rendering."
+            )
+        return warnings
+
     @Property(str, notify=runtimeStateChanged)
     def gpuName(self) -> str:
         if self._prepared is None:
@@ -992,8 +1027,9 @@ class AppBridge(QObject):
     def gpuVram(self) -> str:
         if self._prepared is None:
             return ""
-        mb = int(self._display_gpu().get("memory_total_mb", 0) or 0)
-        return f"{mb // 1024} GB" if mb else ""
+        gpu = self._display_gpu()
+        mb = int(gpu.get("memory_total_mb", 0) or gpu.get("memory_mb", 0) or 0)
+        return f"{round(mb / 1024)} GB" if mb else ""
 
     @Property(int, notify=runtimeStateChanged)
     def gpuCount(self) -> int:
@@ -1073,6 +1109,7 @@ class AppBridge(QObject):
             f"Qt: {qVersion()}",
             f"OS: {platform.platform()}",
             f"GPU: {self.gpuName} {self.gpuVram}".rstrip(),
+            f"GPU profile: {self._gpu_profile_text()}",
             f"AI GPU selection: {self._settings.ai_gpu_uuid}",
             f"Video GPU selection: {self._settings.video_gpu_uuid}",
             f"FFmpeg: {'Available' if Path(FFMPEG).is_file() else 'Missing'} ({FFMPEG})",
@@ -1185,7 +1222,8 @@ class AppBridge(QObject):
         for g in (() if self._prepared is None else self._prepared.gpus):
             if g.get("ai_compatible"):
                 name = g.get("display_name", "GPU")
-                vram = f" | {g.get('memory_total_mb', 0) // 1024} GB" if g.get("memory_total_mb") else ""
+                mb = int(g.get("memory_total_mb", 0) or g.get("memory_mb", 0) or 0)
+                vram = f" | {round(mb / 1024)} GB" if mb else ""
                 choices.append({"label": f"{name}{vram}", "value": str(g.get("uuid"))})
         return choices
 
@@ -1247,6 +1285,9 @@ class AppBridge(QObject):
         for warning in self._startup_warnings:
             self._log(f"Startup warning: {warning}")
             app_log.error("startup", warning)
+        for hint in self._laptop_startup_warnings():
+            self._log(f"Laptop GPU: {hint}")
+            app_log.info("startup", hint)
 
     def _normalize_gpu_selections(self) -> None:
         if self._prepared is None:
