@@ -159,6 +159,10 @@ class PreviewImageProvider(QQuickImageProvider):
 
     @staticmethod
     def _numpy_to_qimage(arr: np.ndarray) -> QImage:
+        if arr.dtype == np.uint16 and arr.ndim == 3 and arr.shape[2] == 4:
+            h, w, _ = arr.shape
+            contiguous = np.ascontiguousarray(arr)
+            return QImage(contiguous.data, w, h, 8 * w, QImage.Format.Format_RGBA64).copy()
         if arr.ndim == 2:
             h, w = arr.shape
             return QImage(arr.data, w, h, w, QImage.Format.Format_Grayscale8).copy()

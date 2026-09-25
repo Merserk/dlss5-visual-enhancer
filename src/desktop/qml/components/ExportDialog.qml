@@ -17,8 +17,8 @@ QQC2.Dialog {
     function openForContext(key) {
         if (!appBridge) return
         contextKey = key
-        destinationMode = "output"
-        selectedFolder = ""
+        destinationMode = appBridge.exportDestinationMode ? appBridge.exportDestinationMode : "output"
+        selectedFolder = appBridge.exportFolder || ""
         errorMessage = ""
         if (key === "nr-image") {
             renameMode = appBridge.imageRenameMode

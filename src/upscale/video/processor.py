@@ -36,8 +36,33 @@ def _process(source, options, progress, output_dir, controller, capabilities):
         metadata = inspect_video(source, controller, reject_hdr=True)
         output_width, output_height, _ = output_size(
             metadata["width"], metadata["height"], options)
-        capabilities = capabilities or probe_capabilities(
+        capabilities = capabilities or (probe_capabilities(
             options.ai_gpu_uuid, controller=controller)
+            if options.engine != "DLSS" or options.hdr_enabled else None)
+        if options.engine == "DLSS":
+            from ...core.gpu_selection import detect_gpu
+            from .dlss_pipeline import convert_video_dlss
+            from .cuda_pipeline import DLSSNeedsHostFallback
+            ai_gpu = detect_gpu(options.ai_gpu_uuid)
+            requested_video_gpu = (
+                str(ai_gpu["uuid"]) if options.video_gpu_uuid == "auto"
+                else options.video_gpu_uuid)
+            video_gpu = ffmpeg.resolve_video_gpu(
+                detect_gpus(), requested_video_gpu, options.codec,
+                output_width, output_height)
+            if is_nvenc(options.codec) and video_gpu is None:
+                raise RuntimeError("The selected NVIDIA encoder cannot encode this DLSS output size.")
+            if is_nvenc(options.codec):
+                try:
+                    return convert_video_cuda_nvenc(
+                        source, options, controller=controller, progress=progress,
+                        output_dir=output_dir, metadata=metadata,
+                        capabilities=capabilities, video_gpu=video_gpu)
+                except DLSSNeedsHostFallback:
+                    app_log.info("upscale-dlss", "NVDEC unavailable; using the host frame boundary")
+            return convert_video_dlss(
+                source, options, controller=controller, progress=progress,
+                output_dir=output_dir, metadata=metadata, video_gpu=video_gpu)
         requested_video_gpu = (
             str(capabilities.gpu["uuid"])
             if options.video_gpu_uuid == "auto"

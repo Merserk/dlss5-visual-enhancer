@@ -19,12 +19,13 @@ import shutil
 import time
 from pathlib import Path
 
-from .paths import APP_TEMP, JOBS
+from .paths import APP_TEMP, JOBS, PREVIEW_CACHE
 
 # Agreed retention: treat anything older than 24h as stale
 # (startup sweep + periodic sweep).
 CACHE_SWEEP_INTERVAL_SECONDS = 3600
 CACHE_MAX_AGE_SECONDS = 24 * 3600
+PREVIEW_CACHE_MAX_BYTES = 8 * 1024 ** 3
 
 
 def resolve_app_temp_dir() -> Path | None:
@@ -71,7 +72,8 @@ def _remove_entry(path: Path) -> int:
     return 0
 
 
-def sweep_dir_by_age(root: Path, max_age_seconds: int) -> tuple[int, int]:
+def sweep_dir_by_age(root: Path, max_age_seconds: int, *,
+                     excluded_names: frozenset[str] = frozenset()) -> tuple[int, int]:
     """Remove direct children of ``root`` older than ``max_age_seconds``.
 
     Returns ``(removed_count, freed_bytes)``. Never raises, never removes
@@ -85,6 +87,8 @@ def sweep_dir_by_age(root: Path, max_age_seconds: int) -> tuple[int, int]:
         return (0, 0)
     now = time.time()
     for entry in entries:
+        if entry.name in excluded_names:
+            continue
         try:
             stat_result = os.stat(entry.path, follow_symlinks=False)
         except OSError:
@@ -94,6 +98,49 @@ def sweep_dir_by_age(root: Path, max_age_seconds: int) -> tuple[int, int]:
         freed += _remove_entry(Path(entry.path))
         removed += 1
     return (removed, freed)
+
+
+def prune_preview_cache(max_bytes: int = PREVIEW_CACHE_MAX_BYTES, *,
+                        root: Path = PREVIEW_CACHE,
+                        protected_keys: set[str] | None = None,
+                        min_idle_seconds: int = 600) -> tuple[int, int]:
+    """Evict least recently used stage entries when the preview cache is full."""
+    protected_keys = protected_keys or set()
+    try:
+        entries = list(os.scandir(root))
+    except OSError:
+        return (0, 0)
+    sized: list[tuple[float, Path, int]] = []
+    total = 0
+    now = time.time()
+    for entry in entries:
+        path = Path(entry.path)
+        try:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            stat = entry.stat(follow_symlinks=False)
+            size = 0
+            for folder, _dirs, files in os.walk(path):
+                for name in files:
+                    try:
+                        size += (Path(folder) / name).stat().st_size
+                    except OSError:
+                        pass
+            total += size
+            if entry.name not in protected_keys and _entry_age_seconds(stat, now) > min_idle_seconds:
+                sized.append((stat.st_mtime, path, size))
+        except OSError:
+            continue
+    removed = freed = 0
+    for _mtime, path, size in sorted(sized):
+        if total <= max_bytes:
+            break
+        actual = _remove_entry(path)
+        if not path.exists():
+            removed += 1
+            freed += actual
+            total -= size
+    return removed, freed
 
 
 def cleanup_old_caches(
@@ -111,11 +158,23 @@ def cleanup_old_caches(
     app_dir = resolve_app_temp_dir()
     if app_dir is not None:
         try:
-            removed, freed = sweep_dir_by_age(app_dir, max_age_seconds)
+            removed, freed = sweep_dir_by_age(
+                app_dir, max_age_seconds, excluded_names=frozenset({PREVIEW_CACHE.name}))
             removed_total += removed
             freed_total += freed
         except Exception:
             pass
+
+    try:
+        if PREVIEW_CACHE.is_dir():
+            removed, freed = sweep_dir_by_age(PREVIEW_CACHE, max_age_seconds)
+            removed_total += removed
+            freed_total += freed
+            removed, freed = prune_preview_cache(root=PREVIEW_CACHE)
+            removed_total += removed
+            freed_total += freed
+    except Exception:
+        pass
 
     try:
         if JOBS.is_dir():

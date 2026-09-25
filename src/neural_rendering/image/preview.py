@@ -62,20 +62,30 @@ def render_image_preview(
                     f"{source.name} is {width}×{height}; DLSS requires at least 64×64."
                 )
 
-            output_width, output_height = resolve_output_size(
-                width, height, options.upscaling_factor,
-            )
+            dlss_details = None
+            if options.scale_method == "DLSS":
+                from ...core.dlss_bridge import process_image as process_dlss_image
+                _update(controller, progress, .08, "Processing DLSS phases")
+                dlss_rgba, dlss_details = process_dlss_image(
+                    decoded.rgba, options.dlss_mode, options.dlss_preset,
+                    gpu_uuid=options.ai_gpu_uuid, controller=controller)
+                output_height, output_width = dlss_rgba.shape[:2]
+            else:
+                dlss_rgba = None
+                output_width, output_height = resolve_output_size(
+                    width, height, options.upscaling_factor)
             prepared = prepare_runtime()
             gpu = resolve_runtime_ai_gpu(
                 prepared.gpus, prepared.runtime_bundle, options.ai_gpu_uuid,
             )
-            factor, mode = resolve_upscaling_mode(options.upscaling_factor)
+            factor, mode = resolve_upscaling_mode(
+                1.0 if dlss_rgba is not None else options.upscaling_factor)
             native = resolve_native_settings(options)
 
             _update(controller, progress, .12, "Starting D3D12/NGX bridge")
             session = DLSSFrameSession(
-                input_width=width,
-                input_height=height,
+                input_width=output_width if dlss_rgba is not None else width,
+                input_height=output_height if dlss_rgba is not None else height,
                 output_width=output_width,
                 output_height=output_height,
                 frame_count=None,
@@ -90,7 +100,11 @@ def render_image_preview(
             )
             _update(controller, progress, .28, "Processing image")
             render_rgba = resize_fit(
-                decoded.rgba, session.render_width, session.render_height,
+                dlss_rgba if dlss_rgba is not None else decoded.rgba,
+                session.render_width, session.render_height,
+            )
+            session.diagnostics.source_format = (
+                f"{decoded.metadata['source_format']}/{decoded.metadata['source_bit_depth']}"
             )
             processed, _pts = session.process(
                 index=0, rgba=render_rgba, reset=True, pts=0,
@@ -100,7 +114,7 @@ def render_image_preview(
             verify_feature_18(session.bridge_logs, session.structured_status())
 
             if decoded.alpha is None:
-                processed[..., 3] = 255
+                processed[..., 3] = np.iinfo(processed.dtype).max
             elif decoded.alpha.shape == (output_height, output_width):
                 processed[..., 3] = decoded.alpha
             else:
@@ -112,7 +126,7 @@ def render_image_preview(
 
             render_width = session.render_width
             render_height = session.render_height
-            resize_method = "none" if factor == 1.0 else "lanczos"
+            resize_method = "dlss" if dlss_details else ("none" if factor == 1.0 else "lanczos")
             memory_path = session.diagnostics.memory_path
             gpu_name = str(gpu["display_name"])
 
@@ -129,6 +143,7 @@ def render_image_preview(
                 f"Preview complete: {source.name} | {width}×{height} → "
                 f"{output_width}×{output_height} | render {render_width}×{render_height} | "
                 f"{resize_method} resize | {memory_path} | GPU: {gpu_name} | "
+                f"{'DLSS ' + options.dlss_mode + ' preset ' + options.dlss_preset + ' → ' if dlss_details else ''}"
                 f"{elapsed:.2f}s. Feature-18 execution verified.\n"
                 "Preview only — no production output image was saved."
             )

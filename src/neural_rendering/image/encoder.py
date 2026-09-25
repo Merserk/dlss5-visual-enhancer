@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import atexit
 import os
+import struct
 import tempfile
 import threading
 import time
 import warnings as python_warnings
+import zlib
 from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
+import cv2
+import pillow_heif
+import tifffile
 from PIL import Image
 
 from .models import ImageConversionOptions
@@ -27,6 +32,12 @@ _preview_cache: OrderedDict[str, tuple[Image.Image, int]] = OrderedDict()
 _preview_spill: dict[str, Path] = {}
 _preview_cache_bytes = 0
 _preview_cache_lock = threading.Lock()
+
+
+def _rgba8_preview(rgba: np.ndarray) -> np.ndarray:
+    if rgba.dtype == np.uint8:
+        return rgba
+    return np.rint(rgba.astype(np.float32) * (255.0 / 65535.0)).astype(np.uint8)
 
 
 def _clear_preview_cache() -> None:
@@ -96,7 +107,7 @@ def make_image_preview(
     encoding. JPEG is the one format-specific exception: production JPEG output
     composites transparency over white, so the gallery preview mirrors that.
     """
-    image = Image.fromarray(rgba, mode="RGBA")
+    image = Image.fromarray(_rgba8_preview(rgba), mode="RGBA")
     try:
         if output_format == "JPEG":
             if has_transparency is None:
@@ -130,7 +141,7 @@ def save_full_size_image_preview(
     )
     os.close(handle)
     path = Path(raw_path)
-    source = Image.fromarray(rgba, mode="RGBA")
+    source = Image.fromarray(_rgba8_preview(rgba), mode="RGBA")
     display = source
     try:
         if output_format == "JPEG":
@@ -219,9 +230,110 @@ def _metadata_save_args(metadata: dict[str, object], output_format: str) -> dict
         args["dpi"] = metadata["dpi"]
     if metadata.get("exif") and output_format in {"JPEG", "WebP", "AVIF", "TIFF", "PNG"}:
         args["exif"] = metadata["exif"]
-    if metadata.get("xmp") and output_format in {"WebP", "AVIF"}:
+    if metadata.get("xmp") and output_format in {"WebP", "AVIF", "PNG", "TIFF"}:
         args["xmp"] = metadata["xmp"]
     return args
+
+
+def _png_chunk(name: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data))
+
+
+def _save_high_image(path: Path, rgba: np.ndarray, output_format: str,
+                     args: dict[str, object], quality: int, source_depth: int) -> None:
+    if output_format == "PNG":
+        bgra = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA)
+        ok, encoded = cv2.imencode(".png", bgra, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+        if not ok:
+            raise RuntimeError("16-bit PNG encoder failed")
+        raw = encoded.tobytes()
+        chunks: list[bytes] = []
+        profile = args.get("icc_profile")
+        if isinstance(profile, bytes) and profile:
+            chunks.append(_png_chunk(b"iCCP", b"ICC Profile\0\0" + zlib.compress(profile)))
+        exif = args.get("exif")
+        if isinstance(exif, bytes) and exif:
+            chunks.append(_png_chunk(b"eXIf", exif.removeprefix(b"Exif\0\0")))
+        dpi = args.get("dpi")
+        if isinstance(dpi, (tuple, list)) and len(dpi) >= 2:
+            xppm = round(float(dpi[0]) / 0.0254)
+            yppm = round(float(dpi[1]) / 0.0254)
+            chunks.append(_png_chunk(b"pHYs", struct.pack(">IIB", xppm, yppm, 1)))
+        xmp = args.get("xmp")
+        if isinstance(xmp, bytes) and xmp:
+            chunks.append(_png_chunk(b"iTXt", b"XML:com.adobe.xmp\0\0\0\0\0" + xmp))
+        ihdr_end = 8 + 4 + 4 + 13 + 4
+        path.write_bytes(raw[:ihdr_end] + b"".join(chunks) + raw[ihdr_end:])
+    elif output_format == "TIFF":
+        exif = Image.Exif()
+        if isinstance(args.get("exif"), bytes):
+            exif.load(args["exif"])
+        extra = []
+        for tag in (269, 271, 272, 305, 306, 315, 316, 33432):
+            value = exif.get(tag)
+            if isinstance(value, str) and value:
+                extra.append((tag, "s", 0, value, False))
+        xmp = args.get("xmp")
+        if isinstance(xmp, bytes) and xmp:
+            extra.append((700, "B", len(xmp), xmp, False))
+        tifffile.imwrite(
+            path, rgba, photometric="rgb", extrasamples=["unassalpha"],
+            compression=None, metadata=None,
+            description=exif.get(270),
+            iccprofile=args.get("icc_profile") if isinstance(args.get("icc_profile"), bytes) else None,
+            resolution=args.get("dpi") if isinstance(args.get("dpi"), tuple) else None,
+            resolutionunit="INCH", extratags=extra,
+        )
+    elif output_format == "AVIF":
+        image = pillow_heif.from_bytes("RGBA;16", (rgba.shape[1], rgba.shape[0]), rgba.tobytes())
+        profile = args.get("icc_profile")
+        if isinstance(profile, bytes) and profile:
+            image[0].info["icc_profile"] = profile
+        image.save(
+            path, quality=int(quality), bit_depth=12 if source_depth > 10 else 10,
+            **{key: args[key] for key in ("exif", "xmp") if key in args},
+        )
+    else:
+        raise ValueError(f"Unsupported high-depth image output: {output_format}")
+
+
+def _save_high_image_atomic(output: Path, rgba: np.ndarray, options: ImageConversionOptions,
+                            metadata: dict[str, object], render_note: str | None,
+                            metadata_diagnostics: dict | None, controller,
+                            timings: dict[str, float] | None) -> list[str]:
+    warnings: list[str] = []
+    args = _metadata_save_args(metadata, options.output_format) if options.preserve_metadata else {}
+    temporary = output.with_name(f".{output.stem}.{time.time_ns()}{output.suffix}")
+    description = None
+    note_requested = render_note is not None and options.output_format in IMAGE_NOTE_FORMATS
+    try:
+        check_cancelled(controller)
+        if note_requested:
+            try:
+                args, description = _add_render_note(args, render_note)
+            except (ValueError, TypeError, KeyError, SyntaxError, OSError) as exc:
+                warnings.append(embedding_warning(metadata_diagnostics, exc))
+                note_requested = False
+        try:
+            _save_high_image(temporary, rgba, options.output_format, args,
+                             options.quality, int(metadata.get("source_bit_depth") or 16))
+            _verify_image(temporary, (rgba.shape[1], rgba.shape[0]), description if note_requested else None)
+        except (ValueError, TypeError, KeyError, SyntaxError, OSError, RuntimeError) as exc:
+            if not note_requested:
+                raise
+            warnings.append(embedding_warning(metadata_diagnostics, exc))
+            args.pop("exif", None)
+            _save_high_image(temporary, rgba, options.output_format, args,
+                             options.quality, int(metadata.get("source_bit_depth") or 16))
+            _verify_image(temporary, (rgba.shape[1], rgba.shape[0]), None)
+            note_requested = False
+        check_cancelled(controller)
+        os.replace(temporary, output)
+        if note_requested:
+            record_embedding(metadata_diagnostics, "embedded", field="EXIF.ImageDescription")
+    finally:
+        temporary.unlink(missing_ok=True)
+    return warnings
 
 
 def save_image(
@@ -233,6 +345,11 @@ def save_image(
     controller=None, has_transparency: bool | None = None, timings: dict[str, float] | None = None,
 ) -> list[str]:
     output_format = options.output_format
+    if rgba.dtype == np.uint16 and output_format in {"PNG", "TIFF", "AVIF"}:
+        return _save_high_image_atomic(output, rgba, options, metadata, render_note,
+                                       metadata_diagnostics, controller, timings)
+    if rgba.dtype == np.uint16:
+        rgba = _rgba8_preview(rgba)
     source_image = Image.fromarray(rgba, mode="RGBA")
     image = source_image
     warnings: list[str] = []

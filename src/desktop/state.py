@@ -45,6 +45,7 @@ class PreviewState:
     source_width: int = 0
     source_height: int = 0
     source_fps: float = 0.0
+    source_hdr: bool = False
     duration_seconds: float = 0.0
     output_width: int = 0
     output_height: int = 0

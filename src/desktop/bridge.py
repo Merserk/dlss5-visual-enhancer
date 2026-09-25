@@ -20,17 +20,20 @@ from typing import Any
 from PySide6.QtCore import QObject, QThreadPool, QTimer, QUrl, Signal, Slot, Property, QSettings, qVersion, QBuffer, QIODevice
 from PySide6.QtGui import QGuiApplication, QImage, QPixmap
 
-from ..core.paths import CONFIG_PATH, OUTPUTS, LOGS, FFMPEG, FFPROBE, MPV, APP_TEMP
+from ..core.paths import ROOT, CONFIG_PATH, OUTPUTS, LOGS, FFMPEG, FFPROBE, MPV, APP_TEMP
 from ..core.disk_paths import prepare_output_dir, supported_file as _is_supported_media_file
 from ..core.cache_cleanup import cleanup_old_caches
 from ..core import app_log
 from ..core.runtime import prepare_runtime, NR_STYLES, UPSCALING_MODES, resolve_upscaling_mode, resolve_output_size
+from ..core.dlss_modes import DLSS_MODES, DLSS_PRESETS, UPSCALE_ENGINES, dlss_output_size
 from ..core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, FIXED_QUALITY_CODECS, container_for_codec, hdr_mode_supported, probe_video
 from ..core.naming import RENAME_MODES, validate_rename
 from ..core.nr_composition import inspect_nr_mask, mask_status
 from ..settings.models import (
     CONTAINER_CHOICES, DEFAULT_SETTINGS, PREVIEW_ENCODING_CHOICES, UPSCALE_MODE_CHOICES,
-    UPSCALE_PREVIEW_LENGTH_CHOICES, UISettings,
+    UPSCALE_PREVIEW_LENGTH_CHOICES, UISettings, IMAGE_STAGE_ORDER, VIDEO_STAGE_ORDER,
+    IMAGE_SCALING_FILTERS, VIDEO_SCALING_FILTERS, IMAGE_16BIT_FORMATS,
+    LUT_ADJUSTMENT_RANGES, LUT_RESOLUTIONS, SHARPENING_METHODS,
     automatic_mask_choice, coerce_hdr_mode, live_effect_options, parse_automatic_mask, _validate,
 )
 from ..settings.storage import SETTINGS_STATE, load_settings, save_settings
@@ -38,7 +41,13 @@ from ..settings.presets import export_settings_preset, export_settings_preset_to
 
 from .models import BatchListModel
 from .image_provider import PreviewImageProvider
+from .coloring import load_cube_lut, save_cube_lut
+from .auto_color import analyze_color_source
+from .color_preview import (FastPreviewUnavailable, MAX_PREVIEW_PIXELS,
+                            render_color_still_preview)
 from .workers import JobWorker
+from .workflow import (enabled_stages, estimate_pipeline, preflight_source,
+                       render_pipeline_batch, render_pipeline_preview)
 from .state import (
     PreviewState, IDLE, SCANNING_INPUTS, LOADING_METADATA, PREVIEW_PREPARING,
     PREVIEW_RUNNING, PREVIEW_CANCELLING, BATCH_PREPARING, BATCH_RUNNING,
@@ -155,6 +164,9 @@ class AppBridge(QObject):
     # selected item when Realtime Preview is enabled.  Rename/output-only
     # settings are intentionally excluded so they do not waste GPU work.
     AUTO_PREVIEW_FIELDS = {
+        "image_stage_order", "video_stage_order", "image_enabled_stages", "video_enabled_stages",
+        "denoise_strength", "denoise_deblock", "denoise_temporal", "cas_sharpness", "sharpening_method",
+        "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
         "ai_gpu_uuid", "video_gpu_uuid",
         "nr_style", "nr_intensity", "nr_passes",
         "local_tone_strength", "local_structure_strength",
@@ -162,7 +174,10 @@ class AppBridge(QObject):
         "nr_color_strength", "tone_preservation",
         "face_skin_protection", "grain_preservation",
         "shimmer_suppression", "mask_feather", "nr_mask",
-        "upscaling_factor",
+        "upscaling_factor", "image_scaling_filter", "video_scaling_filter",
+        "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
+        "upscale_image_engine", "upscale_image_dlss_mode", "upscale_image_dlss_preset",
+        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset",
         "preview_encoding",
         "upscale_image_vsr_quality", "upscale_image_size_mode",
         "upscale_image_scale_factor", "upscale_image_width",
@@ -178,8 +193,33 @@ class AppBridge(QObject):
         "frame_interpolation_codec", "frame_interpolation_quality",
         "frame_interpolation_hdr_mode",
         "codec", "quality", "hdr_mode",
+    } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"}
+    PROCESSING_PREVIEW_FIELDS = {
+        "nr-image": {
+            "denoise_strength", "denoise_deblock", "cas_sharpness", "sharpening_method",
+            "image_scaling_filter", "upscaling_factor",
+            "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
+            "upscale_image_dlss_mode", "upscale_image_dlss_preset",
+            "upscale_image_vsr_quality", "upscale_image_size_mode",
+            "upscale_image_scale_factor", "upscale_image_width",
+            "upscale_image_height", "upscale_image_aspect_lock",
+        } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"},
+        "nr-video": {
+            "denoise_strength", "denoise_deblock", "denoise_temporal", "cas_sharpness", "sharpening_method",
+            "video_scaling_filter", "upscaling_factor",
+            "lut_path",
+            "upscale_dlss_mode", "upscale_dlss_preset",
+            "upscale_vsr_enabled", "upscale_vsr_quality", "upscale_size_mode",
+            "upscale_scale_factor", "upscale_width", "upscale_height",
+            "upscale_aspect_lock", "upscale_hdr_enabled", "upscale_hdr_contrast",
+            "upscale_hdr_saturation", "upscale_hdr_middle_gray",
+            "upscale_hdr_peak_luminance", "upscale_hdr_precision",
+        } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"},
+        "upscale-image": {"upscale_image_engine", "upscale_image_dlss_mode", "upscale_image_dlss_preset"},
+        "upscale-video": {"upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset"},
     }
     UPSCALE_RANGE_FIELDS = {
+        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset",
         "ai_gpu_uuid", "video_gpu_uuid", "preview_encoding",
         "upscale_vsr_enabled", "upscale_vsr_quality",
         "upscale_size_mode", "upscale_scale_factor",
@@ -189,6 +229,23 @@ class AppBridge(QObject):
         "upscale_hdr_peak_luminance", "upscale_hdr_precision",
         "upscale_codec", "upscale_quality",
     }
+    # Neural Rendering settings that invalidate pre-rendered timeline spans.
+    # The manual clip length itself is excluded (older spans remain valid
+    # footage for their range), mirroring FI/upscale.
+    NR_RANGE_FIELDS = {
+        "video_stage_order", "video_enabled_stages",
+        "denoise_strength", "denoise_deblock", "denoise_temporal", "cas_sharpness", "sharpening_method",
+        "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
+        "ai_gpu_uuid", "video_gpu_uuid", "preview_encoding",
+        "nr_style", "nr_intensity", "nr_passes",
+        "local_tone_strength", "local_structure_strength",
+        "skin_structure_strength", "automatic_mask",
+        "nr_color_strength", "tone_preservation",
+        "face_skin_protection", "grain_preservation",
+        "shimmer_suppression", "mask_feather", "nr_mask",
+        "lut_path",
+        "upscaling_factor", "video_scaling_filter", "codec", "quality", "hdr_mode",
+    } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"}
 
     # UI State Signals
     activeTabChanged = Signal()
@@ -215,6 +272,9 @@ class AppBridge(QObject):
     sourceSizeChanged = Signal()
     outputSizeChanged = Signal()
     batchExportRequested = Signal(str)
+    exportPrefsChanged = Signal()
+    workflowStagesChanged = Signal()
+    estimateChanged = Signal()
 
     # Settings Signals
     settingsUpdated = Signal()
@@ -225,15 +285,21 @@ class AppBridge(QObject):
     isLiveStartingChanged = Signal()
     liveTelemetryChanged = Signal()
     autoPreviewChanged = Signal()
+    lutSaveChanged = Signal()
+    lutAutoChanged = Signal()
 
     def __init__(self, image_provider: PreviewImageProvider, parent: Any = None) -> None:
         super().__init__(parent)
         self._image_provider = image_provider
         self._thread_pool = QThreadPool.globalInstance()
         self._active_worker: JobWorker | None = None
+        self._active_preview_fast_color = False
         self._live_worker: JobWorker | None = None
         self._scan_worker: JobWorker | None = None
         self._metadata_worker: JobWorker | None = None
+        self._lut_save_worker: JobWorker | None = None
+        self._lut_auto_worker: JobWorker | None = None
+        self._lut_save_status = ""
         self._operation_state = IDLE
         self._operation_id = 0
         self._shutting_down = False
@@ -346,6 +412,12 @@ class AppBridge(QObject):
         self._window_x = int(self._ui_settings.value("window/x", -1))
         self._window_y = int(self._ui_settings.value("window/y", -1))
         self._window_maximized = str(self._ui_settings.value("window/maximized", "false")).lower() in {"1", "true", "yes"}
+        # Export dialog path mode + custom folder: desktop prefs (QSettings),
+        # deliberately separate from render presets so machine-specific
+        # folder paths never leak into shared preset files.
+        _export_mode = str(self._ui_settings.value("export/destinationMode", "output"))
+        self._export_destination_mode = _export_mode if _export_mode in {"input", "output", "folder"} else "output"
+        self._export_folder = str(self._ui_settings.value("export/folder", "") or "")
 
         self._auto_preview_timer = QTimer(self)
         self._auto_preview_timer.setSingleShot(True)
@@ -407,6 +479,7 @@ class AppBridge(QObject):
         self.outputInfoTextChanged.emit()
         self.sourceSizeChanged.emit()
         self.outputSizeChanged.emit()
+        self.estimateChanged.emit()
 
     def _set_operation(self, state: str, message: str | None = None) -> int:
         self._operation_state = state
@@ -425,6 +498,7 @@ class AppBridge(QObject):
         self._operation_state = LIVE_RUNNING if self._is_live_running else IDLE
         self._is_processing = False
         self._active_worker = None
+        self._active_preview_fast_color = False
         if message is not None:
             self._status_message = message
             self.statusMessageChanged.emit()
@@ -453,10 +527,18 @@ class AppBridge(QObject):
         except (TypeError, ValueError):
             return 3.0
 
+    def _nr_preview_length_seconds(self) -> float:
+        """Selected Neural Rendering preview clip length in seconds (3/5/10/20/30)."""
+        selected = self._settings.nr_preview_length
+        try:
+            return float(selected) if selected in PREVIEW_LENGTH_CHOICES else 3.0
+        except (TypeError, ValueError):
+            return 3.0
+
     def _add_rendered_range(self, context_key: str, start_seconds: float, media_path: str,
                             length_seconds: float) -> None:
         """Record a rendered video preview span for the green timeline overlay."""
-        if context_key not in {"fi-video", "upscale-video"}:
+        if context_key not in {"fi-video", "upscale-video", "nr-video"}:
             return
         ctx = self._contexts.get(context_key)
         if ctx is None:
@@ -517,7 +599,9 @@ class AppBridge(QObject):
 
     @activeTab.setter
     def activeTab(self, tab: str) -> None:
-        if tab not in {"neural-rendering", "upscale", "frame-interpolation", "live", "settings", "help"}:
+        if tab in {"upscale", "frame-interpolation"}:
+            tab = "neural-rendering"
+        if tab not in {"neural-rendering", "live", "settings", "help"}:
             return
         if self._active_tab != tab:
             self._active_tab = tab
@@ -544,8 +628,284 @@ class AppBridge(QObject):
         if self._nr_mode != mode:
             self._nr_mode = mode
             self.nrModeChanged.emit()
+            self.workflowStagesChanged.emit()
             self._emit_context()
             self._schedule_auto_preview(180)
+
+    @Property(list, notify=workflowStagesChanged)
+    def workflowStages(self) -> list[dict[str, object]]:
+        order = self._settings.image_stage_order if self._nr_mode == "Image" else self._settings.video_stage_order
+        enabled = self._settings.image_enabled_stages if self._nr_mode == "Image" else self._settings.video_enabled_stages
+        return [{"id": stage, "enabled": stage in enabled} for stage in order]
+
+    @Property(int, notify=settingsUpdated)
+    def denoiseStrength(self) -> int:
+        return self._settings.denoise_strength
+
+    @denoiseStrength.setter
+    def denoiseStrength(self, value: int) -> None:
+        self._save_setting(denoise_strength=int(value))
+
+    @Property(bool, notify=settingsUpdated)
+    def denoiseDeblock(self) -> bool:
+        return self._settings.denoise_deblock
+
+    @denoiseDeblock.setter
+    def denoiseDeblock(self, value: bool) -> None:
+        self._save_setting(denoise_deblock=bool(value))
+
+    @Property(int, notify=settingsUpdated)
+    def denoiseTemporal(self) -> int:
+        return self._settings.denoise_temporal
+
+    @denoiseTemporal.setter
+    def denoiseTemporal(self, value: int) -> None:
+        self._save_setting(denoise_temporal=int(value))
+
+    @Property(list, constant=True)
+    def sharpeningMethodChoices(self) -> list[str]:
+        return list(SHARPENING_METHODS)
+
+    @Property(str, notify=settingsUpdated)
+    def sharpeningMethod(self) -> str:
+        return self._settings.sharpening_method
+
+    @sharpeningMethod.setter
+    def sharpeningMethod(self, value: str) -> None:
+        self._save_setting(sharpening_method=value)
+
+    @Property(int, notify=settingsUpdated)
+    def casSharpness(self) -> int:
+        return self._settings.cas_sharpness
+
+    @casSharpness.setter
+    def casSharpness(self, value: int) -> None:
+        self._save_setting(cas_sharpness=int(value))
+
+    @Property(list, constant=True)
+    def coloringModeChoices(self) -> list[dict[str, str]]:
+        return [{"label": "Match Colors", "value": "Color Match"},
+                {"label": "Apply LUT", "value": "LUT"}]
+
+    @Property(str, notify=settingsUpdated)
+    def coloringMode(self) -> str:
+        return self._settings.coloring_mode
+
+    @coloringMode.setter
+    def coloringMode(self, value: str) -> None:
+        self._save_setting(coloring_mode=value)
+
+    @Property(list, constant=True)
+    def colorMatchSourceChoices(self) -> list[dict[str, str]]:
+        return [{"label": "Current Image", "value": "Input Image"},
+                {"label": "Selected Reference Image", "value": "Selected Image"}]
+
+    @Property(str, notify=settingsUpdated)
+    def colorMatchSource(self) -> str:
+        return self._settings.color_match_source
+
+    @colorMatchSource.setter
+    def colorMatchSource(self, value: str) -> None:
+        self._save_setting(color_match_source=value)
+
+    @Property(str, notify=settingsUpdated)
+    def colorMatchReference(self) -> str:
+        return self._settings.color_match_reference
+
+    @Slot(str)
+    def setColorMatchReference(self, file_url_or_path: str) -> None:
+        path = self._clean_path(file_url_or_path)
+        if path and (Path(path).suffix.lower() not in IMAGE_SUFFIXES or not Path(path).is_file()):
+            self._status_message = "Choose an existing reference image for Match Colors."
+            self.statusMessageChanged.emit()
+            self.settingsUpdated.emit()
+            return
+        self._save_setting(color_match_reference=path)
+
+    @Property(str, notify=settingsUpdated)
+    def lutFile(self) -> str:
+        return self._settings.lut_path
+
+    @Slot(str)
+    def setLutFile(self, file_url_or_path: str) -> None:
+        path = self._clean_path(file_url_or_path)
+        try:
+            if path:
+                load_cube_lut(path)
+        except ValueError as exc:
+            self._status_message = str(exc)
+            self.statusMessageChanged.emit()
+            self.settingsUpdated.emit()
+            return
+        self._save_setting(lut_path=path)
+
+    @Property(list, constant=True)
+    def lutResolutionChoices(self) -> list[dict[str, object]]:
+        return [{"label": f"{size}³", "value": size} for size in LUT_RESOLUTIONS]
+
+    @Property(int, notify=settingsUpdated)
+    def lutResolution(self) -> int:
+        return self._settings.lut_resolution
+
+    @lutResolution.setter
+    def lutResolution(self, value: int) -> None:
+        self._save_setting(lut_resolution=int(value))
+
+    @Property("QVariantMap", notify=settingsUpdated)
+    def lutAdjustmentValues(self) -> dict[str, float | int]:
+        return {key: getattr(self._settings, key) for key in LUT_ADJUSTMENT_RANGES}
+
+    @Slot(str, float)
+    def setLutAdjustment(self, name: str, value: float) -> None:
+        if name not in LUT_ADJUSTMENT_RANGES or not math.isfinite(value):
+            return
+        normalized = round(value, 2) if name == "lut_exposure" else int(round(value))
+        self._save_setting(**{name: normalized})
+
+    @Slot()
+    def resetLutAdjustments(self) -> None:
+        values = {key: getattr(DEFAULT_SETTINGS, key) for key in LUT_ADJUSTMENT_RANGES}
+        values["lut_resolution"] = DEFAULT_SETTINGS.lut_resolution
+        self._save_setting(**values)
+
+    @Property(bool, notify=lutAutoChanged)
+    def lutAutoBusy(self) -> bool:
+        return self._lut_auto_worker is not None
+
+    def _finish_lut_auto(self, worker: JobWorker, message: str) -> None:
+        if self._lut_auto_worker is not worker:
+            return
+        self._lut_auto_worker = None
+        self.lutAutoChanged.emit()
+        if self._shutting_down:
+            return
+        self._status_message = message
+        self.statusMessageChanged.emit()
+        self._log(message)
+
+    @Slot()
+    def autoAdjustLut(self) -> None:
+        if self._lut_auto_worker is not None or self._shutting_down:
+            return
+        if self._active_tab != "neural-rendering" or self._operation_state != IDLE:
+            return
+        context_key = self._context_key()
+        mode = "Image" if context_key == "nr-image" else "Video"
+        if mode == "Image" and self._settings.coloring_mode != "LUT":
+            return
+        source = self._queue_for_context(context_key).selected_path()
+        if not source or not Path(source).is_file():
+            self._status_message = "Select an image or video before using Auto color."
+            self.statusMessageChanged.emit()
+            return
+
+        snapshot = self._settings
+        context = self._contexts[context_key]
+        source_path = os.path.normcase(os.path.abspath(source))
+        generation = context.generation
+        worker = JobWorker(
+            analyze_color_source, source, snapshot, mode,
+            duration_seconds=context.duration_seconds,
+            video_size=(context.source_width, context.source_height) if mode == "Video" else None,
+            hdr=context.source_hdr,
+        )
+        self._lut_auto_worker = worker
+        self.lutAutoChanged.emit()
+        self._status_message = f"Analyzing {mode.lower()} color…"
+        self.statusMessageChanged.emit()
+
+        def finished(values: dict[str, int | float]) -> None:
+            if self._lut_auto_worker is not worker:
+                return
+            self._lut_auto_worker = None
+            self.lutAutoChanged.emit()
+            if self._shutting_down:
+                return
+            current_source = self._queue_for_context(context_key).selected_path() or ""
+            current_source = os.path.normcase(os.path.abspath(current_source)) if current_source else ""
+            controls_unchanged = (self._settings.lut_path == snapshot.lut_path
+                                  and all(getattr(self._settings, key) == getattr(snapshot, key)
+                                          for key in LUT_ADJUSTMENT_RANGES))
+            if (self._context_key() != context_key or self._active_tab != "neural-rendering"
+                    or self._contexts[context_key].generation != generation
+                    or current_source != source_path or not controls_unchanged):
+                self._status_message = "Auto color skipped because the input or color controls changed."
+                self.statusMessageChanged.emit()
+                return
+            if not self._save_setting(**values):
+                return
+            self._status_message = "Auto color adjustments applied. You can fine-tune every slider."
+            self.statusMessageChanged.emit()
+            self._log(self._status_message)
+            if self.canPreview:
+                if self._auto_preview_enabled:
+                    self._schedule_auto_preview(90)
+                else:
+                    self.renderPreview()
+
+        worker.signals.finished.connect(finished)
+        worker.signals.failed.connect(
+            lambda error: self._finish_lut_auto(worker, f"Auto color failed: {error}"))
+        worker.signals.cancelled.connect(
+            lambda: self._finish_lut_auto(worker, "Auto color cancelled."))
+        self._thread_pool.start(worker)
+
+    @Property(bool, notify=lutSaveChanged)
+    def lutSaveBusy(self) -> bool:
+        return self._lut_save_worker is not None
+
+    @Property(str, notify=lutSaveChanged)
+    def lutSaveStatus(self) -> str:
+        return self._lut_save_status
+
+    def _finish_lut_save(self, message: str) -> None:
+        self._lut_save_worker = None
+        self._lut_save_status = message
+        self.lutSaveChanged.emit()
+        self._status_message = message
+        self.statusMessageChanged.emit()
+        self._log(message)
+
+    @Slot(str)
+    def saveLut(self, file_url_or_path: str) -> None:
+        if self._lut_save_worker is not None:
+            return
+        target = self._clean_path(file_url_or_path)
+        if not target:
+            return
+        snapshot = self._settings
+        worker = JobWorker(save_cube_lut, target, snapshot.lut_path or None, snapshot)
+        self._lut_save_worker = worker
+        self._lut_save_status = f"Saving {snapshot.lut_resolution}³ LUT…"
+        self.lutSaveChanged.emit()
+        worker.signals.finished.connect(lambda path: self._finish_lut_save(f"Saved LUT to {path}"))
+        worker.signals.failed.connect(lambda error: self._finish_lut_save(f"LUT export failed: {error}"))
+        worker.signals.cancelled.connect(lambda: self._finish_lut_save("LUT export cancelled."))
+        self._thread_pool.start(worker)
+
+    @Slot(str, bool)
+    def setWorkflowStageEnabled(self, stage: str, value: bool) -> None:
+        allowed = IMAGE_STAGE_ORDER if self._nr_mode == "Image" else VIDEO_STAGE_ORDER
+        if stage not in allowed:
+            return
+        field = "image_enabled_stages" if self._nr_mode == "Image" else "video_enabled_stages"
+        active = set(getattr(self._settings, field))
+        if value:
+            active.add(stage)
+        else:
+            active.discard(stage)
+        order = self._settings.image_stage_order if self._nr_mode == "Image" else self._settings.video_stage_order
+        self._save_setting(**{field: tuple(item for item in order if item in active)})
+
+    @Slot(str, int)
+    def moveWorkflowStage(self, stage: str, target_index: int) -> None:
+        field = "image_stage_order" if self._nr_mode == "Image" else "video_stage_order"
+        order = list(getattr(self._settings, field))
+        if stage not in order or not 0 <= target_index < len(order):
+            return
+        order.remove(stage)
+        order.insert(target_index, stage)
+        self._save_setting(**{field: tuple(order)})
 
     @Property(str, notify=upscaleModeChanged)
     def upscaleMode(self) -> str:
@@ -571,6 +931,15 @@ class AppBridge(QObject):
     def upscalePreviewLength(self, value: str) -> None:
         if str(value) in UPSCALE_PREVIEW_LENGTH_CHOICES:
             self._save_setting(upscale_preview_length=str(value))
+
+    @Property(str, notify=settingsUpdated)
+    def nrPreviewLength(self) -> str:
+        return self._settings.nr_preview_length
+
+    @nrPreviewLength.setter
+    def nrPreviewLength(self, value: str) -> None:
+        if str(value) in PREVIEW_LENGTH_CHOICES:
+            self._save_setting(nr_preview_length=str(value))
 
     @Property(bool, notify=isProcessingChanged)
     def isProcessing(self) -> bool:
@@ -738,6 +1107,10 @@ class AppBridge(QObject):
         return self._operation_state
 
     @Property(bool, notify=operationStateChanged)
+    def fastColorPreviewActive(self) -> bool:
+        return self._active_preview_fast_color
+
+    @Property(bool, notify=operationStateChanged)
     def canModifyQueue(self) -> bool:
         return self._operation_state == IDLE and not self._shutting_down
 
@@ -840,6 +1213,34 @@ class AppBridge(QObject):
             self._focus_preview = value
             self.layoutChanged.emit()
 
+    @Property(str, notify=exportPrefsChanged)
+    def exportDestinationMode(self) -> str:
+        return self._export_destination_mode
+
+    @exportDestinationMode.setter
+    def exportDestinationMode(self, value: str) -> None:
+        value = str(value)
+        if value not in {"input", "output", "folder"} or value == self._export_destination_mode:
+            return
+        self._export_destination_mode = value
+        self._ui_settings.setValue("export/destinationMode", value)
+        self._ui_settings.sync()
+        self.exportPrefsChanged.emit()
+
+    @Property(str, notify=exportPrefsChanged)
+    def exportFolder(self) -> str:
+        return self._export_folder
+
+    @exportFolder.setter
+    def exportFolder(self, value: str) -> None:
+        cleaned = self._clean_path(value) if value else ""
+        if cleaned == self._export_folder:
+            return
+        self._export_folder = cleaned
+        self._ui_settings.setValue("export/folder", cleaned)
+        self._ui_settings.sync()
+        self.exportPrefsChanged.emit()
+
     @Property(bool, notify=autoPreviewChanged)
     def autoPreviewEnabled(self) -> bool:
         return self._auto_preview_enabled
@@ -877,7 +1278,10 @@ class AppBridge(QObject):
                 snapshot = tuple(
                     getattr(self._settings, field.name, None)
                     for field in _dataclass_fields(self._settings)
-                    if not (key == "upscale-video" and field.name == "upscale_preview_length")
+                    if not (
+                        (key == "upscale-video" and field.name == "upscale_preview_length")
+                        or (key == "nr-video" and field.name == "nr_preview_length")
+                    )
                 )
             except Exception:
                 snapshot = ()
@@ -885,7 +1289,21 @@ class AppBridge(QObject):
         except Exception:
             return ()
 
-    def _schedule_auto_preview(self, delay_ms: int = 360) -> None:
+    def _can_fast_color_preview(self, context_key: str, *, clip_seconds: float | None = None) -> bool:
+        if clip_seconds is not None or context_key not in {"nr-image", "nr-video"}:
+            return False
+        context = self._contexts[context_key]
+        pixels = context.source_width * context.source_height
+        if not 0 < pixels <= MAX_PREVIEW_PIXELS:
+            return False
+        mode = "Image" if context_key == "nr-image" else "Video"
+        if mode == "Image" and self._settings.coloring_mode != "LUT":
+            return False
+        if mode == "Video" and context.source_hdr:
+            return False
+        return enabled_stages(self._settings, mode) == ("coloring",)
+
+    def _schedule_auto_preview(self, delay_ms: int = 360, *, throttle: bool = False) -> None:
         """Debounce an automatic preview for the currently selected media.
 
         Slider drags can emit dozens of values per second; a single GPU preview
@@ -897,7 +1315,10 @@ class AppBridge(QObject):
         disabled for fi-video even when the global switch is on, so settings
         tweaks and tab switches never trigger automatic renders there.
         """
-        if self._context_key() == "fi-video":
+        if self._context_key() == "fi-video" or (
+            self._context_key() == "nr-video" and
+            "frame_generation" in enabled_stages(self._settings, "Video")
+        ):
             self._auto_preview_pending = False
             try:
                 self._auto_preview_timer.stop()
@@ -938,17 +1359,20 @@ class AppBridge(QObject):
 
         self._auto_preview_pending = True
         if self._operation_state in {PREVIEW_PREPARING, PREVIEW_RUNNING}:
-            self._invalidate_preview_generation()
-            worker = self._active_worker
-            if worker is not None:
-                try:
-                    worker.controller.stop()
-                except Exception:
-                    pass
-            self._operation_state = PREVIEW_CANCELLING
-            self._status_message = "Updating realtime preview…"
-            self.operationStateChanged.emit()
-            self.statusMessageChanged.emit()
+            if not (throttle and self._active_preview_fast_color):
+                self._invalidate_preview_generation()
+                worker = self._active_worker
+                if worker is not None:
+                    try:
+                        worker.controller.stop()
+                    except Exception:
+                        pass
+                self._operation_state = PREVIEW_CANCELLING
+                self._status_message = "Updating realtime preview…"
+                self.operationStateChanged.emit()
+                self.statusMessageChanged.emit()
+        if throttle and self._auto_preview_timer.isActive():
+            return
         self._auto_preview_timer.start(max(80, int(delay_ms)))
 
     def _run_auto_preview(self) -> None:
@@ -1096,6 +1520,31 @@ class AppBridge(QObject):
         return [{"label": mode["label"], "value": factor} for factor, mode in UPSCALING_MODES.items()]
 
     @Property(list, constant=True)
+    def imageScalingFilterChoices(self) -> list[str]:
+        return list(IMAGE_SCALING_FILTERS)
+
+    @Property(list, constant=True)
+    def videoScalingFilterChoices(self) -> list[str]:
+        return list(VIDEO_SCALING_FILTERS)
+
+    @Property(list, constant=True)
+    def dlssModeChoices(self) -> list[dict[str, str]]:
+        labels = {
+            "DLAA": "DLAA 1.0×", "Quality": "Quality 1.5×",
+            "Balanced": "Balanced ~1.72×", "Performance": "Performance 2.0×",
+            "Ultra Performance": "Ultra Performance 3.0×",
+        }
+        return [{"label": labels[mode], "value": mode} for mode in DLSS_MODES]
+
+    @Property(list, constant=True)
+    def dlssPresetChoices(self) -> list[str]:
+        return list(DLSS_PRESETS)
+
+    @Property(list, constant=True)
+    def upscaleEngineChoices(self) -> list[str]:
+        return list(UPSCALE_ENGINES)
+
+    @Property(list, constant=True)
     def imageFormatChoices(self) -> list[str]:
         return ["PNG", "JPEG", "WebP", "AVIF", "TIFF"]
 
@@ -1133,6 +1582,10 @@ class AppBridge(QObject):
 
     @Property(list, constant=True)
     def upscalePreviewLengthChoices(self) -> list[dict[str, str]]:
+        return [{"label": f"{value}s", "value": value} for value in PREVIEW_LENGTH_CHOICES]
+
+    @Property(list, constant=True)
+    def nrPreviewLengthChoices(self) -> list[dict[str, str]]:
         return [{"label": f"{value}s", "value": value} for value in PREVIEW_LENGTH_CHOICES]
 
     @Property(list, constant=True)
@@ -1303,7 +1756,7 @@ class AppBridge(QObject):
                 changed["upscale_hdr_enabled"] = False
 
         candidate = replace(self._settings, **changed)
-        if not (candidate.upscale_vsr_enabled or candidate.upscale_hdr_enabled):
+        if candidate.upscale_engine != "DLSS" and not (candidate.upscale_vsr_enabled or candidate.upscale_hdr_enabled):
             self._status_message = "Upscale Video requires VSR or RTX Video HDR to remain enabled."
             self.statusMessageChanged.emit()
             self.settingsUpdated.emit()
@@ -1319,12 +1772,52 @@ class AppBridge(QObject):
 
         self._settings = candidate
         SETTINGS_STATE.current = self._settings
+        keep_nr_video_output = (
+            self._context_key() == "nr-video"
+            and self._auto_preview_enabled
+            and self._runtime_state == "Ready"
+            and self._contexts["nr-video"].has_output
+            and "frame_generation" not in enabled_stages(self._settings, "Video")
+        )
+        if keep_nr_video_output and set(changed) & (
+            self.PROCESSING_PREVIEW_FIELDS["nr-video"] | {"video_stage_order", "video_enabled_stages"}
+        ):
+            self._contexts["nr-video"].last_auto_fingerprint = ()
+        if any(key in changed for key in ("image_stage_order", "image_enabled_stages")):
+            self._clear_output_preview("nr-image")
+        if (not keep_nr_video_output
+                and any(key in changed for key in ("video_stage_order", "video_enabled_stages"))):
+            self._clear_output_preview("nr-video")
+        if (self._context_key() == "nr-video"
+                and "frame_generation" in enabled_stages(self._settings, "Video")
+                and any(key in self.AUTO_PREVIEW_FIELDS for key in changed)):
+            self._clear_output_preview("nr-video")
+            if self._operation_state in {PREVIEW_PREPARING, PREVIEW_RUNNING}:
+                self._invalidate_preview_generation()
+                if self._active_worker is not None:
+                    self._active_worker.controller.stop()
+        coloring_changes = set(LUT_ADJUSTMENT_RANGES) | {"lut_path", "lut_resolution"}
+        keep_coloring_output = (self._auto_preview_enabled
+                                and set(changed).issubset(coloring_changes)
+                                and self._can_fast_color_preview(self._context_key()))
+        for context_key, fields in self.PROCESSING_PREVIEW_FIELDS.items():
+            if any(field in changed for field in fields):
+                if ((keep_coloring_output and context_key == self._context_key())
+                        or (keep_nr_video_output and context_key == "nr-video")):
+                    # Keep the last frame painted until its replacement is
+                    # ready; the fingerprint still marks it as stale.
+                    self._contexts[context_key].last_auto_fingerprint = ()
+                else:
+                    self._clear_output_preview(context_key)
         if self._is_live_running and any(field in self.LIVE_EFFECT_FIELDS for field in changed):
             self._live_effects_dirty = True
         if self._is_live_running and any(field in self.LIVE_RESTART_FIELDS for field in changed):
             self._status_message = "Setting saved; this change applies the next time Live is started."
             self.statusMessageChanged.emit()
         self.settingsUpdated.emit()
+        self.estimateChanged.emit()
+        if any(key in changed for key in ("image_stage_order", "video_stage_order", "image_enabled_stages", "video_enabled_stages")):
+            self.workflowStagesChanged.emit()
         if "ai_gpu_uuid" in changed:
             self.runtimeStateChanged.emit()
         self.operationStateChanged.emit()
@@ -1335,8 +1828,11 @@ class AppBridge(QObject):
             self._clear_rendered_ranges("fi-video")
         if any(field in self.UPSCALE_RANGE_FIELDS for field in changed):
             self._clear_rendered_ranges("upscale-video")
+        if any(field in self.NR_RANGE_FIELDS | self.UPSCALE_RANGE_FIELDS | self.FI_RANGE_FIELDS for field in changed):
+            self._clear_rendered_ranges("nr-video")
         if any(field in self.AUTO_PREVIEW_FIELDS for field in changed):
-            self._schedule_auto_preview()
+            delay = 90 if keep_coloring_output else 360
+            self._schedule_auto_preview(delay, throttle=keep_coloring_output)
         return True
 
     def _flush_settings(self) -> None:
@@ -1372,6 +1868,46 @@ class AppBridge(QObject):
                 self._save_setting(upscaling_factor=factor)
         except ValueError:
             pass
+
+    @Property(str, notify=settingsUpdated)
+    def imageScalingFilter(self) -> str:
+        return self._settings.image_scaling_filter
+
+    @imageScalingFilter.setter
+    def imageScalingFilter(self, val: str) -> None:
+        self._save_setting(image_scaling_filter=val)
+
+    @Property(str, notify=settingsUpdated)
+    def videoScalingFilter(self) -> str:
+        return self._settings.video_scaling_filter
+
+    @videoScalingFilter.setter
+    def videoScalingFilter(self, val: str) -> None:
+        self._save_setting(video_scaling_filter=val)
+
+    @Property(str, notify=settingsUpdated)
+    def nrScaleMethod(self) -> str:
+        return self._settings.nr_scale_method
+
+    @nrScaleMethod.setter
+    def nrScaleMethod(self, val: str) -> None:
+        self._save_setting(nr_scale_method=val)
+
+    @Property(str, notify=settingsUpdated)
+    def nrDlssMode(self) -> str:
+        return self._settings.nr_dlss_mode
+
+    @nrDlssMode.setter
+    def nrDlssMode(self, val: str) -> None:
+        self._save_setting(nr_dlss_mode=val)
+
+    @Property(str, notify=settingsUpdated)
+    def nrDlssPreset(self) -> str:
+        return self._settings.nr_dlss_preset
+
+    @nrDlssPreset.setter
+    def nrDlssPreset(self, val: str) -> None:
+        self._save_setting(nr_dlss_preset=val)
 
     @Property(float, notify=settingsUpdated)
     def nrIntensity(self) -> float:
@@ -1609,7 +2145,10 @@ class AppBridge(QObject):
 
     @imageFormat.setter
     def imageFormat(self, val: str) -> None:
-        self._save_setting(image_format=val)
+        values = {"image_format": val}
+        if val not in IMAGE_16BIT_FORMATS and self._settings.image_bit_depth == 16:
+            values["image_bit_depth"] = 8
+        self._save_setting(**values)
 
     @Property(int, notify=settingsUpdated)
     def imageQuality(self) -> int:
@@ -1618,6 +2157,14 @@ class AppBridge(QObject):
     @imageQuality.setter
     def imageQuality(self, val: int) -> None:
         self._save_setting(image_quality=int(val))
+
+    @Property(int, notify=settingsUpdated)
+    def imageBitDepth(self) -> int:
+        return self._settings.image_bit_depth
+
+    @imageBitDepth.setter
+    def imageBitDepth(self, val: int) -> None:
+        self._save_setting(image_bit_depth=int(val))
 
     @Property(str, notify=settingsUpdated)
     def imageRenameMode(self) -> str:
@@ -1682,6 +2229,30 @@ class AppBridge(QObject):
         self._save_setting(video_custom_suffix=val)
 
     # Upscale Image & Video
+    @Property(str, notify=settingsUpdated)
+    def upscaleImageEngine(self) -> str:
+        return self._settings.upscale_image_engine
+
+    @upscaleImageEngine.setter
+    def upscaleImageEngine(self, val: str) -> None:
+        self._save_setting(upscale_image_engine=val)
+
+    @Property(str, notify=settingsUpdated)
+    def upscaleImageDlssMode(self) -> str:
+        return self._settings.upscale_image_dlss_mode
+
+    @upscaleImageDlssMode.setter
+    def upscaleImageDlssMode(self, val: str) -> None:
+        self._save_setting(upscale_image_dlss_mode=val)
+
+    @Property(str, notify=settingsUpdated)
+    def upscaleImageDlssPreset(self) -> str:
+        return self._settings.upscale_image_dlss_preset
+
+    @upscaleImageDlssPreset.setter
+    def upscaleImageDlssPreset(self, val: str) -> None:
+        self._save_setting(upscale_image_dlss_preset=val)
+
     @Property(int, notify=settingsUpdated)
     def upscaleImageVsrQuality(self) -> int:
         return self._settings.upscale_image_vsr_quality
@@ -1756,15 +2327,31 @@ class AppBridge(QObject):
     def upscaleImageQuality(self, val: int) -> None:
         self._save_setting(upscale_image_quality=int(val))
 
-    @Property(bool, notify=settingsUpdated)
-    def upscaleImagePreserveMetadata(self) -> bool:
-        return self._settings.upscale_image_preserve_metadata
-
-    @upscaleImagePreserveMetadata.setter
-    def upscaleImagePreserveMetadata(self, val: bool) -> None:
-        self._save_setting(upscale_image_preserve_metadata=bool(val))
-
     # Upscale Video
+    @Property(str, notify=settingsUpdated)
+    def upscaleEngine(self) -> str:
+        return self._settings.upscale_engine
+
+    @upscaleEngine.setter
+    def upscaleEngine(self, val: str) -> None:
+        self._save_setting(upscale_engine=val)
+
+    @Property(str, notify=settingsUpdated)
+    def upscaleDlssMode(self) -> str:
+        return self._settings.upscale_dlss_mode
+
+    @upscaleDlssMode.setter
+    def upscaleDlssMode(self, val: str) -> None:
+        self._save_setting(upscale_dlss_mode=val)
+
+    @Property(str, notify=settingsUpdated)
+    def upscaleDlssPreset(self) -> str:
+        return self._settings.upscale_dlss_preset
+
+    @upscaleDlssPreset.setter
+    def upscaleDlssPreset(self, val: str) -> None:
+        self._save_setting(upscale_dlss_preset=val)
+
     @Property(bool, notify=settingsUpdated)
     def upscaleVsrEnabled(self) -> bool:
         return self._settings.upscale_vsr_enabled
@@ -2049,6 +2636,12 @@ class AppBridge(QObject):
     def _active_render_configuration_valid(self) -> bool:
         try:
             _validate(self._settings)
+            if self._active_tab == "neural-rendering":
+                context = self._context()
+                if context.source_width > 0 and context.source_height > 0:
+                    estimate_pipeline(context.source_width, context.source_height,
+                                      context.source_fps, context.source_hdr,
+                                      self._settings, self._nr_mode)
             if self._active_tab == "upscale" and self._upscale_mode == "Video":
                 video_upscale_options_from_settings(self._settings).validate(for_render=True)
             elif self._active_tab == "upscale" and self._upscale_mode == "Image":
@@ -2057,10 +2650,16 @@ class AppBridge(QObject):
         except Exception:
             return False
 
-    @Property(str, notify=settingsUpdated)
+    @Property(str, notify=estimateChanged)
     def renderValidationMessage(self) -> str:
         try:
             _validate(self._settings)
+            if self._active_tab == "neural-rendering":
+                context = self._context()
+                if context.source_width > 0 and context.source_height > 0:
+                    estimate_pipeline(context.source_width, context.source_height,
+                                      context.source_fps, context.source_hdr,
+                                      self._settings, self._nr_mode)
             if self._active_tab == "upscale" and self._upscale_mode == "Video":
                 video_upscale_options_from_settings(self._settings).validate(for_render=True)
             elif self._active_tab == "upscale" and self._upscale_mode == "Image":
@@ -2069,7 +2668,7 @@ class AppBridge(QObject):
         except Exception as exc:
             return str(exc)
 
-    @Property(str, notify=settingsUpdated)
+    @Property(str, notify=estimateChanged)
     def outputEstimate(self) -> str:
         context = self._context()
         width, height = context.source_width, context.source_height
@@ -2077,8 +2676,10 @@ class AppBridge(QObject):
             return ""
         try:
             if self._active_tab == "neural-rendering":
-                ow, oh = resolve_output_size(width, height, self._settings.upscaling_factor)
-                return f"{width}×{height} → {ow}×{oh}"
+                result = estimate_pipeline(width, height, context.source_fps, context.source_hdr,
+                                           self._settings, self._nr_mode)
+                fps = f" | {result.fps:g} FPS" if self._nr_mode == "Video" and result.fps else ""
+                return f"{width}×{height} → {result.width}×{result.height}{fps}"
             if self._active_tab == "upscale" and self._upscale_mode == "Image":
                 ow, oh = image_upscale_output_size(width, height, image_upscale_options_from_settings(self._settings))
                 return f"{width}×{height} → {ow}×{oh}"
@@ -2124,6 +2725,7 @@ class AppBridge(QObject):
         SETTINGS_STATE.current = self._settings
         self._clear_rendered_ranges("fi-video")
         self._clear_rendered_ranges("upscale-video")
+        self._clear_rendered_ranges("nr-video")
         if self._upscale_mode != DEFAULT_SETTINGS.upscale_mode:
             self._upscale_mode = DEFAULT_SETTINGS.upscale_mode
             self.upscaleModeChanged.emit()
@@ -2132,6 +2734,7 @@ class AppBridge(QObject):
             self._live_effects_dirty = True
         self._flush_settings()
         self.settingsUpdated.emit()
+        self.workflowStagesChanged.emit()
         self.runtimeStateChanged.emit()
         self._preset_status = "All settings were reset to factory defaults."
         self.presetStatusChanged.emit()
@@ -2145,17 +2748,33 @@ class AppBridge(QObject):
         "live": "live_",
     }
     TAB_RESET_NEURAL_FIELDS = (
+        "image_stage_order", "video_stage_order",
+        "image_enabled_stages", "video_enabled_stages",
+        "denoise_strength", "denoise_deblock", "denoise_temporal", "cas_sharpness", "sharpening_method",
+        "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
+        "lut_resolution", *LUT_ADJUSTMENT_RANGES,
         "nr_style", "nr_intensity", "nr_passes",
         "local_tone_strength", "local_structure_strength",
         "skin_structure_strength", "automatic_mask",
         "nr_color_strength", "tone_preservation",
         "face_skin_protection", "grain_preservation",
         "shimmer_suppression", "mask_feather", "nr_mask",
-        "upscaling_factor",
+        "upscaling_factor", "image_scaling_filter", "video_scaling_filter",
+        "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
         "codec", "quality", "hdr_mode",
-        "image_format", "image_quality",
+        "image_format", "image_quality", "image_bit_depth",
         "image_rename_mode", "image_custom_suffix",
         "video_rename_mode", "video_custom_suffix",
+        "nr_preview_length",
+        "upscale_image_engine", "upscale_image_dlss_mode", "upscale_image_dlss_preset",
+        "upscale_image_vsr_quality", "upscale_image_size_mode", "upscale_image_scale_factor",
+        "upscale_image_width", "upscale_image_height", "upscale_image_aspect_lock",
+        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset",
+        "upscale_vsr_enabled", "upscale_vsr_quality", "upscale_size_mode", "upscale_scale_factor",
+        "upscale_width", "upscale_height", "upscale_aspect_lock", "upscale_hdr_enabled",
+        "upscale_hdr_contrast", "upscale_hdr_saturation", "upscale_hdr_middle_gray",
+        "upscale_hdr_peak_luminance", "upscale_hdr_precision",
+        "frame_interpolation_target_fps", "frame_interpolation_engine",
     )
     TAB_RESET_LABELS = {
         "neural-rendering": "Neural Rendering",
@@ -2241,6 +2860,9 @@ class AppBridge(QObject):
             imported = _validate(imported)
             self._settings = imported
             SETTINGS_STATE.current = self._settings
+            self._clear_output_preview("nr-image")
+            self._clear_output_preview("nr-video")
+            self._clear_rendered_ranges("nr-video")
             if self._upscale_mode != imported.upscale_mode:
                 self._upscale_mode = imported.upscale_mode
                 self.upscaleModeChanged.emit()
@@ -2249,6 +2871,7 @@ class AppBridge(QObject):
                 self._live_effects_dirty = True
             self._flush_settings()
             self.settingsUpdated.emit()
+            self.workflowStagesChanged.emit()
             self.runtimeStateChanged.emit()
             self._preset_status = f"Imported preset '{name}' successfully."
             self.presetStatusChanged.emit()
@@ -2660,6 +3283,21 @@ class AppBridge(QObject):
         self._image_provider.clear(f"input-{key}")
         self._image_provider.clear(f"output-{key}")
         self._image_provider.clear(f"poster-{key}")
+        self.splitPosition = 0.5
+        if key == self._context_key():
+            self._emit_context()
+
+    def _clear_output_preview(self, key: str) -> None:
+        """Drop an output made with a different scale method, mode, or preset."""
+        context = self._contexts[key]
+        if not context.has_output:
+            return
+        context.output_url = ""
+        context.output_info = ""
+        context.output_width = context.output_height = 0
+        context.output_is_video = False
+        context.last_auto_fingerprint = ()
+        self._image_provider.clear(f"output-{key}")
         if key == self._context_key():
             self._emit_context()
 
@@ -2695,6 +3333,12 @@ class AppBridge(QObject):
         context = self._contexts[context_key]
         context.selected_path = str(path)
         context.selected_row = row
+        context.source_width = 0
+        context.source_height = 0
+        context.source_aspect_ratio = None
+        context.source_fps = 0.0
+        context.source_hdr = False
+        context.duration_seconds = 0.0
         context.output_url = ""
         context.output_is_video = False
         context.output_info = ""
@@ -2705,6 +3349,9 @@ class AppBridge(QObject):
         context.last_playhead_seconds = 0.0
         context.rendered_ranges = []
         context.poster_url = ""
+        # New source: recenter the Split comparison divider so it never
+        # inherits a dragged offset from the previous image.
+        self.splitPosition = 0.5
         self._preview_generation += 1
         generation = self._preview_generation
         context.generation = generation
@@ -2778,6 +3425,7 @@ class AppBridge(QObject):
             ctx.source_height = height
             ctx.source_aspect_ratio = (width / height) if width and height else None
             ctx.source_fps = float(result.get("fps") or 0.0)
+            ctx.source_hdr = bool((result.get("meta") or {}).get("hdr"))
             ctx.duration_seconds = float(result.get("duration") or 0.0)
             dimensions = f"{width}×{height}" if width and height else ""
             if result.get("kind") == "image":
@@ -2913,6 +3561,17 @@ class AppBridge(QObject):
         if not self._save_setting(**{mode_field: rename_mode, suffix_field: custom_suffix}):
             return self._batch_export_error(self._status_message)
 
+        # Remember this run's Export Path choices so the next dialog open
+        # (including after restart) restores them.
+        self._export_destination_mode = destination_mode
+        if destination_mode == "folder":
+            self._export_folder = folder
+        self._ui_settings.setValue("export/destinationMode", destination_mode)
+        if destination_mode == "folder":
+            self._ui_settings.setValue("export/folder", folder)
+        self._ui_settings.sync()
+        self.exportPrefsChanged.emit()
+
         self._flush_settings()
         queue.reset_all_states()
         self._overall_progress = 0.0
@@ -2923,9 +3582,11 @@ class AppBridge(QObject):
 
         try:
             if context_key == "nr-image":
-                worker = self._nr_image_batch_worker(paths, settings, output_dir, same_as_input)
+                worker = JobWorker(render_pipeline_batch, paths, settings, "Image",
+                                   output_dir=output_dir, same_as_input=same_as_input)
             elif context_key == "nr-video":
-                worker = self._nr_video_batch_worker(paths, settings, output_dir, same_as_input)
+                worker = JobWorker(render_pipeline_batch, paths, settings, "Video",
+                                   output_dir=output_dir, same_as_input=same_as_input)
             elif context_key == "upscale-image":
                 worker = self._upscale_image_batch_worker(paths, settings, output_dir, same_as_input)
             elif context_key == "upscale-video":
@@ -3054,8 +3715,12 @@ class AppBridge(QObject):
             mask_feather=settings.mask_feather,
             nr_mask=settings.nr_mask,
             upscaling_factor=settings.upscaling_factor,
+            scale_method=settings.nr_scale_method,
+            dlss_mode=settings.nr_dlss_mode,
+            dlss_preset=settings.nr_dlss_preset,
             output_format=settings.image_format,
             quality=settings.image_quality,
+            preserve_metadata=False,
             rename_mode=settings.image_rename_mode,
             custom_suffix=settings.image_custom_suffix,
         )
@@ -3082,6 +3747,9 @@ class AppBridge(QObject):
             mask_feather=settings.mask_feather,
             nr_mask=settings.nr_mask,
             upscaling_factor=settings.upscaling_factor,
+            scale_method=settings.nr_scale_method,
+            dlss_mode=settings.nr_dlss_mode,
+            dlss_preset=settings.nr_dlss_preset,
             codec=settings.codec,
             container=container_for_codec(settings.codec),
             quality=settings.quality,
@@ -3218,7 +3886,7 @@ class AppBridge(QObject):
 
     @Slot(float)
     def renderPreviewAt(self, position_ms: float = 0.0) -> None:
-        """Explicit Preview: render the parked frame or selected Upscale clip."""
+        """Explicit Preview: render the parked frame or selected clip length."""
         if self.canPreview:
             # A pending realtime frame must not overwrite a manual clip as
             # soon as it finishes (or erase its green timeline range).
@@ -3228,8 +3896,13 @@ class AppBridge(QObject):
             self._scrub_preview_timer.stop()
         start_seconds, frame_index = self._quantize_playhead(position_ms)
         self.notePlayheadMs(position_ms)
-        clip_seconds = (self._upscale_preview_length_seconds()
-                        if self._context_key() == "upscale-video" else None)
+        key = self._context_key()
+        if key == "upscale-video":
+            clip_seconds = self._upscale_preview_length_seconds()
+        elif key == "nr-video":
+            clip_seconds = self._nr_preview_length_seconds()
+        else:
+            clip_seconds = None
         self._render_preview_impl(start_seconds, frame_index, clip_seconds=clip_seconds)
 
     @Slot(float)
@@ -3251,8 +3924,10 @@ class AppBridge(QObject):
             return
         if self._context_key() not in {"nr-video", "upscale-video"}:
             return
+        if self._context_key() == "nr-video" and "frame_generation" in enabled_stages(self._settings, "Video"):
+            return
         ctx = self._context()
-        if not ctx.has_output or not ctx.output_is_video:
+        if not ctx.has_output:
             return
         try:
             source = self._active_queue().selected_path()
@@ -3279,7 +3954,7 @@ class AppBridge(QObject):
                     pass
             self._operation_state = PREVIEW_CANCELLING
             self.operationStateChanged.emit()
-        self._scrub_preview_timer.start(750)
+        self._scrub_preview_timer.start(120 if self._can_fast_color_preview("nr-video") else 750)
 
     def _fire_scrub_preview(self) -> None:
         """Launch the debounced scrub-refresh render, if still applicable."""
@@ -3304,7 +3979,7 @@ class AppBridge(QObject):
             self._scrub_pending_pos = None
             return
         ctx = self._context()
-        if not ctx.has_output or not ctx.output_is_video:
+        if not ctx.has_output:
             self._scrub_pending_pos = None
             return
         pos_ms, self._scrub_pending_pos = self._scrub_pending_pos, None
@@ -3374,6 +4049,7 @@ class AppBridge(QObject):
         # opened the render (Input, Output, or 2-Up) and the finished output
         # swaps atomically into it. No tab is ever switched programmatically.
         settings = self._settings
+        fast_color = self._can_fast_color_preview(context_key, clip_seconds=clip_seconds)
         # Fingerprint of what this render is built from (selected source +
         # settings snapshot). Stored on success so later tab/mode switches
         # can skip the re-render while nothing changed.
@@ -3402,6 +4078,7 @@ class AppBridge(QObject):
             stamp_label = f" @ {start_seconds:.2f}s"
         else:
             stamp_label = ""
+        self._active_preview_fast_color = fast_color
         operation_id = self._set_operation(PREVIEW_PREPARING, f"Rendering preview{stamp_label}…")
         # Keep the last completed preview visible while the next realtime
         # generation is rendering.  The output is swapped atomically only
@@ -3410,29 +4087,20 @@ class AppBridge(QObject):
 
         try:
             if context_key == "nr-image":
-                opts = ImageConversionOptions(
-                    ai_gpu_uuid=settings.ai_gpu_uuid,
-                    nr_style=settings.nr_style,
-                    nr_intensity=settings.nr_intensity,
-                    nr_passes=settings.nr_passes,
-                    local_tone_strength=settings.local_tone_strength,
-                    local_structure_strength=settings.local_structure_strength,
-                    skin_structure_strength=settings.skin_structure_strength,
-                    automatic_mask=settings.automatic_mask,
-                    nr_color_strength=settings.nr_color_strength,
-                    tone_preservation=settings.tone_preservation,
-                    face_skin_protection=settings.face_skin_protection,
-                    grain_preservation=settings.grain_preservation,
-                    mask_feather=settings.mask_feather,
-                    nr_mask=settings.nr_mask,
-                    upscaling_factor=settings.upscaling_factor,
-                    output_format="PNG",
-                    quality=100,
-                )
-                def task(controller=None, progress=None):
-                    return render_image_preview(
-                        source, opts, controller=controller, progress=progress,
-                    )
+                if fast_color:
+                    def task(controller=None, progress=None):
+                        try:
+                            return render_color_still_preview(
+                                source, settings, "Image", controller=controller, progress=progress)
+                        except FastPreviewUnavailable:
+                            return render_pipeline_preview(
+                                source, settings, "Image", output_dir=self._preview_cache,
+                                controller=controller, progress=progress)
+                else:
+                    def task(controller=None, progress=None):
+                        return render_pipeline_preview(
+                            source, settings, "Image", output_dir=self._preview_cache,
+                            controller=controller, progress=progress)
                 result_kind = "image"
             elif context_key == "upscale-image":
                 opts = image_upscale_options_from_settings(settings)
@@ -3443,38 +4111,26 @@ class AppBridge(QObject):
                     )
                 result_kind = "image"
             elif context_key == "nr-video":
-                opts = ConversionOptions(
-                    ai_gpu_uuid=settings.ai_gpu_uuid,
-                    video_gpu_uuid=settings.video_gpu_uuid,
-                    nr_style=settings.nr_style,
-                    nr_intensity=settings.nr_intensity,
-                    nr_passes=settings.nr_passes,
-                    local_tone_strength=settings.local_tone_strength,
-                    local_structure_strength=settings.local_structure_strength,
-                    skin_structure_strength=settings.skin_structure_strength,
-                    automatic_mask=settings.automatic_mask,
-                    nr_color_strength=settings.nr_color_strength,
-                    tone_preservation=settings.tone_preservation,
-                    face_skin_protection=settings.face_skin_protection,
-                    grain_preservation=settings.grain_preservation,
-                    shimmer_suppression=settings.shimmer_suppression,
-                    mask_feather=settings.mask_feather,
-                    nr_mask=settings.nr_mask,
-                    upscaling_factor=settings.upscaling_factor,
-                    codec=settings.codec,
-                    container=container_for_codec(settings.codec),
-                    quality=settings.quality,
-                    preserve_hdr=settings.hdr_mode,
-                )
-                def task(controller=None, progress=None):
-                    return process_video_preview(
-                        source, opts, preview_frames=1,
-                        preview_encoding=settings.preview_encoding,
-                        progress=progress, output_dir=self._preview_cache,
-                        controller=controller, ephemeral_preview=False,
-                        start_seconds=start_seconds, frame_index=frame_index,
-                    )
-                result_kind = "video"
+                if fast_color:
+                    video_size = (context.source_width, context.source_height)
+                    def task(controller=None, progress=None):
+                        try:
+                            return render_color_still_preview(
+                                source, settings, "Video", start_seconds=start_seconds,
+                                video_size=video_size, controller=controller, progress=progress)
+                        except FastPreviewUnavailable:
+                            return render_pipeline_preview(
+                                source, settings, "Video", output_dir=self._preview_cache,
+                                controller=controller, progress=progress,
+                                start_seconds=start_seconds)
+                    result_kind = "video_still"
+                else:
+                    def task(controller=None, progress=None):
+                        return render_pipeline_preview(
+                            source, settings, "Video", output_dir=self._preview_cache,
+                            controller=controller, progress=progress,
+                            start_seconds=start_seconds, clip_seconds=clip_seconds)
+                    result_kind = "video"
             elif context_key == "upscale-video":
                 opts = video_upscale_options_from_settings(settings)
                 opts.validate(for_render=True)
@@ -3536,8 +4192,10 @@ class AppBridge(QObject):
                 return
             ctx = self._contexts[context_key]
             media, status = result
+            actual_kind = ("video" if result_kind == "video_still" and isinstance(media, (str, Path))
+                           else result_kind)
             rendered_ok = False
-            if result_kind == "image":
+            if actual_kind in {"image", "video_still"}:
                 if media is not None:
                     image_id = f"output-{context_key}"
                     self._image_provider.set_image(image_id, media)
@@ -3548,6 +4206,12 @@ class AppBridge(QObject):
                         f"Enhanced preview | {ctx.output_width}×{ctx.output_height}"
                         if ctx.output_width and ctx.output_height else "Enhanced preview"
                     )
+                    if actual_kind == "video_still":
+                        ctx.preview_source_seconds = max(0.0, float(start_seconds or 0.0))
+                        ctx.preview_source_frame = frame_index
+                        self._clear_rendered_ranges(context_key)
+                        ctx.output_info = (f"Preview f{frame_index}/{_total} @ {start_seconds:.2f}s"
+                                           if _total > 0 else f"Preview @ {start_seconds:.2f}s")
                     rendered_ok = True
             else:
                 if media and Path(str(media)).is_file():
@@ -3564,6 +4228,11 @@ class AppBridge(QObject):
                         self._add_rendered_range(context_key, start_seconds, str(media),
                                                  self._fi_preview_length_seconds())
                     elif context_key == "upscale-video":
+                        if clip_seconds is not None:
+                            self._add_rendered_range(context_key, start_seconds, str(media), clip_seconds)
+                        else:
+                            self._clear_rendered_ranges(context_key)
+                    elif context_key == "nr-video":
                         if clip_seconds is not None:
                             self._add_rendered_range(context_key, start_seconds, str(media), clip_seconds)
                         else:
@@ -3917,7 +4586,8 @@ class AppBridge(QObject):
             save_settings(CONFIG_PATH, self._settings)
         except Exception as exc:
             self._log(f"Failed to save settings during shutdown: {exc}")
-        for worker in (self._active_worker, self._scan_worker, self._metadata_worker, self._live_worker):
+        for worker in (self._active_worker, self._scan_worker, self._metadata_worker,
+                       self._live_worker, self._lut_save_worker, self._lut_auto_worker):
             if worker is not None:
                 try:
                     worker.controller.stop()
@@ -3973,6 +4643,12 @@ class AppBridge(QObject):
         folder = p if p.is_dir() else p.parent
         if folder.exists():
             os.startfile(folder)
+
+    @Slot()
+    def openThirdPartyNotices(self) -> None:
+        notices = ROOT / "THIRD-PARTY-NOTICES.txt"
+        if notices.is_file():
+            os.startfile(notices)
 
     @Slot(str)
     def copyToClipboard(self, text: str) -> None:

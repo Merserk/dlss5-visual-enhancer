@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 from contextlib import suppress
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable
@@ -30,6 +31,86 @@ from .media import inspect_video, packed_bytes
 from .models import UpscaleCapabilities, UpscaleOptions, UpscaleResult, output_size
 from .native import RTXVideoSession, probe_capabilities
 from .cuda_transfer import CudaTransferPool
+
+
+class DLSSNeedsHostFallback(RuntimeError):
+    """The decoder could not expose a CUDA frame for this source."""
+
+
+class _DLSSVideoAdapter:
+    def __init__(self, width, height, options, output_p010, controller, capabilities):
+        from ...core.dlss_bridge import DLSSSession
+        self.dlss = DLSSSession(width, height, options.dlss_mode, options.dlss_preset,
+                                gpu_uuid=options.ai_gpu_uuid, even=True)
+        self.options = options
+        self.output_p010 = output_p010
+        self.hdr = None
+        self.closed = False
+        self.cuts = 0
+        if options.hdr_enabled:
+            self.hdr = RTXVideoSession(
+                self.dlss.output_width, self.dlss.output_height,
+                self.dlss.output_width, self.dlss.output_height,
+                replace(options, vsr_enabled=False),
+                2 if output_p010 else 1, capabilities, controller)
+
+    @property
+    def completed_frames(self):
+        return self.dlss.frames
+
+    def process_cuda_frame(self, frame, *, color_matrix=1, color_range=0,
+                           color_primaries=1, color_transfer=0, chroma_location=1,
+                           rotation=0, output_p010=False):
+        intermediate, detail = self.dlss.process_cuda_frame(
+            frame, color_matrix=color_matrix, color_range=color_range,
+            rotation=rotation, phase=self.dlss.frames,
+            output_p010=output_p010)
+        self.cuts += int(detail["scene_cut"])
+        if self.hdr is None:
+            return intermediate, detail
+        intermediate.pts = getattr(frame, "pts", None)
+        if getattr(frame, "time_base", None) is not None:
+            intermediate.time_base = frame.time_base
+        else:
+            intermediate.time_base = Fraction(1, 1000)
+        intermediate.duration = getattr(frame, "duration", None)
+        try:
+            processed, hdr_detail = self.hdr.process_cuda_frame(
+                intermediate, color_matrix=color_matrix, color_range=color_range,
+                color_primaries=color_primaries, color_transfer=color_transfer,
+                chroma_location=chroma_location, output_p010=True)
+        finally:
+            del intermediate
+        return processed, {
+            "input_ms": float(detail["input_ms"]) + float(hdr_detail["input_ms"]),
+            "ngx_ms": float(detail["ngx_ms"]) + float(hdr_detail["ngx_ms"]),
+            "output_ms": float(detail["output_ms"]) + float(hdr_detail["output_ms"]),
+        }
+
+    def structured_status(self, *, decode_backend, encode_backend):
+        result = self.dlss.last_result
+        status = {
+            "engine": "DLSS Super Resolution", "bridge_version": "DLSS ABI 1",
+            "mode": self.options.dlss_mode, "preset": self.options.dlss_preset,
+            "guide_estimated": True, "frames": self.dlss.frames,
+            "media_pipeline": "source-anchored DLSS", "synthetic_jitter": False,
+            "scene_cuts": self.cuts, "memory_path": "cuda_d3d12_shared",
+            "decode_backend": decode_backend, "encode_backend": encode_backend,
+            "render_width": result.render_width, "render_height": result.render_height,
+            "gpu_pre_resize": (result.render_width, result.render_height) != (
+                self.dlss.width, self.dlss.height),
+        }
+        if self.hdr is not None:
+            status["rtx_video_hdr"] = self.hdr.structured_status(
+                decode_backend="CUDA DLSS", encode_backend=encode_backend)
+        return status
+
+    def close(self, abort=False):
+        if not self.closed:
+            if self.hdr is not None:
+                self.hdr.close(abort=abort)
+            self.dlss.close()
+            self.closed = True
 
 
 _NVENC_CODEC = {
@@ -150,11 +231,17 @@ class _SoftwareNormalizer:
         final_format = "gbrp10le" if ten_bit else "rgba"
         graph = av.filter.Graph()
         source = graph.add_buffer(template=frame)
-        colors = graph.add(
-            "colorspace",
-            f"ispace={matrix}:iprimaries={primaries}:itrc={transfer}:irange={color_range}:"
-            f"all=bt709:trc=gamma22:range=pc:format={precision}",
-        )
+        if av.VideoFormat(str(stream.get("pix_fmt") or "yuv420p")).is_rgb:
+            # Lossless FFV1 intermediates in the ordered workflow are RGB.
+            # FFmpeg's colorspace filter does not accept ispace=gbr. Preserve
+            # the RGB pixels and depth directly at this stage boundary.
+            colors = graph.add("format", "gbrp10le" if ten_bit else "gbrp")
+        else:
+            colors = graph.add(
+                "colorspace",
+                f"ispace={matrix}:iprimaries={primaries}:itrc={transfer}:irange={color_range}:"
+                f"all=bt709:trc=gamma22:range=pc:format={precision}",
+            )
         source.link_to(colors)
         node = colors
         rotation = int(metadata["rotation"])
@@ -252,14 +339,15 @@ def convert_video_cuda_nvenc(
     stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
     extension = {"MP4": ".mp4", "MKV": ".mkv", "MOV": ".mov"}[options.container]
     destination = prepare_output_dir(output_dir)
-    kind = "RTXVIDEO_PREVIEW" if preview else "RTXVIDEO"
+    kind = ("DLSS_PREVIEW" if preview else "DLSS") if options.engine == "DLSS" else (
+        "RTXVIDEO_PREVIEW" if preview else "RTXVIDEO")
     output = unique_output_path(destination / output_filename(
         source, extension, "Auto" if preview else options.rename_mode,
         options.custom_suffix, f"{source.stem}_{kind}_{stamp}",
     ))
     destination_file = OutputFile(output)
     JOBS.mkdir(exist_ok=True)
-    session: RTXVideoSession | None = None
+    session: RTXVideoSession | _DLSSVideoAdapter | None = None
     decoded_container: Any | None = None
     encoded_container: Any | None = None
     delivered = 0
@@ -305,6 +393,8 @@ def convert_video_cuda_nvenc(
             except StopIteration as exc:
                 raise ValueError("The input contains no decodable video frames.") from exc
             timings["decode_seconds"] += time.perf_counter() - decode_start
+            if options.engine == "DLSS" and first_frame.format.name != "cuda":
+                raise DLSSNeedsHostFallback("NVDEC did not expose a CUDA frame.")
 
             encoded_container = av.open(str(temp_video), mode="w")
             output_stream = encoded_container.add_stream(codec_name, rate=metadata["rate"], hwaccel=encode_device)
@@ -331,11 +421,16 @@ def convert_video_cuda_nvenc(
             _set_color_properties(output_stream.codec_context, bool(options.hdr_enabled))
             # Force decoder and encoder CUDA contexts to exist before NGX.
             output_stream.codec_context.open()
-            capabilities = capabilities or probe_capabilities(options.ai_gpu_uuid, controller=controller)
-            session = RTXVideoSession(
-                width, height, output_width, output_height, options, input_format,
-                capabilities, controller,
-            )
+            if options.engine == "DLSS":
+                capabilities = (capabilities or probe_capabilities(
+                    options.ai_gpu_uuid, controller=controller)) if options.hdr_enabled else None
+                session = _DLSSVideoAdapter(
+                    width, height, options, output_p010, controller, capabilities)
+            else:
+                capabilities = capabilities or probe_capabilities(options.ai_gpu_uuid, controller=controller)
+                session = RTXVideoSession(
+                    width, height, output_width, output_height, options, input_format,
+                    capabilities, controller)
             if encode_ordinal != ai_ordinal:
                 transfer_pool = CudaTransferPool(ai_ordinal, encode_ordinal, controller)
 
@@ -449,6 +544,8 @@ def convert_video_cuda_nvenc(
                         rotation=int(metadata["rotation"]), output_p010=output_p010,
                     )
                 else:
+                    if options.engine == "DLSS":
+                        raise RuntimeError("DLSS CUDA decoding changed to software mid-stream.")
                     decode_backends.add("software")
                     tick = time.perf_counter()
                     if software_normalizer is None:
@@ -515,7 +612,7 @@ def convert_video_cuda_nvenc(
             )
             session.close()
             if session.completed_frames != delivered:
-                raise RuntimeError("RTX Video bridge completion does not match frame accounting.")
+                raise RuntimeError("GPU bridge completion does not match frame accounting.")
             gc.collect()
 
             if not preview and (not metadata["frames"] or delivered != metadata["frames"]):
@@ -586,7 +683,7 @@ def convert_video_cuda_nvenc(
             return UpscaleResult(
                 str(output), report_path, delivered, output_width, output_height,
                 options.hdr_enabled, elapsed,
-                bridge_version=str(capabilities.bridge_version),
+                bridge_version=("DLSS ABI 1" if options.engine == "DLSS" else str(capabilities.bridge_version)),
                 memory_path=str(session_status["memory_path"]),
                 decode_backend=str(session_status["decode_backend"]),
                 encode_backend=codec_name, timings=timings, bridge_status=session_status,

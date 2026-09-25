@@ -6,8 +6,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TEMP = ROOT / "temp"
 APP_TEMP = TEMP / "app"
+PREVIEW_CACHE = APP_TEMP / "cache"
 RUNTIME = ROOT / "bin" / "runtime"
 DLSSG_DIR = RUNTIME / "dlssg"
+DLSSSR_DIR = RUNTIME / "dlsssr"
+DLSSSR_BRIDGE = DLSSSR_DIR / "neuroframe_engine_super_resolution.dll"
+DLSSSR_RUNTIME = DLSSSR_DIR / "nvngx_dlss.dll"
 # In-process D3D12/NGX feature-18 runtime. The bridge and caller shim are
 # self-contained and require no Python tensor framework or external add-on.
 DLSSNR_DIR = RUNTIME / "dlssnr"

@@ -127,8 +127,6 @@ Rectangle {
         spacing: 4
         readonly property var tabs: [
             { id:"neural-rendering", full:"Neural Rendering", short:"Neural", icon:"neural_rendering" },
-            { id:"upscale", full:"Upscale", short:"Upscale", icon:"upscale" },
-            { id:"frame-interpolation", full:"Frame Interpolation", short:"Interp", icon:"frame_interpolation" },
             { id:"live", full:"Live", short:"Live", icon:"live_video" },
             { id:"settings", full:"Settings", short:"Settings", icon:"settings" },
             { id:"help", full:"Help", short:"Help", icon:"help" }

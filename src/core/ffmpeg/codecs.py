@@ -142,13 +142,11 @@ def _hdr_color_args(metadata: dict | None) -> list[str]:
     trc = metadata.get("color_transfer")
     if isinstance(trc, str) and trc not in ("unknown", "", None):
         args.extend(["-color_trc", trc])
-    # color_range is not probed currently; default tv for HDR
-    # If HDR, ensure range is tv
-    if metadata.get("hdr"):
-        # Ensure we signal full vs limited correctly – probe doesn't give range, use tv
-        # Don't double-add if already present
-        if "-color_range" not in args:
-            args.extend(["-color_range", "tv"])
+    color_range = str(metadata.get("color_range") or "").lower()
+    if color_range in {"pc", "jpeg", "full"}:
+        args.extend(["-color_range", "pc"])
+    elif color_range in {"tv", "mpeg", "limited"}:
+        args.extend(["-color_range", "tv"])
     return args
 
 
@@ -169,7 +167,9 @@ def _x265_hdr_params(metadata: dict | None) -> str | None:
     cmat = mapping["color_space"] if mapping["color_space"] not in ("unknown", "", None) else "bt709"
     # x265 colormatrix for bt2020nc is bt2020nc, for bt709 is bt709
     # Ensure x265-compatible values: bt2020nc is valid, bt709 is valid
-    return f"colorprim={prim}:transfer={trc}:colormatrix={cmat}:range=limited"
+    color_range = str(metadata.get("color_range") or "").lower()
+    range_name = "full" if color_range in {"pc", "jpeg", "full"} else "limited"
+    return f"colorprim={prim}:transfer={trc}:colormatrix={cmat}:range={range_name}"
 
 
 def validate_codec_container(codec: str, container: str) -> None:

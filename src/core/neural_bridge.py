@@ -25,6 +25,7 @@ from .ngx_runtime import NGX_RUNTIME_LOCK
 
 
 BRIDGE_ABI_VERSION = 6
+BRIDGE_FRAME_ABI_MAX_VERSION = 7
 BRIDGE_WATCHDOG_SECONDS = 45.0
 MEMORY_HOST = 0
 MEMORY_CUDA = 1
@@ -32,6 +33,7 @@ MEMORY_NONE = 2
 FORMAT_RGBA8 = 1
 FORMAT_NV12 = 2
 FORMAT_P010 = 3
+FORMAT_RGBA16LE = 4
 
 
 def _bridge_failure_requires_restart(detail: str) -> bool:
@@ -311,7 +313,7 @@ class _CudaDriver:
         except OSError as exc:
             raise NeuralBridgeError(
                 "CUDA interoperability is unavailable because nvcuda.dll could not be "
-                "loaded. Switch GPU OFF to use the bridge host-staging path."
+                "loaded. Neural Rendering requires CUDA/D3D12 interoperability."
             ) from exc
 
         self._bind("cuInit", [ctypes.c_uint])
@@ -585,6 +587,10 @@ class BridgeSessionDiagnostics:
     decode_backend: str = "software"
     encode_backend: str = "cpu"
     pixel_format: str = "rgba8"
+    source_format: str = "unknown"
+    working_format: str = "rgba8"
+    ngx_format: str = "rgba16f"
+    output_format: str = "unknown"
     frames: int = 0
     feature_evaluations: int = 0
     scene_resets: int = 0
@@ -597,11 +603,16 @@ class BridgeSessionDiagnostics:
     def as_dict(self) -> dict[str, Any]:
         return {
             "bridge_abi_version": BRIDGE_ABI_VERSION,
+            "bridge_frame_abi_max_version": BRIDGE_FRAME_ABI_MAX_VERSION,
             "gpu_mode": self.gpu_mode,
             "memory_path": self.memory_path,
             "decode_backend": self.decode_backend,
             "encode_backend": self.encode_backend,
             "pixel_format": self.pixel_format,
+            "source_format": self.source_format,
+            "working_format": self.working_format,
+            "ngx_format": self.ngx_format,
+            "output_format": self.output_format,
             "frames": self.frames,
             "feature_evaluations": self.feature_evaluations,
             "scene_resets": self.scene_resets,
@@ -869,6 +880,8 @@ class NeuralBridgeManager:
             ctypes.c_int,
         ]
         library.dlss5nr_process_frame_v6.restype = ctypes.c_int
+        library.dlss5nr_process_frame_v7.argtypes = library.dlss5nr_process_frame_v6.argtypes
+        library.dlss5nr_process_frame_v7.restype = ctypes.c_int
         library.dlss5nr_temporal_status.argtypes = [ctypes.c_char_p, ctypes.c_int]
         library.dlss5nr_temporal_status.restype = ctypes.c_int
         library.dlss5nr_scene_score_v1.argtypes = [
@@ -948,24 +961,33 @@ class NeuralBridgeManager:
             ) from failure[0]
         return result[0]
 
-    def initialize(self, gpu: dict[str, Any], *, require_cuda: bool) -> dict[str, Any]:
+    def initialize(self, gpu: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             self._guard_poison()
             ordinal = int(gpu.get("cuda_ordinal", gpu.get("index", 0)))
             if self._initialized_ordinal is None:
                 # The NVIDIA D3D12 NGX core keeps the first feature search path
                 # for the lifetime of the process. If Neural Rendering starts
-                # first, a later DLSSG initialization succeeds superficially
-                # but reports Frame Generation as unavailable. Prime DLSSG on
-                # the same adapter before Feature 18; failure remains isolated
-                # so systems without the optional DLSSG runtime can still use
-                # Neural Rendering.
+                # first, later SR or Frame Generation initialization may report
+                # the feature unavailable. The DLSSG bridge registers both
+                # independent runtime directories. If DLSSG is missing, prime
+                # SR directly before Feature 18. Optional failures remain
+                # isolated from standard Neural Rendering.
+                frame_generation_ready = False
                 try:
                     from ..frame_interpolation.native import initialize_bridge
 
                     initialize_bridge(ordinal)
+                    frame_generation_ready = True
                 except Exception:
                     pass
+                if not frame_generation_ready:
+                    try:
+                        from .dlss_bridge import initialize_bridge as initialize_dlss
+
+                        initialize_dlss(ordinal)
+                    except Exception:
+                        pass
             self._load()
             if self._initialized_ordinal is None:
                 assert self._library is not None
@@ -1024,13 +1046,12 @@ class NeuralBridgeManager:
                 self._library.dlss5nr_cuda_status(cuda_status, len(cuda_status))
             )
             cuda_detail = _text(cuda_status.value) or "unavailable"
-            if require_cuda and not cuda_ready:
+            if not cuda_ready:
                 raise NeuralBridgeError(
                     f"CUDA/D3D12 interoperability is unavailable ({cuda_detail}). "
-                    "Switch GPU OFF to use host staging; Neural Rendering still requires "
-                    "an RTX GPU."
+                    "Neural Rendering requires a supported RTX GPU and driver."
                 )
-            if require_cuda and self._cuda_driver is None:
+            if self._cuda_driver is None:
                 try:
                     self._cuda_driver = _CudaDriver(ordinal)
                     # Do not leave the primary context current on the UI/decoder
@@ -1038,12 +1059,12 @@ class NeuralBridgeManager:
                     self._cuda_driver.deactivate()
                 except Exception as exc:
                     raise NeuralBridgeError(
-                        f"CUDA/D3D12 interoperability setup failed: {exc} Switch GPU OFF "
-                        "to use host staging."
+                        f"CUDA/D3D12 interoperability setup failed: {exc}"
                     ) from exc
             return {
                 "bridge_version": self._version,
                 "bridge_abi_version": BRIDGE_ABI_VERSION,
+                "bridge_frame_abi_max_version": BRIDGE_FRAME_ABI_MAX_VERSION,
                 "gpu_name": self._gpu_name,
                 "adapter_luid": _text(self._library.dlss5nr_adapter_luid()) or "unknown",
                 "cuda_ordinal": ordinal,
@@ -1075,8 +1096,7 @@ class NeuralBridgeManager:
             self._guard_poison()
             if self._cuda_driver is None:
                 raise NeuralBridgeError(
-                    "CUDA/D3D12 interoperability is not initialized. Switch GPU OFF to "
-                    "use host staging."
+                    "CUDA/D3D12 interoperability is not initialized."
                 )
             try:
                 return CudaFrameBuffers.create(self._cuda_driver, width, height)
@@ -1101,8 +1121,7 @@ class NeuralBridgeManager:
             self._guard_poison()
             if self._library is None or self._cuda_driver is None:
                 raise NeuralBridgeError(
-                    "CUDA/D3D12 interoperability is not initialized. Switch GPU OFF to "
-                    "use host staging."
+                    "CUDA/D3D12 interoperability is not initialized."
                 )
             if pixel_format not in (FORMAT_NV12, FORMAT_P010):
                 raise NeuralBridgeError("CUDA video output must be NV12 or P010.")
@@ -1117,8 +1136,7 @@ class NeuralBridgeManager:
             if not handle:
                 detail = _text(error.value) or "unknown CUDA output allocation failure"
                 raise NeuralBridgeError(
-                    f"CUDA/D3D12 output allocation failed: {detail}. Switch GPU OFF to "
-                    "use host staging."
+                    f"CUDA/D3D12 output allocation failed: {detail}."
                 )
             descriptor = FrameDescriptorV1.empty()
             if not self._library.dlss5nr_surface_frame_desc(
@@ -1183,6 +1201,7 @@ class NeuralBridgeManager:
         color_matrix: int = 1,
         color_range: int = 0,
         rotation: int = 0,
+        chroma_location: int = 1,
     ) -> tuple[Any, dict[str, Any], float]:
         """Evaluate a PyAV CUDA frame and return a CUDA AVFrame for NVENC.
 
@@ -1194,8 +1213,7 @@ class NeuralBridgeManager:
             self._guard_poison()
             if self._library is None or self._cuda_driver is None:
                 raise NeuralBridgeError(
-                    "CUDA/D3D12 interoperability is not initialized. Switch GPU OFF to "
-                    "use host staging."
+                    "CUDA/D3D12 interoperability is not initialized."
                 )
             format_name = str(getattr(getattr(frame, "format", None), "name", ""))
             if format_name != "cuda":
@@ -1229,6 +1247,7 @@ class NeuralBridgeManager:
             source.color_matrix = int(color_matrix)
             source.color_range = int(color_range)
             source.rotation = int(rotation) % 360
+            source.reserved = int(chroma_location)
             source.timestamp = int(timestamp)
 
             surface = self.create_video_surface(
@@ -1265,8 +1284,7 @@ class NeuralBridgeManager:
                             f"{detail}. Restart the application before rendering again."
                         )
                     raise NeuralBridgeError(
-                        f"CUDA/D3D12 Neural Rendering failed: {detail}. Switch GPU OFF to "
-                        "use host staging."
+                        f"CUDA/D3D12 Neural Rendering failed: {detail}."
                     )
                 # AVFrame.from_dlpack establishes its own primary-context
                 # references; do not leak the bridge's current context into
@@ -1353,8 +1371,7 @@ class NeuralBridgeManager:
             if not ok:
                 detail = _text(error.value) or "unknown CUDA scene-scoring failure"
                 raise NeuralBridgeError(
-                    f"CUDA reduced-luma scene scoring failed: {detail}. Switch GPU OFF "
-                    "to use host staging."
+                    f"CUDA reduced-luma scene scoring failed: {detail}."
                 )
             return float(score.value), bool(reset.value)
 
@@ -1379,16 +1396,19 @@ class NeuralBridgeManager:
             if self._library is None or self._cuda_driver is None:
                 raise NeuralBridgeError("Host-to-CUDA video processing requires GPU mode.")
             if (
-                rgba.dtype != np.uint8
+                rgba.dtype not in (np.uint8, np.uint16)
                 or rgba.ndim != 3
                 or rgba.shape[2] != 4
                 or not rgba.flags.c_contiguous
             ):
-                raise NeuralBridgeError("Host video input must be contiguous RGBA8.")
+                raise NeuralBridgeError("Host video input must be contiguous RGBA8 or RGBA16LE.")
+            high_depth = rgba.dtype == np.uint16
             height, width = rgba.shape[:2]
             source = FrameDescriptorV1.empty()
             source.memory_type = MEMORY_HOST
-            source.pixel_format = FORMAT_RGBA8
+            source.pixel_format = FORMAT_RGBA16LE if high_depth else FORMAT_RGBA8
+            if high_depth:
+                source.abi_version = 7
             source.width = int(width)
             source.height = int(height)
             source.planes[0] = int(rgba.ctypes.data)
@@ -1398,18 +1418,23 @@ class NeuralBridgeManager:
             source.timestamp = int(timestamp)
 
             surface = self.create_video_surface(width, height, output_format)
-            destination = surface.descriptor
+            destination = FrameDescriptorV1.from_buffer_copy(surface.descriptor)
+            if high_depth:
+                destination.abi_version = 7
             destination.color_matrix = int(color_matrix)
             destination.color_range = int(color_range)
             destination.timestamp = int(timestamp)
             params = self._render_parameters(settings, reset, mask, cuda_mask)
             result = FrameResultV1.empty()
+            if high_depth:
+                params.abi_version = result.abi_version = 7
             error = ctypes.create_string_buffer(4096)
             started = time.perf_counter()
             try:
                 ok = self._call_with_watchdog(
                     "feature-18 host-to-CUDA video evaluation",
-                    lambda: self._library.dlss5nr_process_frame_v6(
+                    lambda: (self._library.dlss5nr_process_frame_v7 if high_depth
+                             else self._library.dlss5nr_process_frame_v6)(
                         ctypes.byref(source), ctypes.byref(destination),
                         ctypes.byref(params), ctypes.byref(result), error, len(error),
                     ),
@@ -1421,8 +1446,7 @@ class NeuralBridgeManager:
                 if not ok:
                     detail = _text(error.value) or "unknown host-to-CUDA frame failure"
                     raise NeuralBridgeError(
-                        f"CUDA/D3D12 Neural Rendering failed: {detail}. Switch GPU OFF "
-                        "to use host staging."
+                        f"CUDA/D3D12 Neural Rendering failed: {detail}."
                     )
                 output = surface.to_av_frame()
             except BaseException:
@@ -1444,7 +1468,7 @@ class NeuralBridgeManager:
                 "upload_bytes": int(result.upload_bytes),
                 "download_bytes": int(result.download_bytes),
                 "timestamp": int(result.timestamp),
-                "input_format": "rgba8",
+                "input_format": "rgba16le" if high_depth else "rgba8",
                 "output_format": "p010le" if output_format == FORMAT_P010 else "nv12",
             }
             return output, details, elapsed
@@ -1462,6 +1486,7 @@ class NeuralBridgeManager:
         color_matrix: int = 1,
         color_range: int = 0,
         rotation: int = 0,
+        chroma_location: int = 1,
     ) -> tuple[dict[str, Any], float]:
         """Evaluate an NVDEC CUDA frame and download only the final RGBA result."""
         with self._lock:
@@ -1479,13 +1504,16 @@ class NeuralBridgeManager:
                     f"{format_name or 'unknown'}/{sw_format or 'unknown'}."
                 )
             if (
-                destination.dtype != np.uint8
+                destination.dtype not in (np.uint8, np.uint16)
                 or destination.ndim != 3
                 or destination.shape[2] != 4
                 or not destination.flags.c_contiguous
             ):
-                raise NeuralBridgeError("CUDA-to-host output must be contiguous RGBA8.")
+                raise NeuralBridgeError("CUDA-to-host output must be contiguous RGBA8 or RGBA16LE.")
+            high_depth = destination.dtype == np.uint16
             source = FrameDescriptorV1.empty()
+            if high_depth:
+                source.abi_version = 7
             source.memory_type = MEMORY_CUDA
             source.pixel_format = source_format
             source.width = int(frame.width)
@@ -1497,10 +1525,13 @@ class NeuralBridgeManager:
             source.color_matrix = int(color_matrix)
             source.color_range = int(color_range)
             source.rotation = int(rotation) % 360
+            source.reserved = int(chroma_location)
             source.timestamp = int(timestamp)
             output = FrameDescriptorV1.empty()
             output.memory_type = MEMORY_HOST
-            output.pixel_format = FORMAT_RGBA8
+            output.pixel_format = FORMAT_RGBA16LE if high_depth else FORMAT_RGBA8
+            if high_depth:
+                output.abi_version = 7
             output.width = int(destination.shape[1])
             output.height = int(destination.shape[0])
             output.planes[0] = int(destination.ctypes.data)
@@ -1510,11 +1541,14 @@ class NeuralBridgeManager:
             output.timestamp = int(timestamp)
             params = self._render_parameters(settings, reset, mask, cuda_mask)
             result = FrameResultV1.empty()
+            if high_depth:
+                params.abi_version = result.abi_version = 7
             error = ctypes.create_string_buffer(4096)
             started = time.perf_counter()
             ok = self._call_with_watchdog(
                 "feature-18 CUDA-to-host video evaluation",
-                lambda: self._library.dlss5nr_process_frame_v6(
+                lambda: (self._library.dlss5nr_process_frame_v7 if high_depth
+                         else self._library.dlss5nr_process_frame_v6)(
                     ctypes.byref(source), ctypes.byref(output), ctypes.byref(params),
                     ctypes.byref(result), error, len(error),
                 ),
@@ -1526,8 +1560,7 @@ class NeuralBridgeManager:
             if not ok:
                 detail = _text(error.value) or "unknown CUDA-to-host frame failure"
                 raise NeuralBridgeError(
-                    f"CUDA/D3D12 Neural Rendering failed: {detail}. Switch GPU OFF to "
-                    "use host staging."
+                    f"CUDA/D3D12 Neural Rendering failed: {detail}."
                 )
             return {
                 "ngx_create_result": f"0x{int(result.ngx_create_result) & 0xFFFFFFFF:08X}",
@@ -1539,47 +1572,8 @@ class NeuralBridgeManager:
                 "download_bytes": int(result.download_bytes),
                 "timestamp": int(result.timestamp),
                 "input_format": sw_format,
-                "output_format": "rgba8",
+                "output_format": "rgba16le" if high_depth else "rgba8",
             }, elapsed
-
-    def process_host(
-        self,
-        source: np.ndarray,
-        destination: np.ndarray,
-        settings: dict[str, int | float | bool],
-        reset: bool,
-        mask: np.ndarray | None = None,
-    ) -> float:
-        with self._lock:
-            self._guard_poison()
-            assert self._library is not None
-            error = ctypes.create_string_buffer(4096)
-            started = time.perf_counter()
-            params = self._render_parameters(settings, reset, mask, None)
-            ok = self._call_with_watchdog(
-                "feature-18 host evaluation",
-                lambda: self._library.dlss5nr_process_v6(
-                    source.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                    destination.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                    source.shape[1],
-                    source.shape[0],
-                    ctypes.byref(params),
-                    error,
-                    len(error),
-                ),
-                (source, destination, mask, params, error),
-                timeout_seconds=min(180.0, BRIDGE_WATCHDOG_SECONDS * params.nr_passes),
-            )
-            elapsed = time.perf_counter() - started
-            if not ok:
-                detail = _text(error.value) or "unknown feature-18 failure"
-                if _bridge_failure_requires_restart(detail):
-                    self._poisoned_reason = detail
-                    raise NeuralBridgePoisonedError(
-                        f"{detail}. Restart the application before rendering again."
-                    )
-                raise NeuralBridgeError(f"Feature-18 evaluation failed: {detail}")
-            return elapsed
 
     def process_cuda(
         self,
@@ -1624,8 +1618,7 @@ class NeuralBridgeManager:
                         f"{detail}. Restart the application before rendering again."
                     )
                 raise NeuralBridgeError(
-                    f"CUDA/D3D12 Neural Rendering failed: {detail}. Switch GPU OFF to "
-                    "use host staging."
+                    f"CUDA/D3D12 Neural Rendering failed: {detail}."
                 )
             download_started = time.perf_counter()
             buffers.driver.synchronize()

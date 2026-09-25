@@ -5,12 +5,57 @@ import "../components"
 
 Item {
     id: root
+    objectName: "neural-rendering-view"
 
     property var appBridge: null
+    property alias workflowRepeater: stageRepeater
     readonly property int adaptiveInspectorWidth: width >= 2560 ? 520 : (width >= 1920 ? 460 : (width >= 1600 ? 420 : (width >= 1280 ? 380 : 340)))
 
     readonly property bool isImage: appBridge ? (appBridge.nrMode === "Image") : true
     readonly property var activeQueue: appBridge ? (isImage ? appBridge.nrImageQueue : appBridge.nrVideoQueue) : null
+    property var collapsedCards: ({})
+    property string draggedStageId: ""
+    property int dragOriginIndex: -1
+    property int dragTargetIndex: -1
+    property real draggedCardHeight: 0
+
+    function collapseKey(stageId, mode) { return mode + ":" + stageId }
+    function storedCollapsed(stageId, mode) {
+        var key = collapseKey(stageId, mode)
+        return collapsedCards[key] === undefined ? true : collapsedCards[key]
+    }
+    function rememberCollapsed(stageId, mode, value) {
+        collapsedCards[collapseKey(stageId, mode)] = value
+    }
+    function stageSlotOffset(stageId, index) {
+        if (!draggedStageId || stageId === draggedStageId) return 0
+        var distance = draggedCardHeight + contentCol.spacing
+        if (dragTargetIndex > dragOriginIndex
+                && index > dragOriginIndex && index <= dragTargetIndex) return -distance
+        if (dragTargetIndex < dragOriginIndex
+                && index >= dragTargetIndex && index < dragOriginIndex) return distance
+        return 0
+    }
+
+    function stageTitle(id) {
+        if (id === "denoising") return "Denoising"
+        if (id === "neural_model") return "DLSS Neural Rendering"
+        if (id === "scale_method") return "Scaling"
+        if (id === "dlss_super_resolution") return "DLSS Super Resolution"
+        if (id === "super_resolution") return "RTX Super Resolution"
+        if (id === "coloring") return "Coloring"
+        if (id === "cas_sharpening") return "Sharpening"
+        return "DLSS Frame Generation"
+    }
+
+    Component { id: neuralControls; NeuralModelControls { appBridge: root.appBridge } }
+    Component { id: scaleControls; ScaleMethodControls { appBridge: root.appBridge } }
+    Component { id: dlssControls; DlssSuperResolutionControls { appBridge: root.appBridge } }
+    Component { id: superControls; SuperResolutionControls { appBridge: root.appBridge } }
+    Component { id: coloringControls; ColoringControls { appBridge: root.appBridge } }
+    Component { id: denoisingControls; DenoisingControls { appBridge: root.appBridge } }
+    Component { id: sharpeningControls; SharpeningControls { appBridge: root.appBridge } }
+    Component { id: frameControls; FrameGenerationControls { appBridge: root.appBridge } }
 
     Row {
         anchors.fill: parent
@@ -100,6 +145,7 @@ Item {
                     contentHeight: contentCol.implicitHeight + 24
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    interactive: root.draggedStageId === ""
 
                     Column {
                         id: contentCol
@@ -109,195 +155,69 @@ Item {
                         anchors.topMargin: 12
                         spacing: 12
 
-                        // Card 1: Neural Rendering Parameters
-                        AppCard {
-                            width: parent.width
-                            title: "DLSS Neural Model"
-
-                            Column {
-                                width: parent.width
-                                spacing: 12
-
-                                AppSegmentedControl {
-                                    width: parent.width
-                                    label: "NR Style"
-                                    model: appBridge ? appBridge.nrStyleChoices : []
-                                    currentValue: appBridge ? appBridge.nrStyle : "Default"
-                                    onActivated: (v) => { if (appBridge) appBridge.nrStyle = v }
+                        Repeater {
+                            id: stageRepeater
+                            model: appBridge ? appBridge.workflowStages : []
+                            delegate: WorkflowStageCard {
+                                objectName: "workflow-stage-" + stageId
+                                width: contentCol.width
+                                appBridge: root.appBridge
+                                stageId: modelData.id
+                                stageEnabled: modelData.enabled
+                                stageIndex: index
+                                stageCount: root.workflowRepeater ? root.workflowRepeater.count : 0
+                                stageRepeater: root.workflowRepeater
+                                title: root.stageTitle(stageId)
+                                slotOffset: root.stageSlotOffset(stageId, stageIndex)
+                                property string layoutMode: root.isImage ? "Image" : "Video"
+                                property bool restoringCollapse: false
+                                function restoreCollapse() {
+                                    if (!stageId) return
+                                    restoringCollapse = true
+                                    collapsed = root.storedCollapsed(stageId, layoutMode)
+                                    restoringCollapse = false
                                 }
-
-                                AppComboBox {
-                                    width: parent.width
-                                    label: "Scale"
-model: appBridge ? appBridge.nrScaleChoices : []
-                                    currentValue: appBridge ? appBridge.upscalingFactor : 1.0
-                                    onActivated: (v) => { if (appBridge) appBridge.upscalingFactor = v }
+                                onStageIdChanged: restoreCollapse()
+                                onLayoutModeChanged: restoreCollapse()
+                                Component.onCompleted: restoreCollapse()
+                                onCollapsedChanged: {
+                                    if (!restoringCollapse && stageId)
+                                        root.rememberCollapsed(stageId, layoutMode, collapsed)
                                 }
-
-                                AppSlider {
-                                    width: parent.width
-                                    label: "NR Intensity"
-                                    from: 0.0
-                                    to: 2.0
-                                    stepSize: 0.05
-                                    defaultValue: 1.0
-                                    value: appBridge ? appBridge.nrIntensity : 1.0
-                                    onValueModified: (v) => { if (appBridge) appBridge.nrIntensity = v }
+                                onDragBegan: (id, origin, cardHeight) => {
+                                    root.draggedStageId = id
+                                    root.dragOriginIndex = origin
+                                    root.dragTargetIndex = origin
+                                    root.draggedCardHeight = cardHeight
                                 }
-
-                                AppSlider {
-                                    width: parent.width
-                                    label: "NR Passes"
-                                    from: 1
-                                    to: 4
-                                    stepSize: 1
-                                    precision: 0
-                                    defaultValue: 1
-                                    value: appBridge ? appBridge.nrPasses : 1
-                                    onValueModified: (v) => { if (appBridge) appBridge.nrPasses = Math.round(v) }
+                                onDragMoved: target => { root.dragTargetIndex = target }
+                                onDragFinished: (id, target) => {
+                                    root.draggedStageId = ""
+                                    root.dragOriginIndex = -1
+                                    root.dragTargetIndex = -1
+                                    if (target !== stageIndex && root.appBridge)
+                                        root.appBridge.moveWorkflowStage(id, target)
                                 }
-
-                                AppSlider {
+                                Loader {
                                     width: parent.width
-                                    label: "Local Tone Strength"
-                                    from: 0.0
-                                    to: 2.0
-                                    stepSize: 0.05
-                                    defaultValue: 1.0
-                                    value: appBridge ? appBridge.localToneStrength : 1.0
-                                    onValueModified: (v) => { if (appBridge) appBridge.localToneStrength = v }
-                                }
-
-                                AppSlider {
-                                    width: parent.width
-                                    label: "Local Structure Strength"
-                                    from: 0.0
-                                    to: 2.0
-                                    stepSize: 0.05
-                                    defaultValue: 1.0
-                                    value: appBridge ? appBridge.localStructureStrength : 1.0
-                                    onValueModified: (v) => { if (appBridge) appBridge.localStructureStrength = v }
-                                }
-
-                                AppSlider {
-                                    width: parent.width
-                                    label: "Skin Structure Strength"
-                                    from: -1.0
-                                    to: 2.0
-                                    stepSize: 0.05
-                                    defaultValue: -1.0
-                                    value: appBridge ? appBridge.skinStructureStrength : -1.0
-                                    onValueModified: (v) => { if (appBridge) appBridge.skinStructureStrength = v }
-                                }
-
-                                AppSwitch {
-                                    label: "Automatic Mask"
-                                    checked: appBridge ? appBridge.automaticMask : false
-                                    onToggled: (c) => { if (appBridge) appBridge.automaticMask = c }
-                                }
-
-                                AppSlider {
-                                    visible: !root.isImage
-                                    width: parent.width
-                                    label: "Shimmer Suppression"
-                                    from: 0.0
-                                    to: 1.0
-                                    stepSize: 0.05
-                                    defaultValue: 0.70
-                                    value: appBridge ? appBridge.shimmerSuppression : 0.70
-                                    onValueModified: (v) => { if (appBridge) appBridge.shimmerSuppression = v }
+                                    sourceComponent: stageId === "neural_model" ? neuralControls
+                                                   : stageId === "denoising" ? denoisingControls
+                                                   : stageId === "scale_method" ? scaleControls
+                                                   : stageId === "dlss_super_resolution" ? dlssControls
+                                                   : stageId === "super_resolution" ? superControls
+                                                   : stageId === "coloring" ? coloringControls
+                                                   : stageId === "cas_sharpening" ? sharpeningControls
+                                                   : frameControls
                                 }
                             }
                         }
 
-                        // Card 2: Composition & Masking
-                        CompositionCard {
-                            width: parent.width
-                            appBridge: root.appBridge
-                        }
-
-                        // Card 3: Export & Encoding Settings
                         AppCard {
                             width: parent.width
                             title: "Export Settings"
-
-                            Column {
+                            ExportSettingsControls {
                                 width: parent.width
-                                spacing: 12
-
-                                // IMAGE SPECIFIC
-                                Column {
-                                    visible: root.isImage
-                                    width: parent.width
-                                    spacing: 12
-
-                                    AppComboBox {
-                                        width: parent.width
-                                        label: "Output Format"
-                                        model: appBridge ? appBridge.imageFormatChoices : []
-                                        currentValue: appBridge ? appBridge.imageFormat : "PNG"
-                                        onActivated: (v) => { if (appBridge) appBridge.imageFormat = v }
-                                    }
-
-                                    AppSlider {
-                                        width: parent.width
-                                        label: "Image Quality"
-                                        from: 1
-                                        to: 100
-                                        stepSize: 1
-                                        precision: 0
-                                        defaultValue: 95
-                                        value: appBridge ? appBridge.imageQuality : 95
-                                        onValueModified: (v) => { if (appBridge) appBridge.imageQuality = Math.round(v) }
-                                    }
-
-                                }
-
-                                // VIDEO SPECIFIC
-                                Column {
-                                    visible: !root.isImage
-                                    width: parent.width
-                                    spacing: 12
-
-                                    AppComboBox {
-                                        width: parent.width
-                                        label: "Video Codec"
-                                        model: appBridge ? appBridge.codecChoices : []
-                                        currentValue: appBridge ? appBridge.videoCodec : "H.264 (NVIDIA NVENC)"
-                                        onActivated: (v) => { if (appBridge) appBridge.videoCodec = v }
-                                    }
-
-                                    AppComboBox {
-                                        width: parent.width
-                                        label: "Container"
-                                        model: appBridge ? appBridge.containerChoices : []
-                                        currentValue: appBridge ? appBridge.videoContainer : "MP4"
-                                        enabled: false
-                                    }
-
-                                    AppComboBox {
-                                        width: parent.width
-                                        label: "Encoding Quality"
-                                        visible: !appBridge || appBridge.fixedQualityCodecs.indexOf(appBridge.videoCodec) < 0
-                                        model: appBridge ? appBridge.encodingQualityChoices : []
-                                        currentValue: appBridge ? appBridge.videoQuality : "Auto (Default)"
-                                        onActivated: (v) => { if (appBridge) appBridge.videoQuality = v }
-                                    }
-
-                                    Text {
-                                        visible: appBridge && appBridge.fixedQualityCodecs.indexOf(appBridge.videoCodec) >= 0
-                                        text: "Encoding Quality: Fixed by codec"
-                                        color: Theme.textSecondary
-                                        font.pixelSize: Theme.fontSizeSmall
-                                    }
-
-                                    AppCheckBox {
-                                        label: "10-bit HDR Mode"
-                                        checked: appBridge ? appBridge.videoHdrMode : false
-                                        onToggled: (c) => { if (appBridge) appBridge.videoHdrMode = c }
-                                    }
-
-                                }
+                                appBridge: root.appBridge
                             }
                         }
                     }
@@ -324,7 +244,7 @@ model: appBridge ? appBridge.nrScaleChoices : []
                             AppButton {
                                 text: "Preview"
                                 iconName: "preview"
-                                width: (parent.width - 16) / 3
+                                width: Math.max(100, parent.width - (root.isImage ? 84 : 156))
                                 buttonHeight: 30
                                 enabled: appBridge ? appBridge.canPreview : false
                                 onClicked: {
@@ -332,19 +252,27 @@ model: appBridge ? appBridge.nrScaleChoices : []
                                 }
                             }
 
-                            AppButton {
-                                text: "Reset"
+                            AppComboBox {
+                                width: 72
+                                comboHeight: 30
+                                dropUp: true
+                                visible: !root.isImage
+                                model: appBridge ? appBridge.nrPreviewLengthChoices : []
+                                currentValue: appBridge ? appBridge.nrPreviewLength : "3"
+                                onActivated: (v) => { if (appBridge) appBridge.nrPreviewLength = v }
+                            }
+
+                            AppIconButton {
                                 iconName: "reset"
-                                width: (parent.width - 16) / 3
-                                buttonHeight: 30
+                                buttonSize: 30
+                                tooltipText: "Reset neural rendering settings"
                                 onClicked: { if (appBridge) appBridge.resetTabSettings("neural-rendering") }
                             }
 
-                            AppButton {
-                                text: "Outputs"
+                            AppIconButton {
                                 iconName: "outputs_folder"
-                                width: (parent.width - 16) / 3
-                                buttonHeight: 30
+                                buttonSize: 30
+                                tooltipText: "Open outputs folder"
                                 onClicked: { if (appBridge) appBridge.openFolder("") }
                             }
                         }

@@ -11,6 +11,7 @@ from PIL import Image
 
 from ..video.native import RTXVideoSession, probe_capabilities
 from ...core import app_log
+from ...core.dlss_bridge import process_image as process_dlss_image
 from ...core.disk_paths import OutputFile, prepare_output_dir
 from ...core.jobs import Cancelled, active_job
 from ...core.naming import output_filename, unique_output_path
@@ -66,6 +67,25 @@ def preview_upscale_image(input_path, options=None, progress=None, *, controller
         decoded = decode_image(source)
         height, width = decoded.rgba.shape[:2]
         ow, oh = output_size(width, height, options)
+
+        if options.engine == "DLSS":
+            update(.12, "Processing DLSS image")
+            processed, details = process_dlss_image(
+                decoded.rgba, options.dlss_mode, options.dlss_preset,
+                gpu_uuid=options.ai_gpu_uuid, controller=controller,
+            )
+            update(.88, "Preparing preview")
+            preview = save_full_size_image_preview(
+                processed, options.output_format, decoded.alpha is not None)
+            status = (
+                f"Preview complete: {source.name} | {width}×{height} → {ow}×{oh} | "
+                f"DLSS {options.dlss_mode}, preset {options.dlss_preset}, "
+                f"one evaluation | source-anchored DLSS | GPU: {details['gpu']} | "
+                f"{time.monotonic() - started:.2f}s.\n"
+                "Preview only — no production output image was saved."
+            )
+            update(1.0, "Preview ready")
+            return preview, status
 
         update(.12, "Checking RTX Video capabilities")
         caps = probe_capabilities(options.ai_gpu_uuid, controller=controller)
@@ -130,43 +150,35 @@ def _process(source, options, progress, output_dir, controller, generate_preview
         decoded = decode_image(source)
         height, width = decoded.rgba.shape[:2]
         ow, oh = output_size(width, height, options)
-        caps = capabilities or probe_capabilities(options.ai_gpu_uuid, controller=controller)
+        is_dlss = options.engine == "DLSS"
+        caps = None if is_dlss else (capabilities or probe_capabilities(options.ai_gpu_uuid, controller=controller))
         output = unique_output_path(prepare_output_dir(output_dir) / output_filename(
             source, IMAGE_EXTENSIONS[options.output_format], options.rename_mode, options.custom_suffix,
-            f"{source.stem}_RTXIMAGE_{stamp}"))
+            f"{source.stem}_{'DLSS' if is_dlss else 'RTXIMAGE'}_{stamp}"))
         destination_file = OutputFile(output)
-        update(.15, "Processing with RTX VSR")
-        key = (width, height, ow, oh, int(options.vsr_quality), str(caps.gpu.get("uuid", "")))
-        if session_cache is None:
-            session_context = RTXVideoSession(
-                width, height, ow, oh, options.native_options(), 1, caps, controller,
-                image_srgb=True)
+        update(.15, "Processing with DLSS" if is_dlss else "Processing with RTX VSR")
+        if is_dlss:
+            processed, details = process_dlss_image(
+                decoded.rgba, options.dlss_mode, options.dlss_preset,
+                gpu_uuid=options.ai_gpu_uuid, controller=controller,
+            )
+            app_log.info("upscale-image", f"DLSS mode={options.dlss_mode} preset={options.dlss_preset} evaluations={details['evaluations']} guides=estimated render={details['render_width']}x{details['render_height']}")
         else:
-            session = session_cache.get(key)
-            if session is None or session.closed:
-                session = RTXVideoSession(
-                    width, height, ow, oh, options.native_options(), 1, caps, controller,
-                    image_srgb=True)
-                session_cache[key] = session
-            session_context = nullcontext(session)
-        with session_context as session:
-            before = session.completed_frames
-            processed = np.frombuffer(
-                session.process_frame(np.ascontiguousarray(decoded.rgba)), dtype=np.uint8
-            ).reshape(oh, ow, 4).copy()
-            if session.completed_frames != before + 1:
-                raise RuntimeError("RTX VSR did not process exactly one image.")
+            processed = None
+        if not is_dlss:
+            processed = _process_vsr_frame(decoded, width, height, ow, oh, options, caps, controller, session_cache)
+        assert processed is not None
         update(.80, "Saving image")
         export = ImageConversionOptions(output_format=options.output_format, quality=int(options.quality),
-                                        preserve_metadata=options.preserve_metadata)
+                                        preserve_metadata=False)
         warnings = list(decoded.warnings)
-        warnings.extend(_encode_image(destination_file.temporary, processed, export, decoded.metadata,
+        warnings.extend(_encode_image(destination_file.temporary, processed, export, {},
                                       generate_preview=generate_previews, preview_path=output, controller=controller,
                                       has_transparency=decoded.alpha is not None))
         with Image.open(destination_file.temporary) as saved:
             saved.load()
             if saved.size != (ow, oh):
-                raise RuntimeError("Saved image dimensions do not match the VSR output.")
+                raise RuntimeError("Saved image dimensions do not match the upscale output.")
         update(.98, "Verifying output")
         elapsed = time.monotonic() - started
         app_log.info("upscale-image", f"done src={source.name} out={output.name} elapsed={elapsed:.1f}s")
@@ -186,3 +198,27 @@ def _process(source, options, progress, output_dir, controller, generate_preview
     finally:
         if destination_file:
             destination_file.cleanup()
+
+
+def _process_vsr_frame(decoded, width, height, ow, oh, options, caps, controller, session_cache):
+    key = (width, height, ow, oh, int(options.vsr_quality), str(caps.gpu.get("uuid", "")))
+    if session_cache is None:
+        session_context = RTXVideoSession(
+            width, height, ow, oh, options.native_options(), 1, caps, controller,
+            image_srgb=True)
+    else:
+        session = session_cache.get(key)
+        if session is None or session.closed:
+            session = RTXVideoSession(
+                width, height, ow, oh, options.native_options(), 1, caps, controller,
+                image_srgb=True)
+            session_cache[key] = session
+        session_context = nullcontext(session)
+    with session_context as session:
+        before = session.completed_frames
+        processed = np.frombuffer(
+            session.process_frame(np.ascontiguousarray(decoded.rgba)), dtype=np.uint8
+        ).reshape(oh, ow, 4).copy()
+        if session.completed_frames != before + 1:
+            raise RuntimeError("RTX VSR did not process exactly one image.")
+    return processed

@@ -99,7 +99,7 @@ Window {
     // disabled Shortcut never consumes the key — TextInput keeps native
     // Ctrl+V / Delete / Space behavior while editing.
     readonly property bool isTextEditing: activeFocusItem instanceof TextInput || activeFocusItem instanceof TextEdit
-    readonly property bool isBatchTab: typeof backend !== "undefined" && backend ? (backend.activeTab === "neural-rendering" || backend.activeTab === "upscale" || backend.activeTab === "frame-interpolation") : false
+    readonly property bool isBatchTab: typeof backend !== "undefined" && backend ? backend.activeTab === "neural-rendering" : false
     readonly property bool isLiveTab: typeof backend !== "undefined" && backend ? backend.activeTab === "live" : false
     // True when keyboard focus sits on any tab-focusable control (custom
     // AppButton/Switch/CheckBox/ComboBox/Slider/IconButton expose
@@ -171,16 +171,12 @@ Window {
                     if (typeof backend === "undefined" || !backend) return 0
                     var tab = backend.activeTab
                     if (tab === "neural-rendering") return 0
-                    if (tab === "upscale") return 1
-                    if (tab === "frame-interpolation") return 2
-                    if (tab === "live") return 3
-                    if (tab === "settings") return 4
-                    if (tab === "help") return 5
+                    if (tab === "live") return 1
+                    if (tab === "settings") return 2
+                    if (tab === "help") return 3
                     return 0
                 }
                 NeuralRenderingView { appBridge: typeof backend !== "undefined" ? backend : null }
-                UpscaleView { appBridge: typeof backend !== "undefined" ? backend : null }
-                FrameInterpolationView { appBridge: typeof backend !== "undefined" ? backend : null }
                 LiveView { appBridge: typeof backend !== "undefined" ? backend : null }
                 SettingsView { appBridge: typeof backend !== "undefined" ? backend : null }
                 AboutView { appBridge: typeof backend !== "undefined" ? backend : null }

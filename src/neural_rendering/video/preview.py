@@ -59,12 +59,14 @@ def process_video_preview(
         frame_no = 1
     effective_source = str(source)
     temp_clip: str | None = None
-    if start > 0.05 and preview_frames is not None:
+    if start > 0.05 and (preview_frames is not None or preview_seconds is not None):
         from ...core.ffmpeg.preview import extract_preview_subclip
         _emit_progress(progress, 0.02, "Seeking to timeline frame…")
         temp_clip = extract_preview_subclip(
             str(source), dest_dir=output_dir, start_seconds=start,
-            single_frame=True, controller=controller,
+            single_frame=preview_frames is not None,
+            length_seconds=preview_seconds if preview_frames is None else None,
+            controller=controller,
         )
         effective_source = temp_clip
 
@@ -153,10 +155,12 @@ def process_video_preview(
                 f"{result.render_width}×{result.render_height}; {result.resize_method}, "
                 f"{result.memory_path}. Feature 18 confirmed.{derived_note}",
             )
+        clip_seconds = preview_seconds if preview_seconds is not None else PREVIEW_SECONDS
+        start_note = f" from {start:.2f}s" if start > 0.05 else ""
         return finish(
             output_preview,
-            f"Preview complete for {source_name}: {result.frames} frames from the first "
-            f"{PREVIEW_SECONDS:g} seconds processed on {result.gpu} in "
+            f"Preview complete for {source_name}:{start_note} {result.frames} frames from the "
+            f"{clip_seconds:g}-second clip processed on {result.gpu} in "
             f"{result.elapsed_seconds:.1f}s. Neural dimensions "
             f"{result.render_width}×{result.render_height}; {result.resize_method}, "
             f"{result.memory_path}. All frames returned feature-18 success.{derived_note}",

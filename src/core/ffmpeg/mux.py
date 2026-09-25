@@ -12,6 +12,7 @@ from ..render_metadata import (
 )
 from ..paths import FFMPEG, FFPROBE
 from .audio import AudioPlan, plan_audio_streams
+from .codecs import _hdr_color_args
 from .probe import _run_json
 
 def _probe_rendered_duration(path: Path, controller: JobController | None = None) -> float:
@@ -100,6 +101,8 @@ def final_mux(
     preserve_supported_subtitles: bool = False,
     *, render_note: str | None = None, metadata_diagnostics: dict | None = None,
     source_time_origin: float | None = None, audio_diagnostics: dict | None = None,
+    video_bitstream_filter: str | None = None,
+    video_color_metadata: dict | None = None,
 ) -> None:
     check_cancelled(controller)
     audio_plan = plan_audio_streams(source, container, controller)
@@ -110,7 +113,7 @@ def final_mux(
             record_embedding(metadata_diagnostics, "skipped", reason="unsupported_format")
         elif metadata_diagnostics is not None and not metadata_diagnostics:
             record_embedding(metadata_diagnostics, "not_requested")
-        _final_mux_once(temp_video, source, output, container, controller, preserve_supported_subtitles, audio_plan, source_time_origin=source_time_origin)
+        _final_mux_once(temp_video, source, output, container, controller, preserve_supported_subtitles, audio_plan, source_time_origin=source_time_origin, video_bitstream_filter=video_bitstream_filter, video_color_metadata=video_color_metadata)
         return
 
     try:
@@ -123,12 +126,12 @@ def final_mux(
     except (ValueError, TypeError, RuntimeError) as exc:
         check_cancelled(controller)
         embedding_warning(metadata_diagnostics, exc)
-        _final_mux_once(temp_video, source, output, container, controller, preserve_supported_subtitles, audio_plan, source_time_origin=source_time_origin)
+        _final_mux_once(temp_video, source, output, container, controller, preserve_supported_subtitles, audio_plan, source_time_origin=source_time_origin, video_bitstream_filter=video_bitstream_filter, video_color_metadata=video_color_metadata)
         return
 
     try:
         _final_mux_once(temp_video, source, output, container, controller,
-                        preserve_supported_subtitles, audio_plan, comment=comment, source_time_origin=source_time_origin)
+                        preserve_supported_subtitles, audio_plan, comment=comment, source_time_origin=source_time_origin, video_bitstream_filter=video_bitstream_filter, video_color_metadata=video_color_metadata)
     except Cancelled:
         raise
     except (ValueError, RuntimeError) as exc:
@@ -138,7 +141,7 @@ def final_mux(
         # A mux failure caused by optional metadata should not destroy the render.
         # Retry once without the note because there is not yet a valid output.
         embedding_warning(metadata_diagnostics, exc)
-        _final_mux_once(temp_video, source, output, container, controller, preserve_supported_subtitles, audio_plan, source_time_origin=source_time_origin)
+        _final_mux_once(temp_video, source, output, container, controller, preserve_supported_subtitles, audio_plan, source_time_origin=source_time_origin, video_bitstream_filter=video_bitstream_filter, video_color_metadata=video_color_metadata)
         return
 
     # Verification is deliberately read-only.  If the optional settings note did
@@ -177,6 +180,8 @@ def _final_mux_once(
     temp_video: Path, source: Path, output: Path, container: str,
     controller: JobController | None, preserve_supported_subtitles: bool, audio_plan: AudioPlan,
     *, comment: str | None = None, source_time_origin: float | None = None,
+    video_bitstream_filter: str | None = None,
+    video_color_metadata: dict | None = None,
 ) -> None:
     check_cancelled(controller)
     duration = _probe_rendered_duration(temp_video, controller)
@@ -237,6 +242,8 @@ def _final_mux_once(
         "-map_chapters",
         "1",
         *streams,
+        *_hdr_color_args(video_color_metadata),
+        *(["-bsf:v", video_bitstream_filter] if video_bitstream_filter else []),
         *(["-avoid_negative_ts", "disabled", "-metadata:s:v:0", "rotate=0"] if source_time_origin is not None else []),
         *(["-metadata", "comment=" + comment] if comment is not None else []),
         str(output),

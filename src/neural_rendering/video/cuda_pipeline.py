@@ -17,6 +17,7 @@ import numpy as np
 from av.codec.hwaccel import HWAccel
 
 from ...core import app_log, ffmpeg
+from ...core.dlss_modes import dlss_output_size
 from ...core.disk_paths import OutputFile, prepare_output_dir
 from ...core.gpu_selection import resolve_runtime_ai_gpu
 from ...core.jobs import Cancelled
@@ -54,23 +55,40 @@ def _range_code(metadata: dict[str, Any]) -> int:
 
 
 def _set_color_properties(codec_context: Any, metadata: dict[str, Any], hdr: bool) -> None:
-    primaries = {"bt709": 1, "bt2020": 9}.get(str(metadata.get("color_primaries")), 2)
+    fallback = 2 if hdr else 1
+    primaries = {"bt709": 1, "bt2020": 9}.get(str(metadata.get("color_primaries")), fallback)
     transfer = {
         "bt709": 1,
         "smpte2084": 16,
         "arib-std-b67": 18,
-    }.get(str(metadata.get("color_transfer")), 2)
+    }.get(str(metadata.get("color_transfer")), fallback)
     colorspace = {
         "bt709": 1,
         "bt470bg": 5,
         "smpte170m": 6,
         "bt2020nc": 9,
         "bt2020c": 10,
-    }.get(str(metadata.get("color_space")), 2)
+    }.get(str(metadata.get("color_space")), fallback)
     codec_context.color_primaries = primaries
     codec_context.color_trc = transfer
     codec_context.colorspace = colorspace
-    codec_context.color_range = 1 if hdr or not _range_code(metadata) else 2
+    codec_context.color_range = 2 if _range_code(metadata) else 1
+
+
+def _hdr_bitstream_filter(codec_name: str, metadata: dict[str, Any], preserve_hdr: bool) -> str | None:
+    if not preserve_hdr or not metadata.get("hdr"):
+        return None
+    primaries = {"bt2020": 9, "bt709": 1}.get(str(metadata.get("color_primaries")), 9)
+    transfer = {"smpte2084": 16, "arib-std-b67": 18}.get(str(metadata.get("color_transfer")), 16)
+    matrix = {"bt2020nc": 9, "bt2020c": 10, "bt709": 1}.get(str(metadata.get("color_space")), 9)
+    full = _range_code(metadata)
+    if codec_name == "hevc_nvenc":
+        return (f"hevc_metadata=video_full_range_flag={full}:colour_primaries={primaries}:"
+                f"transfer_characteristics={transfer}:matrix_coefficients={matrix}")
+    if codec_name == "av1_nvenc":
+        return (f"av1_metadata=color_range={full}:color_primaries={primaries}:"
+                f"transfer_characteristics={transfer}:matrix_coefficients={matrix}")
+    return None
 
 
 def _check_cancel(controller: Any) -> None:
@@ -107,9 +125,11 @@ def convert_video_cuda_nvenc(
     gpu: dict[str, Any] | None = None
     video_gpu: dict[str, Any] | None = None
     session: DLSSFrameSession | None = None
+    dlss_session = None
     output_file: OutputFile | None = None
     job_dir: Path | None = None
     delivered = 0
+    dlss_scene_cuts = 0
     encoded_container: Any | None = None
     timings: dict[str, float] = {}
     frame_accounting: dict[str, Any] = {}
@@ -130,12 +150,23 @@ def convert_video_cuda_nvenc(
                 estimated_frames,
                 max(1, int(math.ceil(preview_seconds * float(metadata["fps"])))),
             )
-        factor, mode = resolve_upscaling_mode(options.upscaling_factor)
+        factor, mode = resolve_upscaling_mode(
+            1.0 if options.scale_method == "DLSS" else options.upscaling_factor)
         input_width, input_height = int(metadata["width"]), int(metadata["height"])
-        output_width, output_height = resolve_output_size(input_width, input_height, factor)
+        output_width, output_height = (
+            dlss_output_size(input_width, input_height, options.dlss_mode, even=True)
+            if options.scale_method == "DLSS" else
+            resolve_output_size(input_width, input_height, factor))
         effective_hdr = bool(options.preserve_hdr and not compat_preview)
-        output_p010 = effective_hdr
+        output_depth = ffmpeg.output_video_depth(metadata["depth"], options.codec, effective_hdr)
+        output_p010 = output_depth > 8
+        output_color_metadata = dict(metadata)
+        if output_p010 and not effective_hdr:
+            for field in ("color_space", "color_primaries", "color_transfer"):
+                if output_color_metadata.get(field) in (None, "", "unknown", "unspecified"):
+                    output_color_metadata[field] = "bt709"
         codec_name = _NVENC_CODEC[ffmpeg._normalize_codec(options.codec)]
+        color_bitstream_filter = _hdr_bitstream_filter(codec_name, metadata, effective_hdr)
         gpu = resolve_runtime_ai_gpu(
             prepared_runtime.gpus, prepared_runtime.runtime_bundle, options.ai_gpu_uuid
         )
@@ -178,6 +209,7 @@ def convert_video_cuda_nvenc(
         native = resolve_native_settings(options)
         matrix = _matrix_code(metadata)
         color_range = _range_code(metadata)
+        chroma_location = ffmpeg.chroma_location_code(metadata)
 
         # FFmpeg and the bridge deliberately share CUDA's primary context.
         # Open the decoder first because some driver versions reject creating a
@@ -208,7 +240,7 @@ def convert_video_cuda_nvenc(
                 output_width,
                 output_height,
                 float(metadata["fps"]),
-                hdr_mode=effective_hdr,
+                hdr_mode=output_p010,
             )
             encoded_container = av.open(str(temp_video), mode="w")
             try:
@@ -234,9 +266,14 @@ def convert_video_cuda_nvenc(
                 encoded_container.close()
                 raise
             session_started = time.perf_counter()
+            if options.scale_method == "DLSS":
+                from ...core.dlss_bridge import DLSSSession
+                dlss_session = DLSSSession(
+                    input_width, input_height, options.dlss_mode, options.dlss_preset,
+                    gpu_uuid=options.ai_gpu_uuid, even=True)
             session = DLSSFrameSession(
-                input_width=input_width,
-                input_height=input_height,
+                input_width=output_width if dlss_session else input_width,
+                input_height=output_height if dlss_session else input_height,
                 output_width=output_width,
                 output_height=output_height,
                 frame_count=None,
@@ -250,6 +287,8 @@ def convert_video_cuda_nvenc(
                 controller=controller,
                 cuda_video=True,
             )
+            session.diagnostics.source_format = str(metadata["pixel_format"])
+            session.diagnostics.output_format = "p010le" if output_p010 else "nv12"
             timings["native_setup_seconds"] = time.perf_counter() - session_started
             encode_started = time.perf_counter()
             with encoded_container as encoded:
@@ -292,6 +331,13 @@ def convert_video_cuda_nvenc(
 
                     if frame.format.name == "cuda":
                         decode_backends.add("nvdec")
+                        if dlss_session is not None:
+                            frame, dlss_detail = dlss_session.process_cuda_frame(
+                                frame, color_matrix=matrix, color_range=color_range,
+                                rotation=int(metadata["rotation"]), phase=delivered,
+                                output_p010=output_p010)
+                            dlss_scene_cuts += int(dlss_detail["scene_cut"])
+                            frame.pts, frame.time_base, frame.duration = pts, frame_time_base, duration
                         scene_started = time.perf_counter()
                         scene_score, reset = session.score_cuda_frame(
                             frame, color_matrix=matrix, color_range=color_range
@@ -308,25 +354,40 @@ def convert_video_cuda_nvenc(
                             time_base=frame_time_base,
                             color_matrix=matrix,
                             color_range=color_range,
-                            rotation=int(metadata["rotation"]),
+                            rotation=0 if dlss_session else int(metadata["rotation"]),
+                            chroma_location=chroma_location,
                             output_p010=output_p010,
                         )
                     else:
                         decode_backends.add("software")
                         prepare_started = time.perf_counter()
                         rgba = rotate_frame(
-                            frame.to_ndarray(format="rgba"), int(metadata["rotation"])
+                            ffmpeg.decoded_rgba(frame, metadata["depth"]), int(metadata["rotation"])
                         )
-                        if rgba.shape[:2] != (output_height, output_width):
+                        if dlss_session is not None:
+                            if software_guides is None:
+                                software_guides = TemporalGuideGenerator(rgba.shape[1], rgba.shape[0])
+                            scene_started = time.perf_counter()
+                            guide = software_guides.process(rgba)
+                            scene_seconds += time.perf_counter() - scene_started
+                            scene_score, reset = guide.scene_score, guide.reset
+                            dlss_scene_cuts += int(reset and delivered > 0)
+                            dlss_half = dlss_session.process(rgba, reset=reset, phase=delivered)
+                            levels = 65535 if output_p010 else 255
+                            rgba = np.rint(np.clip(dlss_half.astype(np.float32), 0, 1) * levels).astype(
+                                np.uint16 if output_p010 else np.uint8)
+                            rgba[..., 3] = levels
+                        elif rgba.shape[:2] != (output_height, output_width):
                             rgba = resize_fit(rgba, output_width, output_height)
-                        rgba = np.ascontiguousarray(rgba, dtype=np.uint8)
+                        rgba = np.ascontiguousarray(rgba)
                         prepare_seconds += time.perf_counter() - prepare_started
-                        if software_guides is None:
-                            software_guides = TemporalGuideGenerator(output_width, output_height)
-                        scene_started = time.perf_counter()
-                        guide = software_guides.process(rgba)
-                        scene_seconds += time.perf_counter() - scene_started
-                        scene_score, reset = guide.scene_score, guide.reset
+                        if dlss_session is None:
+                            if software_guides is None:
+                                software_guides = TemporalGuideGenerator(output_width, output_height)
+                            scene_started = time.perf_counter()
+                            guide = software_guides.process(rgba)
+                            scene_seconds += time.perf_counter() - scene_started
+                            scene_score, reset = guide.scene_score, guide.reset
                         evaluate_started = time.perf_counter()
                         processed, output_pts = session.process_video_frame(
                             index=delivered,
@@ -382,6 +443,9 @@ def convert_video_cuda_nvenc(
             timings["encoding_stage_seconds"] = time.perf_counter() - encode_started
         assert session is not None
         session.close()
+        if dlss_session is not None:
+            if dlss_session.frames != delivered:
+                raise RuntimeError("DLSS frame count does not match Neural Rendering input.")
         frame_accounting["bridge_completed_frames"] = session.completed_frames
         if session.completed_frames != delivered:
             raise RuntimeError("Bridge completion does not match the processed frame count.")
@@ -403,6 +467,8 @@ def convert_video_cuda_nvenc(
                 render_note=render_note,
                 metadata_diagnostics=metadata_diagnostics,
                 audio_diagnostics=audio_diagnostics,
+                video_bitstream_filter=color_bitstream_filter,
+                video_color_metadata=output_color_metadata if output_p010 else None,
             )
         timings["final_mux_seconds"] = time.perf_counter() - mux_started
         _check_cancel(controller)
@@ -416,15 +482,43 @@ def convert_video_cuda_nvenc(
             raise RuntimeError(
                 f"Output container reports {declared_output} frames instead of {delivered}."
             )
-        if effective_hdr and (not verified.get("hdr") or verified.get("color_space") != "bt2020nc"):
-            raise RuntimeError("Saved HDR output did not retain BT.2020 HDR signaling.")
+        if effective_hdr and metadata.get("hdr") and (
+            not verified.get("hdr") or verified.get("color_space") != str(metadata.get("color_space"))
+        ):
+            intermediate = ffmpeg.probe_video(temp_video, count_mode="metadata", controller=controller)
+            raise RuntimeError(
+                "Saved HDR output did not retain BT.2020 HDR signaling: "
+                f"transfer={verified.get('color_transfer')} matrix={verified.get('color_space')} "
+                f"primaries={verified.get('color_primaries')} range={verified.get('color_range')}; "
+                f"intermediate transfer={intermediate.get('color_transfer')} "
+                f"matrix={intermediate.get('color_space')} "
+                f"primaries={intermediate.get('color_primaries')}."
+            )
 
         status = session.structured_status()
+        if dlss_session is not None:
+            status["dlss_super_resolution"] = {
+                "mode": options.dlss_mode, "preset": options.dlss_preset,
+                "guides": "estimated", "frames": dlss_session.frames,
+                "scene_cuts": dlss_scene_cuts,
+                "render_width": dlss_session.last_result.render_width,
+                "render_height": dlss_session.last_result.render_height,
+                "gpu_pre_resize": (
+                    dlss_session.last_result.render_width, dlss_session.last_result.render_height
+                ) != (input_width, input_height),
+            }
+        temporal_timing = status.get("temporal_stabilization", {})
+        for field in (
+            "gpu_copy_in_seconds", "gpu_ngx_seconds", "gpu_copy_out_seconds",
+            "cuda_input_wait_seconds", "d3d12_wait_seconds", "optical_flow_seconds",
+        ):
+            timings[field] = float(temporal_timing.get(field, 0.0))
         decode_backend = "+".join(sorted(decode_backends)) or "unknown"
         status["decode_backend"] = decode_backend
         status["encode_backend"] = codec_name
         status["audio_streams"] = audio_diagnostics.get("streams", [])
-        resize_method = "none" if factor == 1.0 else "lanczos"
+        status["timings"] = dict(timings)
+        resize_method = "dlss" if dlss_session else ("none" if factor == 1.0 else "lanczos")
         elapsed = time.perf_counter() - started
         report_path = app_log.session_path()
         app_log.info(
@@ -447,7 +541,7 @@ def convert_video_cuda_nvenc(
             render_height=output_height,
             output_width=output_width,
             output_height=output_height,
-            upscaling_factor=factor,
+            upscaling_factor=(output_width / input_width if dlss_session else factor),
             neural_dimensions={"width": output_width, "height": output_height},
             resize_method=resize_method,
             memory_path="cuda_d3d12_shared",
@@ -472,6 +566,8 @@ def convert_video_cuda_nvenc(
         failure = app_log.fail("video-render-cuda", f"video-render-cuda-{source.stem}", exc, tails)
         raise RuntimeError(f"{exc}\nDetails: {failure}") from exc
     finally:
+        if dlss_session is not None:
+            dlss_session.close()
         if encoded_container is not None:
             with suppress(Exception):
                 encoded_container.close()

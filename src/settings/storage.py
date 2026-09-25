@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import configparser
+import json
 import math
 import os
 import threading
@@ -11,12 +12,17 @@ from ..core.ffmpeg import HDR_ALLOWED_CODECS
 from ..core.paths import CONFIG_PATH
 from ..core.naming import RENAME_MODES, validate_rename
 from ..core.runtime import NR_STYLES, resolve_upscaling_mode
+from ..core.dlss_modes import DLSS_METHODS, DLSS_MODES, DLSS_PRESETS
 from ..frame_interpolation.models import ENGINE_CHOICES, FPS_CHOICES, PREVIEW_LENGTH_CHOICES
 from .migration import _migrate_codec
 from .models import (
     CODEC_CHOICES, CONFIG_SECTION, CONTAINER_CHOICES, DEFAULT_SETTINGS, IMAGE_FORMAT_CHOICES,
+    IMAGE_16BIT_FORMATS, IMAGE_BIT_DEPTH_CHOICES,
     PREVIEW_ENCODING_CHOICES, QUALITY_CHOICES, UPSCALE_MODE_CHOICES,
     UPSCALE_PREVIEW_LENGTH_CHOICES, UISettings, _validate,
+    IMAGE_STAGE_ORDER, VIDEO_STAGE_ORDER, IMAGE_SCALING_FILTERS, VIDEO_SCALING_FILTERS,
+    LEGACY_IMAGE_STAGE_ORDER, LEGACY_VIDEO_STAGE_ORDER, COLORING_MODES, SHARPENING_METHODS,
+    COLOR_MATCH_SOURCES, LUT_ADJUSTMENT_RANGES, LUT_RESOLUTIONS, migrate_stage_layout,
 )
 from ..upscale.video.models import SETTING_FIELDS, options_from_settings
 from ..upscale.image.models import SETTING_FIELDS as IMAGE_UPSCALE_FIELDS, options_from_settings as image_upscale_options
@@ -69,6 +75,11 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         value = number(key, minimum, maximum, default)
         return int(value) if float(value).is_integer() else default
 
+    def lut_resolution() -> int:
+        value = integer("lut_resolution", min(LUT_RESOLUTIONS), max(LUT_RESOLUTIONS),
+                        DEFAULT_SETTINGS.lut_resolution)
+        return value if value in LUT_RESOLUTIONS else DEFAULT_SETTINGS.lut_resolution
+
     def boolean(key: str, default: bool) -> bool:
         raw_value = section.get(key)
         if raw_value is None:
@@ -104,6 +115,11 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         if value == "Experimental Cascade":
             return "Cascade"
         return value if value in ENGINE_CHOICES else DEFAULT_SETTINGS.frame_interpolation_engine
+
+    image_format = choice("image_format", IMAGE_FORMAT_CHOICES, DEFAULT_SETTINGS.image_format)
+    image_bit_depth = integer("image_bit_depth", 8, 16, DEFAULT_SETTINGS.image_bit_depth)
+    if image_bit_depth not in IMAGE_BIT_DEPTH_CHOICES or (image_bit_depth == 16 and image_format not in IMAGE_16BIT_FORMATS):
+        image_bit_depth = DEFAULT_SETTINGS.image_bit_depth
 
     image_rename_mode = choice(
         "image_rename_mode", RENAME_MODES, DEFAULT_SETTINGS.image_rename_mode
@@ -182,14 +198,44 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         )),
         automatic_mask=boolean("automatic_mask", DEFAULT_SETTINGS.automatic_mask),
         upscaling_factor=upscaling_factor(),
+        image_scaling_filter=choice("image_scaling_filter", IMAGE_SCALING_FILTERS,
+                                    DEFAULT_SETTINGS.image_scaling_filter),
+        video_scaling_filter=choice(
+            "video_scaling_filter", VIDEO_SCALING_FILTERS,
+            "Lanczos" if section.get("nr_scale_method") == "Standard"
+            else DEFAULT_SETTINGS.video_scaling_filter,
+        ),
+        nr_scale_method=choice("nr_scale_method", DLSS_METHODS, DEFAULT_SETTINGS.nr_scale_method),
+        nr_dlss_mode=choice("nr_dlss_mode", tuple(DLSS_MODES), DEFAULT_SETTINGS.nr_dlss_mode),
+        nr_dlss_preset=choice("nr_dlss_preset", DLSS_PRESETS, DEFAULT_SETTINGS.nr_dlss_preset),
+        nr_preview_length=choice(
+            "nr_preview_length",
+            PREVIEW_LENGTH_CHOICES,
+            DEFAULT_SETTINGS.nr_preview_length,
+        ),
         codec=codec_choice("codec", DEFAULT_SETTINGS.codec),
         container=choice("container", CONTAINER_CHOICES, DEFAULT_SETTINGS.container),
         quality=choice("quality", QUALITY_CHOICES, DEFAULT_SETTINGS.quality),
         hdr_mode=hdr_mode_value(),
-        image_format=choice(
-            "image_format", IMAGE_FORMAT_CHOICES, DEFAULT_SETTINGS.image_format
-        ),
+        image_format=image_format,
         image_quality=image_quality(),
+        image_bit_depth=image_bit_depth,
+        denoise_strength=integer("denoise_strength", 0, 100, DEFAULT_SETTINGS.denoise_strength),
+        denoise_deblock=boolean("denoise_deblock", DEFAULT_SETTINGS.denoise_deblock),
+        denoise_temporal=integer("denoise_temporal", 0, 100, DEFAULT_SETTINGS.denoise_temporal),
+        cas_sharpness=integer("cas_sharpness", 0, 100, DEFAULT_SETTINGS.cas_sharpness),
+        sharpening_method=choice("sharpening_method", SHARPENING_METHODS,
+                                 DEFAULT_SETTINGS.sharpening_method),
+        coloring_mode=("LUT" if section.get("coloring_mode") == "Mode 2" else
+                       choice("coloring_mode", COLORING_MODES, DEFAULT_SETTINGS.coloring_mode)),
+        color_match_source=choice("color_match_source", COLOR_MATCH_SOURCES,
+                                  DEFAULT_SETTINGS.color_match_source),
+        color_match_reference=section.get("color_match_reference", "")[:4096],
+        lut_path=section.get("lut_path", "")[:4096],
+        lut_resolution=lut_resolution(),
+        **{key: (number(key, *bounds, getattr(DEFAULT_SETTINGS, key)) if key == "lut_exposure"
+                 else integer(key, *bounds, getattr(DEFAULT_SETTINGS, key)))
+           for key, bounds in LUT_ADJUSTMENT_RANGES.items()},
         image_rename_mode=image_rename_mode,
         image_custom_suffix=image_custom_suffix,
         video_rename_mode=video_rename_mode,
@@ -315,7 +361,48 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
                 upscale_values[key] = value
             except (ValueError, TypeError, OverflowError):
                 continue
-    return replace(settings, **upscale_values)
+    settings = replace(settings, **upscale_values)
+
+    def stage_values(order_key: str, enabled_key: str, default_order: tuple[str, ...], video: bool):
+        try:
+            order = tuple(json.loads(section.get(order_key, json.dumps(default_order))))
+            enabled = tuple(json.loads(section.get(enabled_key, "[]")))
+            legacy_order = LEGACY_VIDEO_STAGE_ORDER if video else LEGACY_IMAGE_STAGE_ORDER
+            legacy = len(order) == len(legacy_order) and set(order) == set(legacy_order)
+            engine = settings.upscale_engine if video else settings.upscale_image_engine
+            migrated = migrate_stage_layout(order, enabled, video=video,
+                                            scale_method=settings.nr_scale_method,
+                                            upscale_engine=engine)
+            return migrated[0], migrated[1], (order, enabled) if legacy else None
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return default_order, (), None
+
+    image_order, image_enabled, old_image = stage_values("image_stage_order", "image_enabled_stages", IMAGE_STAGE_ORDER, False)
+    video_order, video_enabled, old_video = stage_values("video_stage_order", "video_enabled_stages", VIDEO_STAGE_ORDER, True)
+
+    def scale_dlss_wins(old_layout, engine: str) -> bool:
+        if not old_layout or settings.nr_scale_method != "DLSS":
+            return False
+        order, enabled = old_layout
+        return ("scale_method" in enabled and
+                ("super_resolution" not in enabled or engine != "DLSS" or
+                 order.index("scale_method") < order.index("super_resolution")))
+
+    image_scale_wins = scale_dlss_wins(old_image, settings.upscale_image_engine)
+    video_scale_wins = scale_dlss_wins(old_video, settings.upscale_engine)
+    return replace(
+        settings,
+        image_stage_order=image_order, image_enabled_stages=image_enabled,
+        video_stage_order=video_order, video_enabled_stages=video_enabled,
+        upscale_image_dlss_mode=settings.nr_dlss_mode if image_scale_wins else settings.upscale_image_dlss_mode,
+        upscale_image_dlss_preset=settings.nr_dlss_preset if image_scale_wins else settings.upscale_image_dlss_preset,
+        upscale_dlss_mode=settings.nr_dlss_mode if video_scale_wins else settings.upscale_dlss_mode,
+        upscale_dlss_preset=settings.nr_dlss_preset if video_scale_wins else settings.upscale_dlss_preset,
+        upscale_image_engine="RTX Video Super Resolution",
+        upscale_engine="RTX Video Super Resolution",
+        upscale_vsr_enabled=settings.upscale_vsr_enabled or not settings.upscale_hdr_enabled,
+        nr_scale_method="Standard",
+    )
 
 
 def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
@@ -324,6 +411,21 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     parser = configparser.ConfigParser()
     parser[CONFIG_SECTION] = {
+        "image_stage_order": json.dumps(settings.image_stage_order),
+        "video_stage_order": json.dumps(settings.video_stage_order),
+        "image_enabled_stages": json.dumps(settings.image_enabled_stages),
+        "video_enabled_stages": json.dumps(settings.video_enabled_stages),
+        "denoise_strength": str(settings.denoise_strength),
+        "denoise_deblock": str(settings.denoise_deblock).lower(),
+        "denoise_temporal": str(settings.denoise_temporal),
+        "cas_sharpness": str(settings.cas_sharpness),
+        "sharpening_method": settings.sharpening_method,
+        "coloring_mode": settings.coloring_mode,
+        "color_match_source": settings.color_match_source,
+        "color_match_reference": settings.color_match_reference.replace("%", "%%"),
+        "lut_path": settings.lut_path.replace("%", "%%"),
+        "lut_resolution": str(settings.lut_resolution),
+        **{key: str(getattr(settings, key)) for key in LUT_ADJUSTMENT_RANGES},
         **{"upscale_image_" + name: str(getattr(settings, "upscale_image_" + name)) for name in IMAGE_UPSCALE_FIELDS},
         **{"upscale_" + name: str(getattr(settings, "upscale_" + name)) for name in SETTING_FIELDS},
         "upscale_mode": settings.upscale_mode,
@@ -344,6 +446,12 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         "mask_feather": str(settings.mask_feather),
         "automatic_mask": str(settings.automatic_mask).lower(),
         "upscaling_factor": f"{settings.upscaling_factor:g}",
+        "image_scaling_filter": settings.image_scaling_filter,
+        "video_scaling_filter": settings.video_scaling_filter,
+        "nr_scale_method": settings.nr_scale_method,
+        "nr_dlss_mode": settings.nr_dlss_mode,
+        "nr_dlss_preset": settings.nr_dlss_preset,
+        "nr_preview_length": settings.nr_preview_length,
         "live_nr_style": settings.live_nr_style,
         "live_nr_intensity": f"{settings.live_nr_intensity:.2f}",
         "live_nr_passes": str(settings.live_nr_passes),
@@ -364,6 +472,7 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         "hdr_mode": str(settings.hdr_mode).lower(),
         "image_format": settings.image_format,
         "image_quality": str(settings.image_quality),
+        "image_bit_depth": str(settings.image_bit_depth),
         "image_rename_mode": settings.image_rename_mode,
         "image_custom_suffix": settings.image_custom_suffix,
         "video_rename_mode": settings.video_rename_mode,
@@ -411,4 +520,3 @@ def current_preview_encoding() -> str:
     with SETTINGS_STATE.lock:
         settings = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
     return normalize_preview_encoding(settings.preview_encoding)
-

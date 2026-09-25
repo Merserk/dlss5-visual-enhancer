@@ -18,7 +18,9 @@ class GuideFrame:
 class TemporalGuideGenerator:
     """Reduced-luma scene reset detector that retains history between cuts."""
 
-    def __init__(self, width: int, height: int, flow_width: int = 640) -> None:
+    def __init__(self, width: int, height: int, flow_width: int = 640,
+                 cut_threshold: float = SCENE_CUT_THRESHOLD) -> None:
+        self.cut_threshold = cut_threshold
         scale = min(1.0, flow_width / max(1, width))
         self.luma_width = max(32, int(round(width * scale / 2) * 2))
         self.luma_height = max(32, int(round(height * scale / 2) * 2))
@@ -31,6 +33,14 @@ class TemporalGuideGenerator:
         self.duplicate_frames = 0
 
     def _small_gray(self, rgba: np.ndarray) -> np.ndarray:
+        if rgba.dtype == np.uint16:
+            # Scene scoring may use 8-bit luma; the render frame stays 16-bit.
+            small = cv2.resize(
+                rgba, (self.luma_width, self.luma_height), interpolation=cv2.INTER_AREA
+            )
+            gray16 = cv2.cvtColor(small, cv2.COLOR_RGBA2GRAY)
+            np.copyto(self._current_gray, (gray16 >> 8).astype(np.uint8))
+            return self._current_gray
         cv2.resize(
             rgba,
             (self.luma_width, self.luma_height),
@@ -55,7 +65,7 @@ class TemporalGuideGenerator:
                 scene_score = 0.0
             else:
                 scene_score = float(np.mean(self._difference)) / 255.0
-            reset = scene_score > SCENE_CUT_THRESHOLD
+            reset = scene_score > self.cut_threshold
 
         self.previous_gray = current
         self._current_gray = self._gray_b if current is self._gray_a else self._gray_a

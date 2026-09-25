@@ -22,6 +22,7 @@ from av.codec.hwaccel import HWAccel
 from ..core.gpu_selection import resolve_runtime_ai_gpu
 from ..core.jobs import BoundedLogBuffer, Cancelled, JobController, active_job, drain_bounded_text
 from ..core import app_log
+from ..core.ffmpeg import chroma_location_code, decoded_rgba
 from ..core.paths import FFMPEG, LIVE_DIR
 from ..core.runtime import (DLSSFrameSession, prepare_runtime, resolve_native_settings,
                             resolve_output_size, resolve_upscaling_mode, resize_fit,
@@ -155,11 +156,9 @@ class LiveSession(threading.Thread):
         native = None
         try:
             with NativeDeadline(self.controller, EFFECT_REPLACEMENT_TIMEOUT) as deadline:
-                # The replacement session must match the running path: CUDA
-                # branch native_args carry cuda_video=True, host ones don't.
+                # The replacement session keeps the current frame boundary.
                 native = DLSSFrameSession(**native_args, controller=deadline,
-                                          native_settings=resolve_native_settings(
-                                              settings, gpu_mode=bool(native_args.get("cuda_video", False))),
+                                          native_settings=resolve_native_settings(settings),
                                          composition_mask=settings.nr_mask)
                 native.diagnostics.encode_backend = (
                     "nvenc" if self.info.encoder == "NVIDIA NVENC" else "cpu"
@@ -251,12 +250,14 @@ class LiveSession(threading.Thread):
                         "-af", "aresample=async=1:first_pts=0",
                         "-f", "nut", "-write_index", "0", "pipe:1"]
             return command
-        # GPU OFF keeps the host-staging pipeline and its decoded RGBA stream.
+        # Software decoding and CPU encoding retain a host frame boundary;
+        # Neural Rendering still evaluates those frames through CUDA/D3D12.
         filters = [] if opts.target_fps == "Source" else [f"fps={rate}"]
         filters += [f"scale={width}:{height}:flags=lanczos", "setsar=1"]
         command += ["-map", "0:v:0", "-map", f"{audio_input}:a:0?", "-sn", "-dn",
                     "-vf", ",".join(filters),
-                    "-c:v", "rawvideo", "-pix_fmt", "rgba", "-threads:v", "1",
+                    "-c:v", "rawvideo", "-pix_fmt",
+                    "rgba64le" if self._source_depth > 8 else "rgba", "-threads:v", "1",
                     "-c:a", "pcm_s16le", "-ar", "48000", "-ac", "2",
                     "-af", "aresample=async=1:first_pts=0",
                     "-fps_mode", "passthrough", "-f", "nut", "-write_index", "0", "pipe:1"]
@@ -317,9 +318,10 @@ class LiveSession(threading.Thread):
                         sampled += 1
                         self._set(sampled_frames=sampled)
                         continue
-                    if packet.size != width * height * 4:
+                    high_depth = self._source_depth > 8
+                    if packet.size != width * height * 4 * (2 if high_depth else 1):
                         raise RuntimeError("Decoder returned an incomplete RGBA frame.")
-                    rgba = np.frombuffer(packet, np.uint8).reshape(height, width, 4)
+                    rgba = np.frombuffer(packet, np.uint16 if high_depth else np.uint8).reshape(height, width, 4)
                     start = time.perf_counter()
                     guide = guides.process(rgba)
                     guide_ms = (time.perf_counter() - start) * 1000
@@ -352,7 +354,10 @@ class LiveSession(threading.Thread):
         muxer = None
         try:
             audio = get(outgoing, self.controller.cancel)
-            muxer = TimestampMuxer(encoder.stdin, width, height, self._rate.rate, audio)
+            muxer = TimestampMuxer(
+                encoder.stdin, width, height, self._rate.rate, audio,
+                pix_fmt="rgba64le" if self._source_depth > 8 else "rgba",
+            )
             while True:
                 item = get(outgoing, self.controller.cancel)
                 if item is None:
@@ -473,6 +478,7 @@ class LiveSession(threading.Thread):
                 composition_mask=self.options.nr_mask,
                 controller=self.controller,
             )
+            native.diagnostics.source_format = str(metadata["pixel_format"])
             self._ready.set()
             processing_start = time.perf_counter()
             pacing_seconds = 0.0
@@ -522,11 +528,11 @@ class LiveSession(threading.Thread):
                         )
                     else:
                         rgba = rotate_frame(
-                            frame.to_ndarray(format="rgba"), int(metadata.get("rotation") or 0)
+                            decoded_rgba(frame, metadata["depth"]), int(metadata.get("rotation") or 0)
                         )
                         if rgba.shape[:2] != (out_h, out_w):
                             rgba = resize_fit(rgba, out_w, out_h)
-                        rgba = np.ascontiguousarray(rgba, dtype=np.uint8)
+                        rgba = np.ascontiguousarray(rgba)
                         guide = software_guides.process(rgba)
                         scene_score, reset = guide.scene_score, guide.reset
                     guide_cost = time.perf_counter() - guide_started
@@ -567,6 +573,7 @@ class LiveSession(threading.Thread):
                             index=processed, reset=force_reset, scene_score=scene_score,
                             pts=pts, duration=duration, time_base=TIME_BASE,
                             color_matrix=color_matrix, color_range=color_range,
+                            chroma_location=chroma_location_code(metadata),
                         )
                         if frame.format.name == "cuda":
                             result, result_pts = native.process_video_frame(
@@ -780,6 +787,7 @@ class LiveSession(threading.Thread):
         self._title = resolved.title
         self._set(status=f"Probing {resolved.title}...")
         metadata = probe_source(resolved, self.controller, options.network_timeout)
+        self._source_depth = int(metadata["depth"])
         source_size = f"{metadata['width']}x{metadata['height']}"
         source_limit = options.max_height if options.source_quality == "Auto" else int(options.source_quality)
         source_note = (f"Requested up to {source_limit}p; received {source_size}."
@@ -797,8 +805,8 @@ class LiveSession(threading.Thread):
         prepared_runtime = prepare_runtime()
         ai_uuid, video_uuid = processing_gpu_settings()
         gpu = resolve_runtime_ai_gpu(prepared_runtime.gpus, prepared_runtime.runtime_bundle, ai_uuid)
-        # Automatic path selection: NVENC on the AI GPU takes the CUDA path,
-        # anything else falls back to the host-memory path with a CPU encoder.
+        # NVENC on the AI GPU keeps frames on device; a CPU encoder uses
+        # host frame boundaries around the same CUDA/D3D12 evaluation.
         nvenc, ordinal = self._select_encoder(prepared_runtime.gpus, ai_uuid, out_w, out_h)
         self._set(input_size=f"{in_w}x{in_h}", output_size=f"{out_w}x{out_h}",
                   encoder="NVIDIA NVENC" if nvenc else "CPU x264")
@@ -820,10 +828,11 @@ class LiveSession(threading.Thread):
             native_args = dict(input_width=in_w, input_height=in_h, output_width=out_w, output_height=out_h,
                 frame_count=None, warmup_frames=0, factor=factor, mode=mode,
                 gpu=gpu, runtime_bundle=prepared_runtime.runtime_bundle)
-            native = DLSSFrameSession(**native_args, native_settings=resolve_native_settings(options, gpu_mode=False),
+            native = DLSSFrameSession(**native_args, native_settings=resolve_native_settings(options),
                                       composition_mask=options.nr_mask,
                                       controller=self.controller)
             native.diagnostics.encode_backend = "nvenc" if nvenc else "cpu"
+            native.diagnostics.source_format = str(metadata["pixel_format"])
             self._last_progress = time.monotonic()
             decoder = self._spawn("decoder", self._decoder_command(resolved, out_w, out_h, self._rate.rate, cuda=False),
                                   stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)

@@ -12,6 +12,7 @@ from typing import Any
 from ..core.paths import APP_TEMP
 from .models import (
     DEFAULT_SETTINGS, MAX_PRESET_BYTES, PRESET_FORMAT, PRESET_SCHEMA_VERSION, UISettings, _validate,
+    LUT_ADJUSTMENT_RANGES, migrate_stage_layout,
 )
 
 _WINDOWS_RESERVED_NAMES = {
@@ -78,6 +79,10 @@ def export_settings_preset(name: str, settings: UISettings) -> Path:
 
 def _coerce_preset_value(field_name: str, value: Any, current: UISettings) -> Any:
     expected = getattr(current, field_name)
+    if isinstance(expected, tuple):
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise ValueError(f"Preset setting {field_name!r} must be a list of stage IDs.")
+        return tuple(value)
     if isinstance(expected, bool):
         if not isinstance(value, bool):
             raise ValueError(f"Preset setting {field_name!r} must be a boolean.")
@@ -157,6 +162,107 @@ def import_settings_preset(
         changes["nr_passes"] = DEFAULT_SETTINGS.nr_passes
     if version < 6:
         changes["shimmer_suppression"] = DEFAULT_SETTINGS.shimmer_suppression
+    if version < 8:
+        for key in (
+            "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
+            "upscale_image_engine", "upscale_image_dlss_mode", "upscale_image_dlss_preset",
+            "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset",
+        ):
+            changes[key] = getattr(DEFAULT_SETTINGS, key)
+    if version < 9:
+        for key in ("image_stage_order", "video_stage_order", "image_enabled_stages", "video_enabled_stages"):
+            changes[key] = getattr(DEFAULT_SETTINGS, key)
+    if version < 10:
+        old_scale = changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method)
+        changes["image_scaling_filter"] = "Lanczos4"
+        changes["video_scaling_filter"] = (
+            "Lanczos" if old_scale == "Standard" else DEFAULT_SETTINGS.video_scaling_filter
+        )
+        if version == 9:
+            for mode, prefix in (("Image", "image"), ("Video", "video")):
+                order_key = f"{prefix}_stage_order"
+                enabled_key = f"{prefix}_enabled_stages"
+                old_order = changes.get(order_key, getattr(DEFAULT_SETTINGS, order_key))
+                old_enabled = changes.get(enabled_key, ())
+                engine_key = "upscale_image_engine" if mode == "Image" else "upscale_engine"
+                engine = changes.get(engine_key, getattr(DEFAULT_SETTINGS, engine_key))
+                changes[order_key], changes[enabled_key] = migrate_stage_layout(
+                    old_order, old_enabled, video=mode == "Video",
+                    scale_method=old_scale, upscale_engine=engine,
+                )
+                if (old_scale == "DLSS" and "scale_method" in old_enabled and
+                        ("super_resolution" not in old_enabled or engine != "DLSS" or
+                         old_order.index("scale_method") < old_order.index("super_resolution"))):
+                    mode_key = "upscale_image_dlss_mode" if mode == "Image" else "upscale_dlss_mode"
+                    preset_key = "upscale_image_dlss_preset" if mode == "Image" else "upscale_dlss_preset"
+                    changes[mode_key] = changes.get("nr_dlss_mode", DEFAULT_SETTINGS.nr_dlss_mode)
+                    changes[preset_key] = changes.get("nr_dlss_preset", DEFAULT_SETTINGS.nr_dlss_preset)
+        changes["nr_scale_method"] = "Standard"
+        changes["upscale_image_engine"] = "RTX Video Super Resolution"
+        changes["upscale_engine"] = "RTX Video Super Resolution"
+        if not changes.get("upscale_vsr_enabled", DEFAULT_SETTINGS.upscale_vsr_enabled) and not changes.get(
+            "upscale_hdr_enabled", DEFAULT_SETTINGS.upscale_hdr_enabled
+        ):
+            changes["upscale_vsr_enabled"] = True
+    if version < 11:
+        old_order = changes.get("image_stage_order", DEFAULT_SETTINGS.image_stage_order)
+        old_enabled = changes.get("image_enabled_stages", ())
+        changes["image_stage_order"], changes["image_enabled_stages"] = migrate_stage_layout(
+            old_order, old_enabled, video=False,
+            scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
+            upscale_engine=changes.get("upscale_image_engine", DEFAULT_SETTINGS.upscale_image_engine),
+        )
+        for key in ("coloring_mode", "color_match_source", "color_match_reference"):
+            changes[key] = getattr(DEFAULT_SETTINGS, key)
+    if version < 12:
+        old_order = changes.get("video_stage_order", DEFAULT_SETTINGS.video_stage_order)
+        old_enabled = changes.get("video_enabled_stages", ())
+        changes["video_stage_order"], changes["video_enabled_stages"] = migrate_stage_layout(
+            old_order, old_enabled, video=True,
+            scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
+            upscale_engine=changes.get("upscale_engine", DEFAULT_SETTINGS.upscale_engine),
+        )
+        if changes.get("coloring_mode") == "Mode 2":
+            changes["coloring_mode"] = "LUT"
+        changes["lut_path"] = ""
+    if version < 14:
+        changes["image_bit_depth"] = DEFAULT_SETTINGS.image_bit_depth
+    if version < 15:
+        for key in ("lut_resolution", *LUT_ADJUSTMENT_RANGES):
+            changes[key] = getattr(DEFAULT_SETTINGS, key)
+    if version < 16:
+        for mode, prefix in (("Image", "image"), ("Video", "video")):
+            order_key = f"{prefix}_stage_order"
+            enabled_key = f"{prefix}_enabled_stages"
+            changes[order_key], changes[enabled_key] = migrate_stage_layout(
+                changes.get(order_key, getattr(DEFAULT_SETTINGS, order_key)),
+                changes.get(enabled_key, getattr(DEFAULT_SETTINGS, enabled_key)),
+                video=mode == "Video",
+                scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
+                upscale_engine=changes.get(
+                    "upscale_engine" if mode == "Video" else "upscale_image_engine",
+                    DEFAULT_SETTINGS.upscale_engine if mode == "Video" else DEFAULT_SETTINGS.upscale_image_engine,
+                ),
+            )
+        for key in ("denoise_strength", "denoise_deblock", "denoise_temporal"):
+            changes[key] = getattr(DEFAULT_SETTINGS, key)
+    if version < 17:
+        for mode, prefix in (("Image", "image"), ("Video", "video")):
+            order_key = f"{prefix}_stage_order"
+            enabled_key = f"{prefix}_enabled_stages"
+            changes[order_key], changes[enabled_key] = migrate_stage_layout(
+                changes.get(order_key, getattr(DEFAULT_SETTINGS, order_key)),
+                changes.get(enabled_key, getattr(DEFAULT_SETTINGS, enabled_key)),
+                video=mode == "Video",
+                scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
+                upscale_engine=changes.get(
+                    "upscale_engine" if mode == "Video" else "upscale_image_engine",
+                    DEFAULT_SETTINGS.upscale_engine if mode == "Video" else DEFAULT_SETTINGS.upscale_image_engine,
+                ),
+            )
+        changes["cas_sharpness"] = DEFAULT_SETTINGS.cas_sharpness
+    if version < 18:
+        changes["sharpening_method"] = DEFAULT_SETTINGS.sharpening_method
     # NR Preset was removed entirely (non-functional). Old preset files still
     # carry it; ignore so imports from previous builds keep working.
     # (Unknown keys are already filtered above; this covers any edge case where

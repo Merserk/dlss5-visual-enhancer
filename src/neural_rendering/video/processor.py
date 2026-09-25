@@ -17,6 +17,7 @@ import av
 import numpy as np
 
 from ...core import app_log, ffmpeg
+from ...core.dlss_modes import validate_dlss
 from ...core.gpu_selection import resolve_runtime_ai_gpu
 from ...core.jobs import Cancelled, active_job
 from ...core.naming import output_filename, unique_output_path, validate_rename
@@ -34,8 +35,8 @@ validate_codec_container = ffmpeg.validate_codec_container
 _BATCH_CONTEXT = threading.local()
 
 
-def automatic_gpu_mode(codec: str) -> bool:
-    """Use CUDA transport exactly when the selected encoder is NVENC."""
+def uses_nvenc_frame_boundary(codec: str) -> bool:
+    """Keep decoded and encoded frames on CUDA when NVENC is selected."""
     return ffmpeg._is_nvenc_codec(codec)
 
 def _validate_preview_options(
@@ -83,10 +84,12 @@ def convert_video(
     # Compat previews use the forced H.264 SDR 8-bit path; user-encoded previews
     # (Preview Encoding Auto-playable / Disabled) preserve the HDR choice.
     compat_preview = is_preview and bool(getattr(options, "preview_compat", True))
-    # Processing-engine selection is codec-driven: NVENC encoders take the
-    # CUDA transport, CPU codecs take the host-memory path. There is no
-    # user-facing mode switch.
-    cuda_path = automatic_gpu_mode(options.codec)
+    # The codec selects the frame boundary and encoder. Neural evaluation
+    # always uses CUDA/D3D12, including the CPU encoder route below.
+    if options.scale_method not in {"Standard", "DLSS"}:
+        raise ValueError("Unknown Neural Rendering scale method.")
+    validate_dlss(options.dlss_mode, options.dlss_preset)
+    cuda_path = uses_nvenc_frame_boundary(options.codec)
     hdr_requested = bool(options.preserve_hdr)
     if compat_preview:
         hdr_requested = False
@@ -139,6 +142,7 @@ def convert_video(
         output: Path | None = None
         output_file: OutputFile | None = None
         session: DLSSFrameSession | None = None
+        dlss_session = None
         gpu: dict | None = resolve_runtime_ai_gpu(
             prepared_runtime.gpus, prepared_runtime.runtime_bundle, options.ai_gpu_uuid
         )
@@ -171,6 +175,7 @@ def convert_video(
             color_range = int(
                 str(metadata.get("color_range") or "").casefold() in {"pc", "jpeg", "full"}
             )
+            chroma_location = ffmpeg.chroma_location_code(metadata)
             declared_frames = int(metadata["frames"])
             estimated_frames = declared_frames or max(
                 1, int(math.ceil(float(metadata["duration"]) * float(metadata["fps"])))
@@ -188,20 +193,38 @@ def convert_video(
             timings["probe_seconds"] = time.perf_counter() - stage_started
             input_width = int(metadata["width"])
             input_height = int(metadata["height"])
-            factor, mode = resolve_upscaling_mode(options.upscaling_factor)
-            output_width, output_height = resolve_output_size(
-                input_width, input_height, factor
-            )
-            # HDR metadata to copy – 10-bit path when HDR Mode is on
-            hdr_metadata = None
+            if options.scale_method == "DLSS":
+                from ...core.dlss_bridge import DLSSSession
+                dlss_session = DLSSSession(
+                    input_width, input_height, options.dlss_mode, options.dlss_preset,
+                    gpu_uuid=options.ai_gpu_uuid, even=True)
+                output_width, output_height = dlss_session.output_width, dlss_session.output_height
+                factor, mode = resolve_upscaling_mode(1.0)
+            else:
+                factor, mode = resolve_upscaling_mode(options.upscaling_factor)
+                output_width, output_height = resolve_output_size(
+                    input_width, input_height, factor)
             effective_hdr = hdr_requested and (not is_preview or not compat_preview)
-            if effective_hdr:
-                hdr_metadata = {
-                    "color_space": metadata.get("color_space", "unknown"),
-                    "color_primaries": metadata.get("color_primaries", "unknown"),
-                    "color_transfer": metadata.get("color_transfer", "unknown"),
-                    "hdr": bool(metadata.get("hdr", False)),
-                }
+            hdr_metadata = {
+                "color_space": metadata.get("color_space", "unknown"),
+                "color_primaries": metadata.get("color_primaries", "unknown"),
+                "color_transfer": metadata.get("color_transfer", "unknown"),
+                "color_range": metadata.get("color_range", "unknown"),
+                "hdr": bool(metadata.get("hdr", False)),
+            }
+            output_depth = ffmpeg.output_video_depth(metadata["depth"], options.codec, effective_hdr)
+            output_color_metadata = dict(hdr_metadata)
+            if not effective_hdr:
+                for field in ("color_space", "color_primaries", "color_transfer"):
+                    if output_color_metadata.get(field) in (None, "", "unknown", "unspecified"):
+                        output_color_metadata[field] = "bt709"
+            if options.codec == "FFV1 Lossless RGB 10-bit":
+                # The FFV1 branch carries full-range GBR samples. Container
+                # metadata must describe that output, not the source YUV range.
+                # FFmpeg's CLI does not accept `-colorspace gbr`; the FFV1
+                # bitstream already carries GBR from the setparams filter.
+                output_color_metadata["color_space"] = "unknown"
+                output_color_metadata["color_range"] = "pc"
             destination = prepare_output_dir(output_dir, default=OUTPUTS)
             JOBS.mkdir(exist_ok=True)
             app_log.info("video-render", f"start src={source.name}")
@@ -231,8 +254,7 @@ def convert_video(
             ))
             output_file = OutputFile(output)
             temp_video = job_dir / (f"processed-video{extension}" if preview_frames is not None else "processed-video.mkv")
-            # Host-memory path (CPU codec): stage explicitly, never CUDA.
-            native = resolve_native_settings(options, gpu_mode=False)
+            native = resolve_native_settings(options)
             metadata_diagnostics: dict = {}
             render_note = prepare_render_note(options, metadata_diagnostics)
             video_duration = float(metadata.get("video_stream_duration") or 0.0)
@@ -240,6 +262,8 @@ def convert_video(
                 options.container in {"MP4", "MOV"}
                 and preview_frames is None
                 and (preview_seconds is not None or video_duration > 0.0)
+                and not (effective_hdr and hdr_metadata["hdr"])
+                and not (output_depth > 8 and options.codec == "AV1")
             )
             audio_diagnostics: dict = {}
             direct_audio_plan = (
@@ -271,8 +295,8 @@ def convert_video(
                 nonlocal video_gpu
                 encoder_started = time.perf_counter()
                 try:
-                    # The host-memory path retains the separate Video
-                    # Processing GPU selection for the CPU encoder stage.
+                    # The CPU encoder route retains the separate Video
+                    # Processing GPU selection for its output stage.
                     encoder_gpu_uuid = options.video_gpu_uuid
                     video_gpu = ffmpeg.resolve_video_gpu(
                         prepared_runtime.gpus,
@@ -293,7 +317,7 @@ def convert_video(
                             None if video_gpu is None else int(video_gpu["cuda_ordinal"]),
                             video_gpu is not None,
                             hdr_mode=effective_hdr,
-                            hdr_metadata=hdr_metadata,
+                            hdr_metadata=output_color_metadata,
                             preserve_timestamps=not metadata["cfr"],
                             speed_profile="preview" if compat_preview else "neural",
                             source_audio=source if direct_mux else None,
@@ -302,6 +326,7 @@ def convert_video(
                             audio_duration=audio_duration if direct_mux else None,
                             include_source_metadata=not is_preview,
                             audio_plan=direct_audio_plan,
+                            output_depth=output_depth,
                         )
                     )
                 except BaseException as exc:
@@ -321,8 +346,8 @@ def convert_video(
             # feature 18 and optical flow still execute on the selected GPU.
             session_started = time.perf_counter()
             session = DLSSFrameSession(
-                input_width=input_width,
-                input_height=input_height,
+                input_width=output_width if dlss_session else input_width,
+                input_height=output_height if dlss_session else input_height,
                 output_width=output_width,
                 output_height=output_height,
                 frame_count=None,
@@ -348,6 +373,10 @@ def convert_video(
                 raise RuntimeError("Video encoder did not finish preparing.")
             render_width = session.render_width
             render_height = session.render_height
+            session.diagnostics.source_format = str(metadata["pixel_format"])
+            session.diagnostics.output_format = (
+                "rgba16le" if int(metadata["depth"]) > 8 else "rgba8"
+            )
             setup_result = session.setup_result
             minimum_width = session.minimum_width
             minimum_height = session.minimum_height
@@ -367,8 +396,10 @@ def convert_video(
             ) = encoder_setup[0]
             assert encoder.stdin is not None
 
-            prepared_bytes = render_width * render_height * 4
-            rendered_bytes = output_width * output_height * 4
+            high_depth = int(metadata["depth"]) > 8
+            sample_bytes = 2 if high_depth else 1
+            prepared_bytes = render_width * render_height * 4 * sample_bytes
+            rendered_bytes = output_width * output_height * 4 * sample_bytes
             queue_slots = max(
                 1,
                 min(3, (384 * 1024 * 1024) // max(1, prepared_bytes + rendered_bytes)),
@@ -377,7 +408,7 @@ def convert_video(
             rendered_frames: queue.Queue[object] = queue.Queue(maxsize=queue_slots)
             output_pool: queue.LifoQueue[np.ndarray] = queue.LifoQueue(maxsize=queue_slots + 1)
             for _ in range(queue_slots + 1):
-                output_pool.put(np.empty((output_height, output_width, 4), dtype=np.uint8))
+                output_pool.put(np.empty((output_height, output_width, 4), dtype=np.uint16 if high_depth else np.uint8))
             stop_marker = object()
 
             def put_pipeline(target: queue.Queue[object], item: object) -> bool:
@@ -420,7 +451,9 @@ def convert_video(
                         container = av.open(str(source))
                     stream = container.streams.video[0]
                     stream.thread_type = "AUTO"
-                    guides = TemporalGuideGenerator(render_width, render_height)
+                    guides = TemporalGuideGenerator(
+                        input_width if dlss_session else render_width,
+                        input_height if dlss_session else render_height)
                     first_time: float | None = None
                     rate = float(stream.average_rate or 30)
                     default_duration = max(
@@ -462,7 +495,7 @@ def convert_video(
                             raise RuntimeError(
                                 f"The video decoder marked source frame {index} as corrupt."
                             )
-                        if frame.format.name == "cuda":
+                        if frame.format.name == "cuda" and dlss_session is None:
                             hardware_frames += 1
                             guide_started = time.perf_counter()
                             scene_score, reset = session.score_cuda_frame(
@@ -475,11 +508,11 @@ def convert_video(
                             software_frames += 1
                             prepare_started = time.perf_counter()
                             rgba = rotate_frame(
-                                frame.to_ndarray(format="rgba"), metadata["rotation"]
+                                ffmpeg.decoded_rgba(frame, metadata["depth"]), metadata["rotation"]
                             )
-                            if rgba.shape[1] != render_width or rgba.shape[0] != render_height:
+                            if dlss_session is None and (rgba.shape[1] != render_width or rgba.shape[0] != render_height):
                                 rgba = resize_fit(rgba, render_width, render_height)
-                            rgba = np.ascontiguousarray(rgba, dtype=np.uint8)
+                            rgba = np.ascontiguousarray(rgba)
                             prepare_seconds += time.perf_counter() - prepare_started
                             guide_started = time.perf_counter()
                             guide = guides.process(rgba)
@@ -526,6 +559,7 @@ def convert_video(
                         height=output_height,
                         rate=metadata["rate"],
                         time_base=metadata["time_base"],
+                        pix_fmt="rgba64le" if high_depth else "rgba",
                     )
                     while not pipeline_stop.is_set():
                         if controller.cancel.is_set():
@@ -604,9 +638,18 @@ def convert_video(
                             color_matrix=color_matrix,
                             color_range=color_range,
                             rotation=int(metadata["rotation"]),
+                            chroma_location=chroma_location,
                             output_buffer=output_buffer,
                         )
                     else:
+                        if dlss_session is not None:
+                            dlss_frame = dlss_session.process(
+                                prepared, reset=guide.reset, phase=index)
+                            levels = 65535 if high_depth else 255
+                            prepared = np.rint(np.clip(
+                                dlss_frame.astype(np.float32), 0, 1) * levels
+                            ).astype(np.uint16 if high_depth else np.uint8)
+                            prepared[..., 3] = levels
                         processed, out_pts = session.process(
                             index=index,
                             rgba=prepared,
@@ -708,7 +751,7 @@ def convert_video(
             )
             session.diagnostics.encode_backend = selected_encoder
             nr_count = delivered
-            resize_method = "none" if factor == 1.0 else "lanczos"
+            resize_method = "dlss" if dlss_session else ("none" if factor == 1.0 else "lanczos")
             memory_path = session.diagnostics.memory_path
             mux_started = time.perf_counter()
             if direct_mux:
@@ -734,6 +777,7 @@ def convert_video(
                     temp_video, source, output_file.temporary, options.container, controller,
                     render_note=render_note, metadata_diagnostics=metadata_diagnostics,
                     audio_diagnostics=audio_diagnostics,
+                    video_color_metadata=output_color_metadata if output_depth > 8 else None,
                 )
                 timings["final_mux_seconds"] = time.perf_counter() - mux_started
             timings["muxing_seconds"] = timings["final_mux_seconds"]
@@ -801,10 +845,23 @@ def convert_video(
                 gpu=gpu["display_name"], input_width=input_width,
                 input_height=input_height, render_width=render_width,
                 render_height=render_height, output_width=output_width,
-                output_height=output_height, upscaling_factor=factor,
+                output_height=output_height,
+                upscaling_factor=(output_width / input_width if dlss_session else factor),
                 neural_dimensions={"width": render_width, "height": render_height},
                 resize_method=resize_method, memory_path=memory_path,
-                bridge_status={**session.structured_status(), "audio_streams": audio_diagnostics.get("streams", [])},
+                bridge_status={**session.structured_status(),
+                               **({"dlss_super_resolution": {
+                                   "mode": options.dlss_mode, "preset": options.dlss_preset,
+                                   "guides": "estimated", "frames": dlss_session.frames,
+                                   "scene_cuts": scene_resets,
+                                   "render_width": dlss_session.last_result.render_width,
+                                   "render_height": dlss_session.last_result.render_height,
+                                   "gpu_pre_resize": (
+                                       dlss_session.last_result.render_width,
+                                       dlss_session.last_result.render_height) != (input_width, input_height),
+                               }} if dlss_session else {}),
+                               "timings": dict(timings),
+                               "audio_streams": audio_diagnostics.get("streams", [])},
             )
         except Exception as exc:
             was_cancelled = controller.cancel.is_set()
@@ -843,6 +900,8 @@ def convert_video(
             report_path = app_log.fail("video-render", f"video-render-{source.stem}", exc, tails or None)
             raise RuntimeError(f"{exc}\nDetails: {report_path}") from exc
         finally:
+            if dlss_session is not None:
+                dlss_session.close()
             if output_file is not None:
                 output_file.cleanup()
             pipeline_stop.set()

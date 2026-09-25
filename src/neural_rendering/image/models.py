@@ -28,6 +28,9 @@ class ImageConversionOptions:
     mask_feather: int = 0
     nr_mask: object | None = None
     upscaling_factor: float = 1.0
+    scale_method: str = "Standard"
+    dlss_mode: str = "Quality"
+    dlss_preset: str = "Default"
     output_format: str = "PNG"
     quality: int = 95
     preserve_metadata: bool = True
@@ -58,7 +61,7 @@ class ImageConversionResult:
     output_format: str
     neural_dimensions: dict[str, int] | None = None
     resize_method: str = "none"
-    memory_path: str = "host_staging"
+    memory_path: str = "host_cuda_d3d12_shared"
     bridge_status: dict | None = None
     warnings: list[str] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)

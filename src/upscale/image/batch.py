@@ -28,7 +28,8 @@ def upscale_images(input_paths, options=None, progress=None, *, output_dir=None,
         with active_job(controller):
             if controller.cancel.is_set():
                 raise Cancelled("Stopped before rendering.")
-            caps = probe_capabilities(options.ai_gpu_uuid, controller=controller)
+            caps = (probe_capabilities(options.ai_gpu_uuid, controller=controller)
+                    if options.engine != "DLSS" else None)
             for i, path in enumerate(paths):
                 if controller.cancel.is_set():
                     break

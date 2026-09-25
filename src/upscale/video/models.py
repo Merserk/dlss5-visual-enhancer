@@ -6,6 +6,7 @@ from fractions import Fraction
 
 from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, container_for_codec, hdr_mode_supported, validate_codec_container
 from ...core.naming import validate_rename
+from ...core.dlss_modes import UPSCALE_ENGINES, dlss_output_size, validate_dlss
 
 VSR_QUALITIES = [("1 - Low", 1), ("2 - Medium", 2), ("3 - High", 3), ("4 - Ultra", 4)]
 SCALE_FACTORS = [("1×", 1.0), ("1.5×", 1.5), ("2×", 2.0), ("3×", 3.0), ("4×", 4.0)]
@@ -17,6 +18,9 @@ TEXTURE_LIMIT = 16384
 
 @dataclass(slots=True)
 class UpscaleOptions:
+    engine: str = "RTX Video Super Resolution"
+    dlss_mode: str = "Quality"
+    dlss_preset: str = "Default"
     vsr_enabled: bool = True
     vsr_quality: int = 4
     size_mode: str = "Scale factor"
@@ -41,6 +45,9 @@ class UpscaleOptions:
     preview_frames: int | None = None
 
     def validate(self, *, for_render: bool = True) -> None:
+        if self.engine not in UPSCALE_ENGINES:
+            raise ValueError(f"Unknown upscale engine: {self.engine!r}.")
+        validate_dlss(self.dlss_mode, self.dlss_preset)
         for name in ("vsr_enabled", "hdr_enabled", "aspect_lock"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be on or off.")
@@ -63,7 +70,7 @@ class UpscaleOptions:
         if for_render:
             validate_codec_container(self.codec, self.container)
         validate_rename(self.rename_mode, self.custom_suffix)
-        if for_render and not (self.vsr_enabled or self.hdr_enabled):
+        if for_render and self.engine != "DLSS" and not (self.vsr_enabled or self.hdr_enabled):
             raise ValueError("Enable RTX Video Super Resolution or RTX Video HDR.")
         if self.hdr_enabled and not hdr_mode_supported(self.codec):
             raise ValueError("RTX Video HDR requires a 10-bit or higher video codec.")
@@ -96,6 +103,9 @@ def output_size(width: int, height: int, options: UpscaleOptions, sar: Fraction 
     """Return square-pixel output dimensions; width drives a locked custom size."""
     options.validate()
     display_width = width * float(sar)
+    if options.engine == "DLSS":
+        ow, oh = dlss_output_size(math.ceil(display_width), height, options.dlss_mode, even=True)
+        return ow, oh, ""
     if not options.vsr_enabled:
         w, h = display_width, float(height)
     elif options.size_mode == "Scale factor":

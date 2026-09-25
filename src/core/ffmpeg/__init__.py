@@ -14,6 +14,7 @@ from .preview import (
     resolve_final_preview, resolve_preview_codec, wants_compat_preview,
 )
 from .probe import preview_frame_count, probe_video
+from .precision import chroma_location_code, decoded_rgba, output_video_depth
 
 __all__ = [
     "AUTO_BITRATE_DIVISORS", "AudioPlan", "CODEC_CHOICES", "DEFAULT_PREVIEW_ENCODING",
@@ -24,4 +25,6 @@ __all__ = [
     "probe_video", "resolve_encoding_quality", "resolve_final_preview",
     "resolve_preview_codec", "resolve_video_gpu", "start_encoder",
     "validate_codec_container", "verify_mux_comment", "wants_compat_preview",
+    "decoded_rgba", "output_video_depth",
+    "chroma_location_code",
 ]

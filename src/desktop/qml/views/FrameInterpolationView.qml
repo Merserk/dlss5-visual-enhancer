@@ -85,7 +85,7 @@ Item {
                         // Card 1: Frame Generation Configuration
                         AppCard {
                             width: parent.width
-                            title: "DLSS-G Frame Generation"
+                            title: "DLSS Frame Generation"
 
                             Column {
                                 width: parent.width

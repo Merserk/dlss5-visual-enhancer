@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import av
 import subprocess
 import time
 from fractions import Fraction
@@ -152,9 +153,15 @@ def probe_source(source: ResolvedSource, controller: JobController, timeout: flo
     duration = float((data.get("format") or {}).get("duration") or video.get("duration") or 0)
     if source.kind == "direct" and duration > 0:
         source.is_live = False
+    pixel_format = video.get("pix_fmt") or "unknown"
+    try:
+        depth = max(component.bits for component in av.VideoFormat(pixel_format).components)
+    except (ValueError, TypeError):
+        depth = int(video.get("bits_per_raw_sample") or 8)
     return {"width": width, "height": height, "coded_width": int(video["width"]),
             "coded_height": int(video["height"]), "rotation": rotation % 360,
-            "rate": fps, "duration": duration,
+            "rate": fps, "duration": duration, "pixel_format": pixel_format, "depth": depth,
+            "chroma_location": video.get("chroma_location") or "unknown",
             "color_space": video.get("color_space") or "unknown",
             "color_range": video.get("color_range") or "unknown",
             "color_primaries": video.get("color_primaries") or "unknown",

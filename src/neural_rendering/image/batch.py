@@ -13,6 +13,7 @@ import numpy as np
 
 from ...core.batch_progress import BatchItemUpdate, BatchProgress
 from ...core.disk_paths import OutputFile, prepare_output_dir
+from ...core.dlss_modes import DLSS_MODES, validate_dlss
 from ...core.gpu_selection import resolve_runtime_ai_gpu
 from ...core.jobs import Cancelled, JobController, active_job
 from ...core.render_metadata import prepare_render_note
@@ -60,6 +61,9 @@ class _OutputTask:
 
 
 def _validate_options(options: ImageConversionOptions) -> ImageConversionOptions:
+    if options.scale_method not in {"Standard", "DLSS"}:
+        raise ValueError("Unknown Neural Rendering scale method.")
+    validate_dlss(options.dlss_mode, options.dlss_preset)
     if options.output_format not in IMAGE_FORMATS:
         raise ValueError(f"Unknown image output format: {options.output_format!r}.")
     if isinstance(options.quality, bool):
@@ -139,7 +143,8 @@ def _finalize_output(
             render_height=task.render_height,
             output_width=task.output_width,
             output_height=task.output_height,
-            upscaling_factor=float(options.upscaling_factor),
+            upscaling_factor=(float(DLSS_MODES[options.dlss_mode][0])
+                              if options.scale_method == "DLSS" else float(options.upscaling_factor)),
             output_format=options.output_format,
             neural_dimensions={"width": task.render_width, "height": task.render_height},
             resize_method=task.resize_method,
@@ -256,7 +261,8 @@ def convert_images(
                 raise Cancelled("Stopped before rendering.")
             prepared = prepare_runtime()
             gpu = resolve_runtime_ai_gpu(prepared.gpus, prepared.runtime_bundle, options.ai_gpu_uuid)
-            factor, mode = resolve_upscaling_mode(options.upscaling_factor)
+            factor, mode = resolve_upscaling_mode(
+                1.0 if options.scale_method == "DLSS" else options.upscaling_factor)
             native = resolve_native_settings(options)
             next_decode: Future[tuple[_DecodedImage, float]] | None = None
             session_size: tuple[int, int] | None = None
@@ -298,9 +304,19 @@ def convert_images(
                             raise ValueError(
                                 f"{path.name} is {width}×{height}; DLSS requires at least 64×64."
                             )
-                        output_width, output_height = resolve_output_size(
-                            width, height, options.upscaling_factor,
-                        )
+                        dlss_details = None
+                        if options.scale_method == "DLSS":
+                            from ...core.dlss_bridge import process_image as process_dlss_image
+                            dlss_started = time.monotonic()
+                            dlss_rgba, dlss_details = process_dlss_image(
+                                decoded.rgba, options.dlss_mode, options.dlss_preset,
+                                gpu_uuid=options.ai_gpu_uuid, controller=controller)
+                            timings["dlss_super_resolution"] = time.monotonic() - dlss_started
+                            output_height, output_width = dlss_rgba.shape[:2]
+                        else:
+                            dlss_rgba = None
+                            output_width, output_height = resolve_output_size(
+                                width, height, options.upscaling_factor)
                         dimensions = (output_width, output_height)
                         if session is not None and dimensions != session_size:
                             close_started = time.monotonic()
@@ -313,8 +329,8 @@ def convert_images(
                             reporter.advance(index, .10, "Starting D3D12/NGX bridge")
                             setup_started = time.monotonic()
                             session = DLSSFrameSession(
-                                input_width=width,
-                                input_height=height,
+                                input_width=output_width if dlss_rgba is not None else width,
+                                input_height=output_height if dlss_rgba is not None else height,
                                 output_width=output_width,
                                 output_height=output_height,
                                 frame_count=None,
@@ -334,7 +350,10 @@ def convert_images(
                         reporter.advance(index, .25, "Processing image")
                         prep_started = time.monotonic()
                         render_rgba = resize_fit(
-                            decoded.rgba, session.render_width, session.render_height,
+                            dlss_rgba if dlss_rgba is not None else decoded.rgba,
+                            session.render_width, session.render_height)
+                        session.diagnostics.source_format = (
+                            f"{decoded.metadata['source_format']}/{decoded.metadata['source_bit_depth']}"
                         )
                         timings["render_prepare"] = time.monotonic() - prep_started
 
@@ -358,7 +377,7 @@ def convert_images(
 
                         alpha_started = time.monotonic()
                         if decoded.alpha is None:
-                            processed[..., 3] = 255
+                            processed[..., 3] = np.iinfo(processed.dtype).max
                         elif decoded.alpha.shape == dimensions[::-1]:
                             processed[..., 3] = decoded.alpha
                         else:
@@ -366,14 +385,25 @@ def convert_images(
                                 decoded.alpha, dimensions, interpolation=cv2.INTER_LANCZOS4,
                             )
                         timings["alpha"] = time.monotonic() - alpha_started
+                        output_depth = 8
+                        if processed.dtype == np.uint16:
+                            if options.output_format in {"PNG", "TIFF"}:
+                                output_depth = 16
+                            elif options.output_format == "AVIF":
+                                output_depth = (
+                                    12 if int(decoded.metadata["source_bit_depth"]) > 10 else 10
+                                )
+                        session.diagnostics.output_format = f"{options.output_format}/{output_depth}"
 
                         session_data = snapshot_session(session)
                         evidence_snapshot = dict(session_evidence)
                         render_width = session.render_width
                         render_height = session.render_height
-                        resize_method = "none" if factor == 1.0 else "lanczos"
+                        resize_method = "dlss" if dlss_details else ("none" if factor == 1.0 else "lanczos")
                         memory_path = session.diagnostics.memory_path
                         bridge_status = session.structured_status()
+                        if dlss_details:
+                            bridge_status = {**bridge_status, "dlss_super_resolution": dlss_details}
 
                         # Preserve the old invariant that the final image is not
                         # published if native streaming completion fails.

@@ -4,6 +4,7 @@ import json
 import contextlib
 import math
 import mmap
+import os
 import re
 import subprocess
 import threading
@@ -16,6 +17,7 @@ import cv2
 import numpy as np
 
 from .gpu_detection import detect_gpus
+from .gpu_memory import GPUVramTracker
 from .gpu_selection import resolve_runtime_ai_gpu
 from .jobs import Cancelled, JobController
 from .neural_bridge import (
@@ -24,7 +26,6 @@ from .neural_bridge import (
     BridgeSessionDiagnostics,
     CudaFrameBuffers,
     CudaMaskBuffer,
-    NeuralBridgeError,
     FORMAT_NV12,
     FORMAT_P010,
 )
@@ -91,17 +92,10 @@ def resolve_output_size(width: int, height: int, factor: float) -> tuple[int, in
             f"The requested {output_width}×{output_height} output is below the supported "
             f"64×64 minimum. Choose Source, 75%, or 50% for this input."
         )
-    long_edge = max(output_width, output_height)
-    short_edge = min(output_width, output_height)
-    if long_edge > 7680 or short_edge > 4320:
-        raise ValueError(
-            f"The requested {output_width}×{output_height} output exceeds the supported "
-            f"7680×4320 boundary. The source already exceeds the supported 8K boundary."
-        )
     return output_width, output_height
 
 
-def resolve_native_settings(options: Any, *, gpu_mode: bool | None = None) -> dict[str, int | float | bool]:
+def resolve_native_settings(options: Any) -> dict[str, int | float | bool]:
     try:
         style = NR_STYLES[options.nr_style]
     except KeyError as exc:
@@ -140,21 +134,20 @@ def resolve_native_settings(options: Any, *, gpu_mode: bool | None = None) -> di
     if not 0 <= int(mask_feather) <= 128:
         raise ValueError("Mask Feather must be between 0 and 128 pixels.")
     codec_name = str(getattr(options, "codec", ""))
-    if gpu_mode is None:
-        # Automatic path selection: an NVENC codec takes the CUDA transport,
-        # a CPU codec takes the host-memory path. Options without a codec
-        # (images, Live) default to GPU-resident; host pipelines pass False
-        # explicitly.
-        gpu_mode = True if not hasattr(options, "codec") else "NVENC" in codec_name.upper()
-    if not isinstance(gpu_mode, bool):
-        raise ValueError("Neural Rendering GPU mode must be a boolean value.")
     nr_passes = getattr(options, "nr_passes", 1)
     if isinstance(nr_passes, bool) or not isinstance(nr_passes, int):
         raise ValueError("NR Passes must be an integer from 1 to 4.")
     if not 1 <= nr_passes <= 4:
         raise ValueError("NR Passes must be between 1 and 4.")
 
-    prefer_nvof = bool(codec_name and "NVENC" not in codec_name.upper())
+    # NVOF remains available for adapter/driver validation. On the tested
+    # RTX 4060 Ti / 617.14 it was slower and had a higher warped-residual
+    # error than the bundled Lucas-Kanade path, so it is not a default.
+    # Frame-boundary NVENC also retains its native NVOF stall guard.
+    prefer_nvof = bool(
+        codec_name and "NVENC" not in codec_name.upper()
+        and os.environ.get("DLSS5NR_EXPERIMENTAL_NVOF") == "1"
+    )
     return {
         "profile": 0,
         "style": style,
@@ -171,7 +164,7 @@ def resolve_native_settings(options: Any, *, gpu_mode: bool | None = None) -> di
         "shimmer_suppression": validated["Shimmer Suppression"],
         "prefer_nvof": prefer_nvof,
         "mask_feather": int(mask_feather),
-        "gpu_mode": gpu_mode,
+        "gpu_mode": True,
     }
 
 
@@ -239,16 +232,26 @@ def write_failure_report(
     )
 
 
-def resize_fit(rgba: np.ndarray, width: int, height: int) -> np.ndarray:
+def resize_fit(rgba: np.ndarray, width: int, height: int, *,
+               interpolation: str = "Lanczos4") -> np.ndarray:
     source_height, source_width = rgba.shape[:2]
     if source_width == width and source_height == height:
-        return np.ascontiguousarray(rgba, dtype=np.uint8)
+        return np.ascontiguousarray(rgba)
     scale = min(width / source_width, height / source_height)
     fit_width = max(1, min(width, int(round(source_width * scale))))
     fit_height = max(1, min(height, int(round(source_height * scale))))
-    resized = cv2.resize(rgba, (fit_width, fit_height), interpolation=cv2.INTER_LANCZOS4)
-    canvas = np.zeros((height, width, 4), dtype=np.uint8)
-    canvas[..., 3] = 255
+    methods = {
+        "Lanczos4": cv2.INTER_LANCZOS4,
+        "Area": cv2.INTER_AREA,
+        "Bicubic": cv2.INTER_CUBIC,
+        "Bilinear": cv2.INTER_LINEAR,
+        "Nearest": cv2.INTER_NEAREST,
+    }
+    if interpolation not in methods:
+        raise ValueError(f"Unknown image scaling filter: {interpolation!r}.")
+    resized = cv2.resize(rgba, (fit_width, fit_height), interpolation=methods[interpolation])
+    canvas = np.zeros((height, width, 4), dtype=rgba.dtype)
+    canvas[..., 3] = np.iinfo(rgba.dtype).max
     x = (width - fit_width) // 2
     y = (height - fit_height) // 2
     canvas[y : y + fit_height, x : x + fit_width] = resized
@@ -335,13 +338,12 @@ class DLSSFrameSession:
             "optical_flow_seconds": 0.0,
             "stabilization_seconds": 0.0,
         }
-        self.gpu_mode = bool(native_settings.get("gpu_mode", True))
+        if native_settings.get("gpu_mode", True) is not True:
+            raise ValueError("Neural Rendering requires CUDA/D3D12 GPU processing.")
         self.cuda_video = bool(cuda_video)
-        if self.cuda_video and not self.gpu_mode:
-            raise ValueError("The CUDA video boundary requires Neural Rendering GPU mode.")
         self.diagnostics = BridgeSessionDiagnostics(
-            gpu_mode=self.gpu_mode,
-            memory_path="cuda_d3d12_shared" if self.gpu_mode else "host_staging",
+            gpu_mode=True,
+            memory_path="cuda_d3d12_shared" if self.cuda_video else "host_cuda_d3d12_shared",
         )
         self._input_float = (
             None if self.cuda_video else np.empty(
@@ -390,7 +392,7 @@ class DLSSFrameSession:
         self._cuda_mask: CudaMaskBuffer | None = None
         self._logs: list[str] = []
         self._temporal_status_cache: dict[str, Any] = {}
-        status = BRIDGE_MANAGER.initialize(gpu, require_cuda=self.gpu_mode)
+        status = BRIDGE_MANAGER.initialize(gpu)
         self.bridge_status = {
             **status,
             "memory_path": self.diagnostics.memory_path,
@@ -427,12 +429,14 @@ class DLSSFrameSession:
         }
         BRIDGE_MANAGER.open_session()
         self._manager_open = True
+        self._vram_tracker = GPUVramTracker(int(gpu.get("index", 0)))
+        self._vram_status: dict[str, object] | None = None
         try:
-            if self.gpu_mode and not self.cuda_video:
+            if not self.cuda_video:
                 self._cuda_buffers = BRIDGE_MANAGER.create_cuda_buffers(
                     self.output_width, self.output_height
                 )
-            if self.gpu_mode and self._mask_host is not None:
+            if self._mask_host is not None:
                 self._cuda_mask = BRIDGE_MANAGER.create_cuda_mask(self._mask_host)
                 self.bridge_status["composition"]["cuda_mask_uploads"] = 1
                 self.bridge_status["composition"]["cuda_mask_upload_bytes"] = int(
@@ -446,6 +450,7 @@ class DLSSFrameSession:
                 )
             )
         except Exception:
+            self._vram_tracker.close()
             if self._cuda_mask is not None:
                 with contextlib.suppress(Exception):
                     self._cuda_mask.close()
@@ -526,6 +531,7 @@ class DLSSFrameSession:
         return {
             **self.bridge_status,
             **self.diagnostics.as_dict(),
+            "gpu_memory": self._vram_status or self._vram_tracker.snapshot(),
             "temporal_stabilization": temporal,
         }
 
@@ -536,7 +542,7 @@ class DLSSFrameSession:
             selected, self.output_width, self.output_height, int(feather)
         )
         replacement = None
-        if self.gpu_mode and prepared is not None:
+        if prepared is not None:
             replacement = BRIDGE_MANAGER.create_cuda_mask(prepared)
         previous = self._cuda_mask
         composition = self.bridge_status.get("composition", {})
@@ -662,19 +668,21 @@ class DLSSFrameSession:
             self._next_frame_index = int(index)
         if index != self._next_frame_index:
             raise ValueError("Neural Rendering frames must have consecutive uint32 indices.")
-        if rgba.dtype != np.uint8 or rgba.shape != (
+        if rgba.dtype not in (np.uint8, np.uint16) or rgba.shape != (
             self.output_height,
             self.output_width,
             4,
         ):
-            raise ValueError("Neural Rendering input must be contiguous RGBA8 at final size.")
+            raise ValueError("Neural Rendering input must be RGBA8 or RGBA16 at final size.")
         rgba = np.ascontiguousarray(rgba)
+        self.diagnostics.working_format = "rgba16le" if rgba.dtype == np.uint16 else "rgba8"
+        self.diagnostics.output_format = self.diagnostics.working_format
         if output_buffer is None:
             output = np.empty_like(rgba)
         else:
             output = output_buffer
             if (
-                output.dtype != np.uint8
+                output.dtype != rgba.dtype
                 or output.shape != rgba.shape
                 or not output.flags.c_contiguous
             ):
@@ -682,42 +690,33 @@ class DLSSFrameSession:
 
         started = time.perf_counter()
         assert self._input_float is not None and self._output_float is not None
-        np.multiply(rgba[..., :3], 1.0 / 255.0, out=self._input_float, casting="unsafe")
+        max_sample = float(np.iinfo(rgba.dtype).max)
+        np.multiply(rgba[..., :3], 1.0 / max_sample, out=self._input_float, casting="unsafe")
         self.process_timings["input_conversion_seconds"] += time.perf_counter() - started
 
-        if self.gpu_mode:
-            assert self._cuda_buffers is not None
-            try:
-                upload, evaluate, download = BRIDGE_MANAGER.process_cuda(
-                    self._input_float,
-                    self._output_float,
-                    self._cuda_buffers,
-                    self._host_bridge_settings,
-                    bool(reset),
-                    self._mask_host,
-                    self._cuda_mask,
-                )
-            except NeuralBridgeError:
-                # GPU ON is a strict policy. Never retry through host staging.
-                raise
-            self.process_timings["input_transfer_seconds"] += upload
-            self.process_timings["evaluation_wait_seconds"] += evaluate
-            self.process_timings["output_transfer_seconds"] += download
-        else:
-            evaluate = BRIDGE_MANAGER.process_host(
-                self._input_float, self._output_float, self._host_bridge_settings, bool(reset),
-                self._mask_host,
-            )
-            self.process_timings["evaluation_wait_seconds"] += evaluate
+        assert self._cuda_buffers is not None
+        upload, evaluate, download = BRIDGE_MANAGER.process_cuda(
+            self._input_float,
+            self._output_float,
+            self._cuda_buffers,
+            self._host_bridge_settings,
+            bool(reset),
+            self._mask_host,
+            self._cuda_mask,
+        )
+        self.process_timings["input_transfer_seconds"] += upload
+        self.process_timings["evaluation_wait_seconds"] += evaluate
+        self.process_timings["output_transfer_seconds"] += download
 
         self._stabilize_host_composition(reset=bool(reset))
 
         started = time.perf_counter()
         np.multiply(
             np.clip(self._output_float, 0.0, 1.0),
-            255.0,
+            max_sample,
             out=self._output_float,
         )
+        np.rint(self._output_float, out=self._output_float)
         np.copyto(output[..., :3], self._output_float, casting="unsafe")
         output[..., 3] = rgba[..., 3]
         self.process_timings["output_conversion_seconds"] += time.perf_counter() - started
@@ -750,8 +749,6 @@ class DLSSFrameSession:
         return output, int(pts)
 
     def score_cuda_frame(self, frame: Any, *, color_matrix: int, color_range: int) -> tuple[float, bool]:
-        if not self.gpu_mode:
-            raise RuntimeError("CUDA scene scoring is not enabled for this session.")
         if self.controller.cancel.is_set():
             raise Cancelled("Render stopped by user.")
         return BRIDGE_MANAGER.score_cuda_video_frame(
@@ -769,11 +766,12 @@ class DLSSFrameSession:
         color_matrix: int,
         color_range: int,
         rotation: int = 0,
+        chroma_location: int = 1,
         output_buffer: np.ndarray | None = None,
     ) -> tuple[np.ndarray, int]:
         if self.controller.cancel.is_set():
             raise Cancelled("Render stopped by user.")
-        if self.closed or not self.gpu_mode:
+        if self.closed:
             raise RuntimeError("The CUDA Neural Rendering session is unavailable.")
         if self._next_frame_index is None:
             self._next_frame_index = int(index)
@@ -783,7 +781,7 @@ class DLSSFrameSession:
         if output is None:
             output = np.empty((self.output_height, self.output_width, 4), dtype=np.uint8)
         if (
-            output.dtype != np.uint8
+            output.dtype not in (np.uint8, np.uint16)
             or output.shape != (self.output_height, self.output_width, 4)
             or not output.flags.c_contiguous
         ):
@@ -799,9 +797,12 @@ class DLSSFrameSession:
             color_matrix=color_matrix,
             color_range=color_range,
             rotation=rotation,
+            chroma_location=chroma_location,
         )
         self.process_timings["evaluation_wait_seconds"] += elapsed
         self.diagnostics.decode_backend = "nvdec"
+        self.diagnostics.working_format = "float32-rgb"
+        self.diagnostics.output_format = result["output_format"]
         self.diagnostics.pixel_format = result["input_format"]
         self.diagnostics.upload_bytes += int(result["upload_bytes"])
         self.diagnostics.download_bytes += int(result["download_bytes"])
@@ -819,7 +820,7 @@ class DLSSFrameSession:
             "ngx_create_result": result["ngx_create_result"],
             "ngx_evaluate_result": result["ngx_evaluate_result"],
             "memory_path": self.diagnostics.memory_path,
-            "input_format": result["input_format"], "output_format": "rgba8",
+            "input_format": result["input_format"], "output_format": result["output_format"],
             "upload_bytes": result["upload_bytes"],
             "download_bytes": result["download_bytes"],
         }, sort_keys=True, separators=(",", ":")))
@@ -841,6 +842,7 @@ class DLSSFrameSession:
         color_matrix: int,
         color_range: int,
         rotation: int = 0,
+        chroma_location: int = 1,
         output_p010: bool = False,
     ) -> tuple[Any, int]:
         """Process a hardware or software decoded frame into CUDA NV12/P010."""
@@ -848,7 +850,7 @@ class DLSSFrameSession:
             raise Cancelled("Render stopped by user.")
         if self.closed:
             raise RuntimeError("The Neural Rendering bridge session is closed.")
-        if not self.cuda_video or not self.gpu_mode:
+        if not self.cuda_video:
             raise RuntimeError("The CUDA video frame boundary is not enabled.")
         if self._next_frame_index is None:
             self._next_frame_index = int(index)
@@ -871,12 +873,16 @@ class DLSSFrameSession:
                 color_matrix=color_matrix,
                 color_range=color_range,
                 rotation=rotation,
+                chroma_location=chroma_location,
             )
             self.diagnostics.decode_backend = "nvdec"
+            self.diagnostics.working_format = "float32-rgb"
         elif rgba is not None:
-            rgba = np.ascontiguousarray(rgba, dtype=np.uint8)
+            rgba = np.ascontiguousarray(rgba)
+            if rgba.dtype not in (np.uint8, np.uint16):
+                raise ValueError("Software video input must be RGBA8 or RGBA16.")
             if rgba.shape != (self.output_height, self.output_width, 4):
-                raise ValueError("Software video input must be RGBA8 at final neural dimensions.")
+                raise ValueError("Software video input must be RGBA at final neural dimensions.")
             output, result, elapsed = BRIDGE_MANAGER.process_host_to_cuda_video_frame(
                 rgba,
                 output_format=output_format,
@@ -891,6 +897,7 @@ class DLSSFrameSession:
                 duration=duration,
             )
             self.diagnostics.decode_backend = "software"
+            self.diagnostics.working_format = "rgba16le" if rgba.dtype == np.uint16 else "rgba8"
         else:
             raise ValueError("A CUDA frame or host RGBA frame is required.")
         output.pts = int(pts)
@@ -900,6 +907,7 @@ class DLSSFrameSession:
         self.process_timings["evaluation_wait_seconds"] += elapsed
         self.diagnostics.encode_backend = "nvenc"
         self.diagnostics.pixel_format = result["output_format"]
+        self.diagnostics.output_format = result["output_format"]
         self.diagnostics.upload_bytes += int(result["upload_bytes"])
         self.diagnostics.download_bytes += int(result["download_bytes"])
         self.diagnostics.ngx_create_result = result["ngx_create_result"]
@@ -950,6 +958,8 @@ class DLSSFrameSession:
     def _close_resources(self) -> None:
         if self.closed:
             return
+        self._vram_tracker.close()
+        self._vram_status = self._vram_tracker.snapshot()
         if self._cuda_buffers is not None:
             self._cuda_buffers.close()
             self._cuda_buffers = None

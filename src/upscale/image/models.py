@@ -5,11 +5,15 @@ from dataclasses import dataclass, field, fields
 
 from ..video.models import SCALE_FACTORS, SIZE_MODES, TEXTURE_LIMIT, VSR_QUALITIES, UpscaleOptions
 from ...core.naming import validate_rename
+from ...core.dlss_modes import UPSCALE_ENGINES, dlss_output_size, validate_dlss
 from ...neural_rendering.image.models import IMAGE_FORMATS, IMAGE_EXTENSIONS
 
 
 @dataclass(slots=True)
 class ImageUpscaleOptions:
+    engine: str = "RTX Video Super Resolution"
+    dlss_mode: str = "Quality"
+    dlss_preset: str = "Default"
     vsr_quality: int = 4
     size_mode: str = "Scale factor"
     scale_factor: float = 2.0
@@ -18,12 +22,14 @@ class ImageUpscaleOptions:
     aspect_lock: bool = True
     output_format: str = "PNG"
     quality: int = 95
-    preserve_metadata: bool = True
     rename_mode: str = "Auto"
     custom_suffix: str = "_Upscale"
     ai_gpu_uuid: str = "auto"
 
     def validate(self, *, for_render: bool = True):
+        if self.engine not in UPSCALE_ENGINES:
+            raise ValueError(f"Unknown image upscale engine: {self.engine!r}.")
+        validate_dlss(self.dlss_mode, self.dlss_preset)
         for name, low, high in (("vsr_quality", 1, 4), ("width", 1, TEXTURE_LIMIT),
                                 ("height", 1, TEXTURE_LIMIT), ("quality", 1, 100)):
             value = getattr(self, name)
@@ -35,8 +41,8 @@ class ImageUpscaleOptions:
             raise ValueError("Scale factor must be a finite number of at least 1.")
         if self.size_mode not in SIZE_MODES or self.output_format not in IMAGE_FORMATS:
             raise ValueError("Unknown image sizing mode or output format.")
-        if not isinstance(self.aspect_lock, bool) or not isinstance(self.preserve_metadata, bool):
-            raise ValueError("Aspect lock and metadata preservation must be on or off.")
+        if not isinstance(self.aspect_lock, bool):
+            raise ValueError("Aspect lock must be on or off.")
         validate_rename(self.rename_mode, self.custom_suffix)
 
     def native_options(self):
@@ -54,6 +60,8 @@ def options_from_settings(settings):
 
 def output_size(width, height, options):
     options.validate()
+    if options.engine == "DLSS":
+        return dlss_output_size(width, height, options.dlss_mode)
     if min(width, height) < 1 or max(width, height) > TEXTURE_LIMIT:
         raise ValueError("Input dimensions must be between 1 and 16384 pixels.")
     if options.size_mode == "Scale factor":

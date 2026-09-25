@@ -7,8 +7,10 @@ import "../controls"
 
 Rectangle {
     id: viewport
+    objectName: "mediaViewport"
     property var appBridge: null
     property string viewMode: "split"
+    property bool originalPeekHeld: false
     property real zoomFactor: 1.0
     property real panX: 0
     property real panY: 0
@@ -32,22 +34,28 @@ Rectangle {
     readonly property bool hasInput: appBridge ? appBridge.previewInputUrl !== "" : false
     readonly property bool hasOutput: appBridge ? appBridge.hasOutputPreview : false
     readonly property bool isVideo: appBridge ? (appBridge.previewInputIsVideo || appBridge.previewOutputIsVideo) : false
-    readonly property bool showingOutput: viewport.showVideoOutput && viewport.hasOutput && appBridge && appBridge.previewOutputIsVideo
-    readonly property bool showingTwoUp: viewport.videoTwoUp && viewport.isVideo && viewport.hasOutput && appBridge && appBridge.previewOutputIsVideo
+    readonly property bool hasStillVideoOutput: viewport.isVideo && viewport.hasOutput && appBridge && !appBridge.previewOutputIsVideo
+    readonly property bool showingOutput: viewport.showVideoOutput && viewport.isVideo && viewport.hasOutput
+    // Keep the chosen comparison layout while an invalidated video preview
+    // is replaced. The output pane can show its loading state meanwhile.
+    readonly property bool showingTwoUp: viewport.videoTwoUp && viewport.isVideo
     // Output mirror gate: input masters the timeline in every layout while a
     // video preview exists; the output pane follows clamped to its duration.
     readonly property bool mirrorOutput: viewport.isVideo && viewport.hasOutput && appBridge && appBridge.previewOutputIsVideo
-    // Scrub-realtime eligibility: Realtime on + an existing video preview, in
+    // Scrub-realtime eligibility: Realtime on + an existing preview, in
     // any layout. The transport always masters the input timeline (even on
     // the Output tab), so every scrub addresses input frames and refreshes
     // the preview at the settled playhead. The Preview button stays the
-    // manual render path. Frame Interpolation and a rendered Upscale clip
-    // use green timeline spans, so scrubbing those clips never starts a
-    // one-frame realtime render over the processed range.
+    // manual render path. Frame Interpolation, a rendered Upscale clip, and
+    // a rendered Neural Rendering clip use green timeline spans, so
+    // scrubbing those clips never starts a one-frame realtime render over
+    // the processed range.
     readonly property bool isFITab: appBridge && appBridge.activeTab === "frame-interpolation"
     readonly property var renderedPreviewRanges: appBridge ? appBridge.previewRenderedRanges : []
-    readonly property bool hasRangePlayback: viewport.isFITab || (appBridge && appBridge.activeTab === "upscale" && appBridge.upscaleMode === "Video" && viewport.renderedPreviewRanges.length > 0)
-    readonly property bool scrubRefreshEligible: appBridge && appBridge.autoPreviewEnabled && !viewport.hasRangePlayback && viewport.hasOutput && appBridge.previewOutputIsVideo
+    readonly property bool isNRVideoTab: appBridge && appBridge.activeTab === "neural-rendering"
+        && appBridge.nrMode === "Video" && viewport.renderedPreviewRanges.length > 0
+    readonly property bool hasRangePlayback: viewport.isFITab || viewport.isNRVideoTab || (appBridge && appBridge.activeTab === "upscale" && appBridge.upscaleMode === "Video" && viewport.renderedPreviewRanges.length > 0)
+    readonly property bool scrubRefreshEligible: appBridge && appBridge.autoPreviewEnabled && !viewport.hasRangePlayback && viewport.isVideo && viewport.hasOutput
     // Pre-rendered span containing timeline second sec, newest first wins
     // so re-rendered spans resolve to the latest clip. Null when outside all
     // green spans (or when ranges are unavailable).
@@ -89,16 +97,20 @@ Rectangle {
         if (viewport.fiPinned && viewport.fiPinned.url) return viewport.fiPinned.url
         return appBridge.previewInputIsVideo ? appBridge.previewInputUrl : ""
     }
-    readonly property var activePlayer: showingOutput ? outputPlayer : inputPlayer
+    readonly property var activePlayer: showingOutput && !hasStillVideoOutput ? outputPlayer : inputPlayer
     readonly property real playheadMs: viewport.isVideo ? inputPlayer.position : (activePlayer ? activePlayer.position : 0)
     readonly property real inputDurationMs: appBridge ? appBridge.sourceDuration * 1000.0 : 0
     readonly property real inputFps: appBridge && appBridge.sourceFps > 0 ? appBridge.sourceFps : 30.0
     readonly property bool inputReady: inputPlayer.duration > 0 && (inputPlayer.mediaStatus === MediaPlayer.LoadedMedia || inputPlayer.mediaStatus === MediaPlayer.BufferedMedia)
-    readonly property bool outputReady: outputPlayer.duration > 0 && (outputPlayer.mediaStatus === MediaPlayer.LoadedMedia || outputPlayer.mediaStatus === MediaPlayer.BufferedMedia)
-    readonly property bool activeReady: showingOutput ? outputReady : inputReady
+    readonly property bool outputReady: viewport.hasOutput && (hasStillVideoOutput || (outputPlayer.duration > 0 && (outputPlayer.mediaStatus === MediaPlayer.LoadedMedia || outputPlayer.mediaStatus === MediaPlayer.BufferedMedia)))
+    readonly property bool activeReady: showingOutput && !hasStillVideoOutput ? outputReady : inputReady
     readonly property int sourceWidth: appBridge && appBridge.sourceWidth > 0 ? appBridge.sourceWidth : 1
     readonly property int sourceHeight: appBridge && appBridge.sourceHeight > 0 ? appBridge.sourceHeight : 1
-    readonly property real fitScale: Math.max(0.0001, Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight))
+    readonly property bool twoUpLayout: showingTwoUp || (!isVideo && viewMode === "sideBySide")
+    readonly property real comparisonPaneWidth: Math.max(1, (canvas.width - 4) / 2)
+    readonly property real fitWidth: Math.max(1, twoUpLayout ? comparisonPaneWidth - (isVideo ? 0 : 8) : canvas.width)
+    readonly property real fitHeight: Math.max(1, twoUpLayout && !isVideo ? canvas.height - 8 : canvas.height)
+    readonly property real fitScale: Math.max(0.0001, Math.min(fitWidth / sourceWidth, fitHeight / sourceHeight))
     readonly property real displayScale: fitScale * zoomFactor
 
     function resetPan() { panX = 0; panY = 0 }
@@ -109,8 +121,8 @@ Rectangle {
         resetPan()
     }
     function clampPan() {
-        var overX = Math.max(0, sourceWidth * displayScale - canvas.width) / 2
-        var overY = Math.max(0, sourceHeight * displayScale - canvas.height) / 2
+        var overX = Math.max(0, sourceWidth * displayScale - fitWidth) / 2
+        var overY = Math.max(0, sourceHeight * displayScale - fitHeight) / 2
         panX = Math.max(-overX, Math.min(overX, panX))
         panY = Math.max(-overY, Math.min(overY, panY))
     }
@@ -121,6 +133,12 @@ Rectangle {
 
     onSourceWidthChanged: fitToWindow()
     onSourceHeightChanged: fitToWindow()
+    onFitScaleChanged: Qt.callLater(clampPan)
+    onViewModeChanged: originalPeekHeld = false
+    onHasOutputChanged: { if (!hasOutput) originalPeekHeld = false }
+    onIsVideoChanged: originalPeekHeld = false
+    onActiveFocusChanged: { if (!activeFocus) originalPeekHeld = false }
+    onVisibleChanged: { if (!visible) originalPeekHeld = false }
 
     // Previews always land in place: the viewer stays on whichever tab
     // opened the render (Input, Output, or 2-Up). No tab is ever switched
@@ -334,8 +352,18 @@ Rectangle {
             } else if (event.key === Qt.Key_Left) { videoTransport.stepFrames(-1); event.accepted = true }
             else if (event.key === Qt.Key_Right) { videoTransport.stepFrames(1); event.accepted = true }
         } else {
+            if (event.key === Qt.Key_Space && viewport.viewMode === "single" && viewport.hasOutput) {
+                viewport.originalPeekHeld = true
+                event.accepted = true
+            }
             if (event.key === Qt.Key_0) { viewport.fitToWindow(); event.accepted = true }
             if (event.key === Qt.Key_1) { viewport.actualPixels(); event.accepted = true }
+        }
+    }
+    Keys.onReleased: (event) => {
+        if (event.key === Qt.Key_Space && viewport.originalPeekHeld) {
+            if (!event.isAutoRepeat) viewport.originalPeekHeld = false
+            event.accepted = true
         }
     }
 
@@ -349,14 +377,15 @@ Rectangle {
         Row {
             anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; spacing: 8
             AppSegmentedControl {
+                objectName: "imageComparisonSelector"
                 visible: !viewport.isVideo
                 width: 250
                 model: [{label:"Split",value:"split"},{label:"2-Up",value:"sideBySide"},{label:"Output",value:"single"}]
                 currentValue: viewport.viewMode
-                onActivated: (v) => viewport.viewMode = v
+                onActivated: (v) => { viewport.viewMode = v; viewport.forceActiveFocus() }
             }
             AppSegmentedControl {
-                visible: viewport.isVideo && viewport.hasOutput && appBridge && appBridge.previewOutputIsVideo
+                visible: viewport.isVideo && (viewport.hasOutput || viewport.videoTwoUp)
                 width: 225
                 model: [{label:"Input",value:"input"},{label:"Output",value:"output"},{label:"2-Up",value:"twoup"}]
                 currentValue: viewport.videoTwoUp ? "twoup" : (viewport.showVideoOutput ? "output" : "input")
@@ -379,13 +408,13 @@ Rectangle {
         }
 
         Row {
-            visible: !viewport.isVideo
+            visible: !viewport.isVideo || viewport.showingTwoUp
             anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter; spacing: 6
             AppIconButton { iconName: "fit_to_window"; buttonSize: 26; tooltipText: "Fit to window"; onClicked: viewport.fitToWindow() }
             AppIconButton { iconName: "actual_size"; buttonSize: 26; tooltipText: "Actual pixels"; onClicked: viewport.actualPixels() }
             Text { text: Math.round(viewport.displayScale * Math.max(1.0, Screen.devicePixelRatio) * 100) + "%"; color: Theme.textPrimary; font.family: Theme.monoFontFamily; anchors.verticalCenter: parent.verticalCenter }
-            AppIconButton { iconName: "zoom_out"; tooltipText: "Zoom out"; onClicked: viewport.changeZoom(0.8) }
-            AppIconButton { iconName: "zoom_in"; tooltipText: "Zoom in"; onClicked: viewport.changeZoom(1.25) }
+            AppIconButton { objectName: "previewZoomOut"; iconName: "zoom_out"; tooltipText: "Zoom out"; onClicked: viewport.changeZoom(0.8) }
+            AppIconButton { objectName: "previewZoomIn"; iconName: "zoom_in"; tooltipText: "Zoom in"; onClicked: viewport.changeZoom(1.25) }
             AppIconButton {
                 iconName: appBridge && appBridge.focusPreview ? "exit_fullscreen" : "focus_preview"
                 tooltipText: appBridge && appBridge.focusPreview ? "Exit focus preview" : "Focus preview"
@@ -416,23 +445,55 @@ Rectangle {
             fillMode: Image.PreserveAspectFit; cache: false; asynchronous: true; smooth: true
         }
 
-        // Single-pane surfaces double as 2-Up panes: only their geometry
-        // changes, so players never re-link outputs (no repaint stall).
-        VideoOutput {
-            id: inputSurface
-            objectName: "inputSurface"
+        // Each player keeps the same output while its clipped pane changes
+        // size. In 2-Up, both surfaces share the same zoom and pan.
+        Item {
+            id: inputVideoPane
+            objectName: "inputVideoPane"
             anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.left: parent.left
-            width: viewport.showingTwoUp ? (parent.width - 4) / 2 : parent.width
+            width: viewport.showingTwoUp ? viewport.comparisonPaneWidth : parent.width
             visible: viewport.isVideo && (!viewport.showingOutput || viewport.showingTwoUp)
-            fillMode: VideoOutput.PreserveAspectFit
+            clip: true
+            VideoOutput {
+                id: inputSurface
+                objectName: "inputSurface"
+                width: parent.width; height: parent.height
+                transformOrigin: Item.TopLeft
+                scale: viewport.showingTwoUp ? viewport.zoomFactor : 1.0
+                x: (parent.width - width * scale) / 2 + (viewport.showingTwoUp ? viewport.panX : 0)
+                y: (parent.height - height * scale) / 2 + (viewport.showingTwoUp ? viewport.panY : 0)
+                fillMode: VideoOutput.PreserveAspectFit
+            }
         }
-        VideoOutput {
-            id: outputSurface
-            objectName: "outputSurface"
+        Item {
+            id: outputVideoPane
+            objectName: "outputVideoPane"
             anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
-            width: viewport.showingTwoUp ? (parent.width - 4) / 2 : parent.width
+            width: viewport.showingTwoUp ? viewport.comparisonPaneWidth : parent.width
             visible: viewport.isVideo && (viewport.showingOutput || viewport.showingTwoUp)
-            fillMode: VideoOutput.PreserveAspectFit
+            clip: true
+            VideoOutput {
+                id: outputSurface
+                objectName: "outputSurface"
+                visible: appBridge && appBridge.previewOutputIsVideo
+                width: parent.width; height: parent.height
+                transformOrigin: Item.TopLeft
+                scale: viewport.showingTwoUp ? viewport.zoomFactor : 1.0
+                x: (parent.width - width * scale) / 2 + (viewport.showingTwoUp ? viewport.panX : 0)
+                y: (parent.height - height * scale) / 2 + (viewport.showingTwoUp ? viewport.panY : 0)
+                fillMode: VideoOutput.PreserveAspectFit
+            }
+            Image {
+                objectName: "outputStillFrame"
+                visible: viewport.hasStillVideoOutput
+                source: visible && appBridge ? appBridge.previewOutputUrl : ""
+                width: parent.width; height: parent.height
+                transformOrigin: Item.TopLeft
+                scale: viewport.showingTwoUp ? viewport.zoomFactor : 1.0
+                x: (parent.width - width * scale) / 2 + (viewport.showingTwoUp ? viewport.panX : 0)
+                y: (parent.height - height * scale) / 2 + (viewport.showingTwoUp ? viewport.panY : 0)
+                fillMode: Image.PreserveAspectFit; cache: false; smooth: true
+            }
         }
 
         // 2-Up comparison chrome: pane badges + output loading placeholder.
@@ -477,7 +538,7 @@ Rectangle {
             id: peekArea
             anchors.fill: parent
             z: 4
-            visible: viewport.isVideo && viewport.hasOutput && appBridge && appBridge.previewOutputIsVideo && !viewport.showingTwoUp
+            visible: viewport.isVideo && viewport.hasOutput && !viewport.showingTwoUp
             acceptedButtons: Qt.LeftButton
             hoverEnabled: true
             cursorShape: containsMouse ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -587,13 +648,15 @@ Rectangle {
                             onPositionChanged: (m) => {
                                 if (pressed) setSplit(m.x, m.y)
                             }
+                            onDoubleClicked: { if (appBridge) appBridge.splitPosition = 0.5 }
                         }
                     }
                 }
 
                 Image {
+                    objectName: "singleOutputImage"
                     anchors.fill: parent
-                    visible: viewport.hasOutput && viewport.viewMode === "single"
+                    visible: viewport.hasOutput && viewport.viewMode === "single" && !viewport.originalPeekHeld
                     source: appBridge ? appBridge.previewOutputUrl : ""
                     fillMode: Image.Stretch; cache: false; smooth: true
                 }
@@ -622,14 +685,54 @@ Rectangle {
             visible: !viewport.isVideo && viewport.viewMode === "sideBySide"
             Rectangle {
                 width: (parent.width - 4) / 2; height: parent.height; color: Theme.bgBase
-                Image { anchors.fill: parent; anchors.margins: 4; source: appBridge ? appBridge.previewInputUrl : ""; fillMode: Image.PreserveAspectFit; cache: false }
+                clip: true
+                Image {
+                    objectName: "inputComparisonImage"
+                    width: parent.width - 8; height: parent.height - 8
+                    transformOrigin: Item.TopLeft; scale: viewport.zoomFactor
+                    x: 4 + (parent.width - 8 - width * scale) / 2 + viewport.panX
+                    y: 4 + (parent.height - 8 - height * scale) / 2 + viewport.panY
+                    source: appBridge ? appBridge.previewInputUrl : ""; fillMode: Image.PreserveAspectFit; cache: false
+                }
                 AppBadge { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 10; text: "INPUT" }
             }
             Rectangle {
                 width: (parent.width - 4) / 2; height: parent.height; color: Theme.bgBase
-                Image { anchors.fill: parent; anchors.margins: 4; source: appBridge ? appBridge.previewOutputUrl : ""; fillMode: Image.PreserveAspectFit; cache: false }
+                clip: true
+                Image {
+                    objectName: "outputComparisonImage"
+                    width: parent.width - 8; height: parent.height - 8
+                    transformOrigin: Item.TopLeft; scale: viewport.zoomFactor
+                    x: 4 + (parent.width - 8 - width * scale) / 2 + viewport.panX
+                    y: 4 + (parent.height - 8 - height * scale) / 2 + viewport.panY
+                    source: appBridge ? appBridge.previewOutputUrl : ""; fillMode: Image.PreserveAspectFit; cache: false
+                }
                 AppBadge { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 10; text: viewport.hasOutput ? "OUTPUT" : "NO OUTPUT"; variant: viewport.hasOutput ? "accent" : "neutral" }
             }
+        }
+
+        MouseArea {
+            id: comparisonPanArea
+            objectName: "comparisonPanArea"
+            anchors.fill: parent; z: 1
+            visible: viewport.twoUpLayout
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+            property real pressX: 0; property real pressY: 0
+            property real originPanX: 0; property real originPanY: 0
+            onPressed: (mouse) => {
+                pressX = mouse.x; pressY = mouse.y
+                originPanX = viewport.panX; originPanY = viewport.panY
+                viewport.forceActiveFocus()
+            }
+            onPositionChanged: (mouse) => {
+                if (!pressed) return
+                viewport.panX = originPanX + mouse.x - pressX
+                viewport.panY = originPanY + mouse.y - pressY
+                viewport.clampPan()
+            }
+            onDoubleClicked: viewport.fitToWindow()
+            onWheel: (wheel) => { viewport.changeZoom(wheel.angleDelta.y > 0 ? 1.12 : 0.89); wheel.accepted = true }
         }
 
         // Right-click catcher for the preview context menu. RightButton ONLY
@@ -699,14 +802,6 @@ Rectangle {
             text: appBridge ? appBridge.statusMessage : "Ready."
             font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeSmall; color: Theme.textSecondary; anchors.verticalCenter: parent.verticalCenter
         }
-    }
-
-    Rectangle {
-        anchors.centerIn: parent
-        visible: appBridge && (appBridge.operationState === "PreviewPreparing" || appBridge.operationState === "PreviewRunning" || appBridge.operationState === "LoadingMetadata")
-        width: Math.min(parent.width - 40, 300); height: 64; radius: Theme.radiusLarge
-        color: Theme.bgSurface; border.color: Theme.accent
-        Text { anchors.centerIn: parent; text: appBridge ? appBridge.statusMessage : "Working..."; color: Theme.textPrimary; font.family: Theme.fontFamily; elide: Text.ElideRight; width: parent.width - 24; horizontalAlignment: Text.AlignHCenter }
     }
 
     // Preview right-click menu: Clear single / Clear all / Show in Explorer

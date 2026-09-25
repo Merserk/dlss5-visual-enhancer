@@ -127,13 +127,15 @@ class AdaptiveRate:
 class TimestampMuxer:
     """Carry enhanced RGBA and original audio timestamps over one NUT pipe."""
 
-    def __init__(self, pipe, width: int, height: int, rate: Fraction, audio_template=None) -> None:
+    def __init__(self, pipe, width: int, height: int, rate: Fraction, audio_template=None,
+                 pix_fmt: str = "rgba") -> None:
         self.container = av.open(PipeWriter(pipe), mode="w", format="nut", options={"write_index": "0"})
         self.video = self.container.add_stream("rawvideo", rate=rate)
         self.video.width = width
         self.video.height = height
-        self.video.pix_fmt = "rgba"
-        self.video.codec_context.codec_tag = "RGBA"
+        self.video.pix_fmt = pix_fmt
+        if pix_fmt == "rgba":
+            self.video.codec_context.codec_tag = "RGBA"
         self.video.time_base = TIME_BASE
         self.audio = self.container.add_stream_from_template(audio_template) if audio_template else None
         self.container.start_encoding()

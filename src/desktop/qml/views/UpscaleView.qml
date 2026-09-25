@@ -108,17 +108,59 @@ Item {
                         anchors.topMargin: 12
                         spacing: 12
 
-                        // Card 1: RTX Video Super Resolution (VSR)
+                        // Card 1: Super Resolution
                         AppCard {
                             width: parent.width
-                            title: "RTX Video Super Resolution"
+                            title: "DLSS Super Resolution"
 
                             Column {
                                 width: parent.width
                                 spacing: 12
 
+                                AppComboBox {
+                                    width: parent.width
+                                    label: "Engine"
+                                    model: appBridge ? appBridge.upscaleEngineChoices : []
+                                    currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageEngine : "RTX Video Super Resolution") : (appBridge ? appBridge.upscaleEngine : "RTX Video Super Resolution")
+                                    onActivated: (v) => {
+                                        if (appBridge) {
+                                            if (root.isImage) appBridge.upscaleImageEngine = v
+                                            else appBridge.upscaleEngine = v
+                                        }
+                                    }
+                                }
+
+                                AppComboBox {
+                                    width: parent.width
+                                    label: "DLSS Mode"
+                                    visible: appBridge && (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) === "DLSS"
+                                    model: appBridge ? appBridge.dlssModeChoices : []
+                                    currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageDlssMode : "Quality") : (appBridge ? appBridge.upscaleDlssMode : "Quality")
+                                    onActivated: (v) => {
+                                        if (appBridge) {
+                                            if (root.isImage) appBridge.upscaleImageDlssMode = v
+                                            else appBridge.upscaleDlssMode = v
+                                        }
+                                    }
+                                }
+
+                                AppComboBox {
+                                    width: parent.width
+                                    label: "DLSS Preset"
+                                    visible: appBridge && (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) === "DLSS"
+                                    model: appBridge ? appBridge.dlssPresetChoices : []
+                                    currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageDlssPreset : "Default") : (appBridge ? appBridge.upscaleDlssPreset : "Default")
+                                    onActivated: (v) => {
+                                        if (appBridge) {
+                                            if (root.isImage) appBridge.upscaleImageDlssPreset = v
+                                            else appBridge.upscaleDlssPreset = v
+                                        }
+                                    }
+                                }
+
                                 AppSwitch {
                                     visible: !root.isImage
+                                             && appBridge && appBridge.upscaleEngine !== "DLSS"
                                     label: "Enable RTX VSR"
                                     checked: appBridge ? appBridge.upscaleVsrEnabled : true
                                     enabled: appBridge ? (!checked || appBridge.upscaleHdrEnabled) : true
@@ -128,6 +170,7 @@ Item {
                                 AppComboBox {
                                     width: parent.width
                                     label: "VSR Quality"
+                                    visible: !appBridge || (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS"
 model: appBridge ? appBridge.vsrQualityChoices : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageVsrQuality : 4) : (appBridge ? appBridge.upscaleVsrQuality : 4)
                                     onActivated: (v) => {
@@ -141,6 +184,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                 AppSegmentedControl {
                                     width: parent.width
                                     label: "Sizing Mode"
+                                    visible: !appBridge || (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS"
                                     model: appBridge ? (root.isImage ? appBridge.imageSizeModeChoices : appBridge.videoSizeModeChoices) : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageSizeMode : "Scale factor") : (appBridge ? appBridge.upscaleSizeMode : "Scale factor")
                                     onActivated: (v) => {
@@ -154,7 +198,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                 AppComboBox {
                                     width: parent.width
                                     label: "Scale Factor"
-                                    visible: (root.isImage ? appBridge.upscaleImageSizeMode : appBridge.upscaleSizeMode) === "Scale factor"
+                                    visible: appBridge && (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS" && (root.isImage ? appBridge.upscaleImageSizeMode : appBridge.upscaleSizeMode) === "Scale factor"
                                     model: appBridge ? (root.isImage ? appBridge.imageScaleFactorChoices : appBridge.videoScaleFactorChoices) : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageScaleFactor : 2.0) : (appBridge ? appBridge.upscaleScaleFactor : 2.0)
                                     onActivated: (v) => {
@@ -168,7 +212,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                 Row {
                                     width: parent.width
                                     spacing: 8
-                                    visible: (root.isImage ? appBridge.upscaleImageSizeMode : appBridge.upscaleSizeMode) === "Custom dimensions"
+                                    visible: appBridge && (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS" && (root.isImage ? appBridge.upscaleImageSizeMode : appBridge.upscaleSizeMode) === "Custom dimensions"
 
                                     AppTextField {
                                         width: (parent.width - 8) / 2
@@ -201,6 +245,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppCheckBox {
                                     label: "Lock Aspect Ratio"
+                                    visible: !appBridge || (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS"
                                     checked: root.isImage ? (appBridge ? appBridge.upscaleImageAspectLock : true) : (appBridge ? appBridge.upscaleAspectLock : true)
                                     onToggled: (c) => {
                                         if (appBridge) {
@@ -235,7 +280,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                 AppSwitch {
                                     label: "Convert SDR to HDR"
                                     checked: appBridge ? appBridge.upscaleHdrEnabled : false
-                                    enabled: appBridge ? (appBridge.upscaleHdrSupported && (!checked || appBridge.upscaleVsrEnabled)) : false
+                                    enabled: appBridge ? (appBridge.upscaleHdrSupported && (!checked || appBridge.upscaleVsrEnabled || appBridge.upscaleEngine === "DLSS")) : false
                                     onToggled: (c) => { if (appBridge) appBridge.upscaleHdrEnabled = c }
                                 }
 
@@ -330,12 +375,6 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                         defaultValue: 95
                                         value: appBridge ? appBridge.upscaleImageQuality : 95
                                         onValueModified: (v) => { if (appBridge) appBridge.upscaleImageQuality = Math.round(v) }
-                                    }
-
-                                    AppCheckBox {
-                                        label: "Preserve EXIF Metadata"
-                                        checked: appBridge ? appBridge.upscaleImagePreserveMetadata : true
-                                        onToggled: (c) => { if (appBridge) appBridge.upscaleImagePreserveMetadata = c }
                                     }
 
                                 }

@@ -164,7 +164,7 @@ def build_render_note(options) -> str:
         number(native["face_skin_protection"]), number(native["grain_preservation"]),
         "On" if getattr(options, "nr_mask", None) else "Off",
         number(native["mask_feather"]),
-        "On" if native["gpu_mode"] else "Off", scale,
+        "On", scale,
     )
     return APPLICATION + ":\n" + PREFIX + ", ".join(
         label + " - " + value for label, value in zip(_LABELS, values)
