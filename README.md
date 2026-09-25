@@ -233,8 +233,8 @@ Saved GPU selections follow the selected GPU identity. If that GPU is no longer 
 
 ## License and third-party notices
 
-Project-owned Visual Enhancer material is distributed under the **Merserk Source License 1.0**. The software may be used for personal, professional, and commercial work, and outputs created or processed with Visual Enhancer may be used commercially. Redistribution, mirroring, repackaging, rebranding, resale, sublicensing, publishing modified builds, and similar redistribution require prior written permission except where the license states otherwise. See [LICENSE.txt](LICENSE) for the complete terms.
+Project-owned Visual Enhancer material is distributed under the **Merserk Source License 1.0**. The software may be used for personal, professional, and commercial work, and outputs created or processed with Visual Enhancer may be used commercially. Redistribution, mirroring, repackaging, rebranding, resale, sublicensing, publishing modified builds, and similar redistribution require prior written permission except where the license states otherwise. See [LICENSE](LICENSE) for the complete terms.
 
-Third-party components remain subject to their own licenses and are not relicensed under the Merserk Source License. See [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES) for the notices included with the application.
+Third-party components remain subject to their own licenses and are not relicensed under the Merserk Source License. See [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) for the notices included with the application.
 
 Visual Enhancer is an independent community project and is not affiliated with, sponsored by, or endorsed by NVIDIA. NVIDIA, GeForce RTX, DLSS, and RTX Video are trademarks and/or registered trademarks of NVIDIA Corporation.
