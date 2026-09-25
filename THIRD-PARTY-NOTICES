@@ -9,15 +9,19 @@ copyright, license, redistribution requirements, and notices.
 
 SCOPE
 
-This file covers only third-party components shipped and used in this
-end-user package (the `bin/` runtime and the Python packages imported by
-`src/`).
+This file covers third-party components shipped in this end-user package
+(the `bin/` runtime, its Python packages, and the CAS and NIS algorithms
+adapted in `src/desktop/`). Some wheel modules and tools are shipped but
+are not imported or launched by this app.
 
-This file is version-agnostic by design: it names each component, its
-license, where it is shipped in this package, where its full license text
-lives in this package, and where to read its exact version. Version bumps
-do not require editing this file. Edit it only when a component is added,
-removed, or changes license.
+For the source-code and build-information status of copyleft binaries, see
+THIRD-PARTY-SOURCE-STATUS.txt. A license text or upstream URL alone does not
+satisfy every corresponding-source obligation.
+
+This file names each component, its known licensing, where it is shipped,
+and where to read its version and available license text. Re-audit this
+notice when a component or wheel version changes; bundled dependencies
+and their terms can change between builds.
 
 "Version:" lines below tell you where the exact shipped version is recorded
 (run the tool with `--version` / `-version`, or read the `*.dist-info/METADATA`
@@ -34,6 +38,7 @@ for that component.
 Copyright (c) NVIDIA Corporation and affiliates.
 
 Shipped as (third-party files only):
+    bin/runtime/dlsssr/nvngx_dlss.dll
     bin/runtime/dlssg/nvngx_dlssg.dll
     bin/runtime/dlssnr/nvngx_dlssnr.dll
     bin/runtime/rtx_video/nvngx_vsr.dll
@@ -48,6 +53,7 @@ engineering or removal of notices; no use that would subject the SDK to
 open-source disclosure obligations).
 
 Full text in this package:
+    bin/runtime/dlsssr/LICENSE-NVIDIA-DLSS.txt
     bin/runtime/dlssg/LICENSE-NVIDIA-DLSS.txt
     bin/runtime/dlssnr/LICENSE-NVIDIA-DLSS.txt
     bin/runtime/rtx_video/NVIDIA_RTX_Video_SDK_License.pdf
@@ -56,7 +62,7 @@ Version: see the license files above (they identify the governing SDK
 license); the DLLs are used through the app's RTX Video / DLSS / neural
 rendering paths (`src/upscale/`, `src/neural_rendering/`,
 `src/frame_interpolation/`, `src/core/ngx_runtime.py`,
-`src/core/neural_bridge.py`).
+`src/core/neural_bridge.py`, `src/core/dlss_bridge.py`).
 
 NVIDIA, GeForce, RTX, DLSS, and related marks are trademarks of NVIDIA
 Corporation. No sponsorship or endorsement is implied.
@@ -78,6 +84,7 @@ relinking, and codec obligations.
 
 Full text in this package:
     bin/ffmpeg/LICENSE
+    bin/licenses/GPL-3.0.txt
 
 Version: run `bin/ffmpeg/bin/ffmpeg.exe -version`
 (see also https://ffmpeg.org/).
@@ -91,7 +98,6 @@ and does not replace this section's obligations for these executables.
 
 Shipped as:
     bin/mpv/mpv.exe
-    bin/mpv/d3dcompiler_43.dll
     bin/mpv/vulkan-1.dll
 
 License: per the shipped `Copyright` file, mpv as a whole is GNU GPL
@@ -104,6 +110,11 @@ Full texts in this package:
     bin/mpv/Copyright
     bin/mpv/LICENSE.GPL
     bin/mpv/LICENSE.LGPL
+    bin/licenses/Vulkan-Loader-LICENSE.txt (Khronos Vulkan Loader project)
+
+The mpv.exe and vulkan-1.dll files match the official mpv v0.41.0 Windows
+x86_64 release archive byte-for-byte. The exact Khronos loader build
+revision still requires identification for a complete source inventory.
 
 Version: run `bin/mpv/mpv.exe --version`.
 Used by the Live path (`src/live/mpv_embed.py`, `src/live/player.py`).
@@ -153,14 +164,28 @@ Shipped as Python wheels under:
 (Packaging metadata: `PySide6-*.dist-info`, `PySide6_Essentials-*.dist-info`,
 `PySide6_Addons-*.dist-info`, `shiboken6-*.dist-info`.)
 
-License: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only, per the
-`License:` field in the shipped `METADATA` files. Qt/PySide distribution
-must comply with the chosen license's obligations (including notice
-preservation and applicable relinking/source conditions for LGPL).
+License: the community PySide6 wheels declare LGPL-3.0-only OR
+GPL-2.0-only OR GPL-3.0-only in their shipped METADATA. This package uses
+the LGPLv3 route for Qt/PySide libraries used by the app, subject to the
+requirements of that license. The wheel also contains Qt modules and tools
+that may be GPL-only; their presence and use must be reviewed separately.
+The bundled LicenseRef-Qt-Commercial.txt metadata is a commercial-license
+reference, not evidence that this package has a commercial Qt license.
 
-License reference in this package:
-    bin/python-*-embed-*/Lib/site-packages/PySide6-*.dist-info/licenses/
-    (plus `License:` / `License-File:` fields in each `*.dist-info/METADATA`)
+Full open-source license texts in this package:
+    bin/licenses/LGPL-3.0.txt
+    bin/licenses/LGPL-2.1.txt (for separately bundled LGPLv2.1 libraries)
+    bin/licenses/GPL-3.0.txt
+    bin/licenses/GPL-2.0.txt
+    bin/licenses/Qt-GPL-exception-1.0.txt (for applicable Qt tools)
+    (plus the original wheel metadata and license-reference files)
+
+Users may replace the dynamically loaded Qt/PySide libraries with
+compatible modified versions and debug those modifications. The Merserk
+Source License does not restrict those rights in third-party components.
+Replacement instructions are in bin/licenses/QT-RELINKING.txt.
+Corresponding source and build status are addressed in
+THIRD-PARTY-SOURCE-STATUS.txt.
 
 Version: read `Name`/`Version` in
 `bin/python-*-embed-*/Lib/site-packages/PySide6-*.dist-info/METADATA`.
@@ -168,7 +193,8 @@ Used by the desktop shell (`src/desktop/`, QML modules `QtQuick`,
 `QtQuick.Window`, `QtQuick.Layouts`, `QtQuick.Controls`, `QtQuick.Dialogs`,
 `QtMultimedia`) and `src/live/mpv_embed.py`.
 
-See https://www.qt.io/terms-conditions and https://pyside.org/.
+See https://doc.qt.io/qt-6/licensing.html,
+https://doc.qt.io/qt-6/licenses-used-in-qt.html, and https://pyside.org/.
 
 ===============================================================================
 7. PYTHON PACKAGES IMPORTED BY SRC/
@@ -194,11 +220,11 @@ b) PyAV (`av`, including `av.codec.hwaccel`)
    `src/core/ffmpeg/nut.py`, `src/upscale/video/*`,
    `src/neural_rendering/video/*`, `src/frame_interpolation/*`,
    `src/live/pipeline.py`).
-   License: PyAV itself BSD-3-Clause. IMPORTANT: the shipped `av.libs/`
-   folder bundles compiled FFmpeg codec libraries (codecs/containers and
-   libraries such as x264/x265 and other audio/video libraries) that carry
-   their own GPL/LGPL conditions. Those conditions apply to those DLLs in
-   addition to PyAV's own license.
+   License: PyAV's Python wrapper is BSD-3-Clause. IMPORTANT: the shipped
+   `av.libs/` folder bundles compiled FFmpeg codec libraries and GPL
+   encoders including x264/x265. Their licenses and source obligations
+   apply to the shipped binary wheel in addition to PyAV's wrapper license.
+   The wheel's BSD metadata is not a license for those bundled DLLs.
    Shipped DLLs: `bin/python-*-embed-*/Lib/site-packages/av.libs/*.dll`.
    Text: `bin/python-*-embed-*/Lib/site-packages/av-*.dist-info/`
    (plus section 2 for FFmpeg licensing context).
@@ -226,9 +252,10 @@ e) rawpy (plus LibRaw)
 
 f) pillow-heif (plus its bundled codec/runtime DLLs)
    Use: HEIF/HEIC support (`src/neural_rendering/image/decoder.py`).
-   License: pillow-heif itself BSD-3-Clause, BUT the shipped binary wheels
-   combine libraries with stronger terms (see shipped `LICENSES_bundled.txt`):
-   libheif LGPLv3, libde265 LGPLv3, x265 GPLv2, and MinGW-w64 runtime files
+   License: pillow-heif source is BSD-3-Clause. Its bundled notice expressly
+   identifies the shipped binary wheel as GPLv2 due to bundled libraries
+   (see `LICENSES_bundled.txt`): libheif LGPLv3, libde265 LGPLv3, x265 GPLv2,
+   and MinGW-w64 runtime files
    (libgcc/libstdc++ under GPL-3.0-with-GCC-exception; libwinpthread under
    MIT/BSD-style terms). Those terms apply to those shipped DLLs.
    Shipped DLLs (site-packages root): `libheif-*.dll`, `libde265-*.dll`,
@@ -240,6 +267,11 @@ g) resvg_py
    Use: SVG rasterization (`src/neural_rendering/image/decoder.py`).
    License: MIT.
    Text: `bin/python-*-embed-*/Lib/site-packages/resvg_py-*.dist-info/licenses/`.
+
+h) tifffile
+   Use: 16-bit RGBA TIFF output (`src/neural_rendering/image/encoder.py`).
+   License: BSD-3-Clause.
+   Text: `bin/python-*-embed-*/Lib/site-packages/tifffile-*.dist-info/licenses/LICENSE`.
 
 Note on `pip`: the embed ships a `pip` wheel directory, but `src/` never
 imports it and the app does not use it at runtime, so it is not listed as a
@@ -256,25 +288,57 @@ for their terms in third-party license texts:
 
     neuroframe_engine_frame_interpolation.dll
     neuroframe_engine_neural_rendering.dll
+    neuroframe_engine_super_resolution.dll
     neuroframe_engine_upscaling.dll
     neuroframe_caller.dll
-    bin/runtime/*/LICENSE-Merserk.txt (Merserk's own bridge notice)
     Visual Enhancer.exe (launcher)
     app.py and everything under src/ and config/ (except the third-party
-    imports itemized in sections 6-7, which remain under their own licenses)
+    imports itemized in sections 6-7 and the CAS and NIS algorithms in
+    sections 9-10)
+
+These Merserk-owned files are governed by the root LICENSE.txt. Earlier
+releases that included separate LICENSE-Merserk.txt files remain governed
+by the terms granted in those earlier copies for those earlier releases,
+as described in LICENSE.txt section 20.2.
 
 A third-party file must never have its original license header removed,
 replaced, or relicensed merely because it sits inside this package.
 
 ===============================================================================
-9. SYSTEM COMPONENTS, TRADEMARKS, NO ENDORSEMENT
+9. AMD FIDELITYFX CONTRAST ADAPTIVE SHARPENING
 ===============================================================================
 
-The app calls Microsoft Windows and Direct3D system APIs; those OS-provided
-system components are not bundled and remain under their Microsoft terms.
+The CAS sharpen-only algorithm in `src/desktop/cas_sharpening.py` is adapted
+from FidelityFX SDK 1.1.4, Copyright (C) 2024 Advanced Micro Devices, Inc.
 
-Third-party names and marks (including NVIDIA, DLSS, RTX, GeForce, FFmpeg,
-Qt, Python, and others) are the property of their respective owners and are
+License: MIT-style FidelityFX SDK license. The complete permission and
+disclaimer text is in `src/desktop/AMD-FidelityFX-CAS-LICENSE.txt` and the
+original SDK copy at `native (dev)/FidelityFX-SDK-v1.1.4/sdk/LICENSE.txt`.
+
+The CPU adaptation is used by the Neural Rendering image and video Sharpening stage.
+
+===============================================================================
+10. NVIDIA IMAGE SCALING NVSHARPEN
+===============================================================================
+
+The sharpening-only NVSharpen algorithm in `src/desktop/nis_sharpening.py` is
+adapted from NVIDIA Image Scaling SDK 1.0.3, Copyright (c) 2022 NVIDIA
+CORPORATION & AFFILIATES. The scaling algorithm is not used.
+
+License: MIT. The complete text is in `src/desktop/NVIDIA-NIS-LICENSE.txt` and
+the original SDK copy at `native (dev)/NVIDIAImageScaling/licence.txt`.
+
+The CPU adaptation is used by the Neural Rendering image and video Sharpening stage.
+
+===============================================================================
+11. SYSTEM COMPONENTS, TRADEMARKS, NO ENDORSEMENT
+===============================================================================
+
+The app calls Microsoft Windows and Direct3D system APIs. System-provided
+components remain under Microsoft terms.
+
+Third-party names and marks (including AMD, FidelityFX, NVIDIA, DLSS, RTX,
+GeForce, FFmpeg, Qt, Python, and others) are the property of their respective owners and are
 used only to identify compatible or incorporated technology. Inclusion does
 not imply sponsorship, endorsement, certification, or partnership unless
 expressly stated by that party. Visual Enhancer is developed independently
