@@ -13,6 +13,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from ..core.paths import ROOT, OUTPUTS, LOGS, LIVE_DIR
 from ..core.cache_cleanup import cleanup_old_caches
 from ..core import app_log
+from ..core.power import disable_power_throttling
 from .image_provider import IconImageProvider, PreviewImageProvider
 from .bridge import AppBridge
 from .win_frameless import install_win_chrome, remove_win_chrome, ensure_win_style, log_native_chrome
@@ -284,6 +285,10 @@ def launch_desktop() -> int:
     except Exception:
         pass
     log_native_chrome(f"dpi-awareness={enable_dpi_awareness()}")
+    # Keep decode/stage/encode threads at full speed on laptops even when the
+    # window is in the background (Windows 11 EcoQoS would otherwise throttle
+    # them and starve the GPU).
+    app_log.info("startup", f"power_throttling_opt_out={disable_power_throttling()}")
     # Declare our taskbar identity before any UI exists; otherwise Windows
     # groups the window under the host executable ("Python").
     set_process_appusermodel_id()

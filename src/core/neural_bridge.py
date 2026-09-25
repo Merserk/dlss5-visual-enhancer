@@ -27,6 +27,12 @@ from .ngx_runtime import NGX_RUNTIME_LOCK
 BRIDGE_ABI_VERSION = 6
 BRIDGE_FRAME_ABI_MAX_VERSION = 7
 BRIDGE_WATCHDOG_SECONDS = 45.0
+# NGX initialization and the first feature-18 evaluation after a session is
+# (re)created load the neural model and build GPU pipelines. On notebook GPUs
+# (e.g. RTX 50-series Laptop GPUs) that work runs at reduced clocks, often right
+# after the dGPU wakes from Optimus power-down, and can legitimately take longer
+# than a steady-state frame. A tighter watchdog there falsely poisons the bridge.
+BRIDGE_COLD_START_WATCHDOG_SECONDS = 240.0
 MEMORY_HOST = 0
 MEMORY_CUDA = 1
 MEMORY_NONE = 2
@@ -641,6 +647,9 @@ class NeuralBridgeManager:
         self._active_sessions = 0
         self._version = "unloaded"
         self._gpu_name = "unknown"
+        # False until a feature evaluation has completed since the last
+        # session release; the first evaluation gets the cold-start budget.
+        self._feature_warm = False
 
     @property
     def version(self) -> str:
@@ -928,6 +937,11 @@ class NeuralBridgeManager:
         self, label: str, function: Callable[[], Any], references: tuple[Any, ...] = (),
         *, timeout_seconds: float = BRIDGE_WATCHDOG_SECONDS,
     ) -> Any:
+        evaluation = "evaluation" in label
+        if label in {"initialization", "adapter rebinding"} or (
+            evaluation and not self._feature_warm
+        ):
+            timeout_seconds = max(timeout_seconds, BRIDGE_COLD_START_WATCHDOG_SECONDS)
         completed = threading.Event()
         result: list[Any] = []
         failure: list[BaseException] = []
@@ -959,6 +973,8 @@ class NeuralBridgeManager:
                 f"Neural Rendering raised a native exception during {label}. Restart "
                 f"the application before rendering again: {failure[0]}"
             ) from failure[0]
+        if evaluation:
+            self._feature_warm = True
         return result[0]
 
     def initialize(self, gpu: dict[str, Any]) -> dict[str, Any]:
@@ -1085,6 +1101,7 @@ class NeuralBridgeManager:
             # invoke NGX core shutdown or unload the driver/runtime modules.
             if self._active_sessions == 0 and self._library is not None:
                 release = getattr(self._library, "dlss5nr_release_session", None)
+                self._feature_warm = False
                 if release is not None and not self._poisoned_reason:
                     try:
                         self._call_with_watchdog("session release", release)

@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Iterator
 
+from .power import keep_system_awake
+
 
 class Cancelled(RuntimeError):
     pass
@@ -79,7 +81,8 @@ def active_job(controller: JobController | None = None) -> Iterator[JobControlle
     with _ACTIVE_LOCK:
         _ACTIVE = controller
     try:
-        yield controller
+        with keep_system_awake():
+            yield controller
     finally:
         controller.terminate_processes()
         with _ACTIVE_LOCK:
