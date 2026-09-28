@@ -26,7 +26,7 @@ FPS_CHOICES = tuple(FPS_RATES)
 ENGINE_CHOICES = ("Auto", "Native DLSSG", "Cascade")
 # Preview clip lengths (seconds) offered in the FI action bar. Stored as
 # strings like the FPS choice; converted to float at render time.
-PREVIEW_LENGTH_CHOICES = ("3", "5", "10", "20", "30")
+PREVIEW_LENGTH_CHOICES = ("1", "3", "5", "10", "20", "30")
 PREVIEW_LENGTH_DEFAULT = "3"
 
 
@@ -51,16 +51,13 @@ class FrameInterpolationOptions:
     video_gpu_uuid: str = "auto"
     target_fps: str = "60"
     engine: str = "Auto"
-    codec: str = "H.264 (NVIDIA NVENC)"
+    codec: str = "H.264"
     container: str = "MP4"
     quality: str = "Auto (Default)"
     hdr_mode: bool = False
     rename_mode: str = "Auto"
     custom_suffix: str = "_Frame_Interpolation"
     preview_seconds: float | None = None
-    # True = truncated preview uses the forced H.264 SDR path (current behavior).
-    # False = truncated preview uses the user's codec/container (HDR preserved).
-    preview_compat: bool = True
 
     @property
     def target_rate(self) -> Fraction:

@@ -36,7 +36,7 @@ Item {
             Rectangle {
                 id: thumb
                 y: 2
-                x: control.checked ? (track.width - width - 2) : 2
+                x: control.checked !== control.LayoutMirroring.enabled ? (track.width - width - 2) : 2
                 width: 16
                 height: 16
                 radius: 8

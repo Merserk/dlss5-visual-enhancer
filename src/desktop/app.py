@@ -6,15 +6,22 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Qt
+from ..portable import configure_portable_environment
+
+configure_portable_environment()
+
+from PySide6.QtCore import QRect, QUrl, Qt
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
-from ..core.paths import ROOT, OUTPUTS, LOGS, LIVE_DIR
+from ..core.paths import ROOT, OUTPUTS, LOGS, LIVE_DIR, JOBS
 from ..core.cache_cleanup import cleanup_old_caches
 from ..core import app_log
 from .image_provider import IconImageProvider, PreviewImageProvider
 from .bridge import AppBridge
+from .preview_player import PreviewPlayer
+from .window_geometry import restore_window_geometry
+from .window_focus import ClickFocusFilter
 from .win_frameless import install_win_chrome, remove_win_chrome, ensure_win_style, log_native_chrome
 
 
@@ -276,6 +283,7 @@ def launch_desktop() -> int:
     OUTPUTS.mkdir(exist_ok=True)
     LOGS.mkdir(exist_ok=True)
     LIVE_DIR.mkdir(exist_ok=True)
+    JOBS.mkdir(exist_ok=True)
     # Startup sweep of stale temp caches (24h+ old): crash orphans, old
     # staged pastes and previews. Queues are in-memory per session, so no
     # live references can exist yet. Finish the sweep before showing the UI.
@@ -291,7 +299,12 @@ def launch_desktop() -> int:
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
+    # Use FFmpeg for the original-media player as well as export formats.
+    # Cached previews use our direct 10-bit frame player below.
+    os.environ["QT_MEDIA_BACKEND"] = "ffmpeg"
     app = QGuiApplication(sys.argv)
+    from PySide6.QtQml import qmlRegisterType
+    qmlRegisterType(PreviewPlayer, "VisualEnhancer", 1, 0, "PreviewPlayer")
     app.setApplicationName("Visual Enhancer")
     app.setApplicationDisplayName("Visual Enhancer")
     app.setOrganizationName("Merserk")
@@ -313,6 +326,7 @@ def launch_desktop() -> int:
     engine.addImageProvider("preview", image_provider)
     engine.addImageProvider("icons", IconImageProvider())
     engine.rootContext().setContextProperty("backend", bridge)
+    bridge.languageChanged.connect(engine.retranslate)
 
     qml_path = Path(__file__).resolve().parent / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
@@ -328,6 +342,12 @@ def launch_desktop() -> int:
         return 1
 
     root_window = engine.rootObjects()[0]
+    focus_filter = ClickFocusFilter(root_window)
+    restore_window_geometry(
+        root_window,
+        QRect(bridge.windowX, bridge.windowY, bridge.windowWidth, bridge.windowHeight),
+        has_position=(bridge.windowX, bridge.windowY) != (-1, -1),
+    )
     root_window.create()
     # Brand the live taskbar button (name + VE icon + launcher relaunch) and
     # pin the window icon explicitly so pythonw.exe art never leaks through.
@@ -370,10 +390,9 @@ def launch_desktop() -> int:
 
     root_window.frameSwapped.connect(on_first_frame)
 
-    if bridge.windowMaximized:
-        root_window.showMaximized()
-    else:
-        root_window.showNormal()
+    # Always launch maximized, even when the last session was restored or
+    # snapped to one side. Saved geometry still supplies the restore size.
+    root_window.showMaximized()
     mark("window_shown")
 
     # Qt re-applies window flags when shown, so restore native chrome once.

@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import os
-import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Iterable
 
 from ...core.batch_progress import BatchItemUpdate, BatchProgress
+from ...core import app_log
 from ...core.disk_paths import StreamingMediaArchive, prepare_output_dir
 from ...core.jobs import Cancelled, JobController, active_job
 from ...core.runtime import prepare_runtime
 from .models import ConversionOptions, VideoBatchResult, VideoConversionFailure, VideoConversionSuccess
 from . import processor
-from .reports import _write_video_batch_manifest
 
 
 def convert_videos(
@@ -35,7 +34,6 @@ def convert_videos(
     archive: StreamingMediaArchive | None = None
     archive_path: str | None = None
     archive_error = ""
-    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{time.time_ns() % 1_000_000:06d}"
     try:
         destination = prepare_output_dir(output_dir, default=processor.OUTPUTS) if not same_as_input or create_archive else None
         if create_archive and len(paths) > 1:
@@ -86,12 +84,8 @@ def convert_videos(
             except Exception as exc:
                 archive_error = str(exc)
                 archive_path = None
-        diagnostics = reporter.diagnostics(final=True)
-        if archive_error:
-            diagnostics["archive_error"] = archive_error
-        manifest = _write_video_batch_manifest(
-            stamp, options, successes, failures, cancelled,
-            batch_diagnostics=diagnostics, output_dir=str(destination) if destination else None
+        manifest = app_log.record_batch_summary(
+            "video-batch", len(successes), len(failures), cancelled,
         )
         reporter.finish(cancelled=cancelled, manifest_path=manifest)
         return VideoBatchResult(

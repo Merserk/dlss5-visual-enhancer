@@ -4,19 +4,10 @@ import math
 
 
 ENCODING_QUALITIES = ("Auto (Default)", "Max", "Best", "Good")
+CONTAINER_CHOICES = ("MP4", "MKV", "MOV")
 
-# User-facing codec choices: plain = CPU (libx264/libx265/libsvtav1), suffixed = NVIDIA NVENC.
-CODEC_CHOICES = (
-    "H.264",
-    "H.264 (NVIDIA NVENC)",
-    "H.265",
-    "H.265 (NVIDIA NVENC)",
-    "AV1",
-    "AV1 (NVIDIA NVENC)",
-    "ProRes Proxy",
-    "ProRes HQ",
-    "FFV1 Lossless RGB 10-bit",
-)
+# Backend-neutral codec choices; FFmpeg/Vulkan settings select acceleration.
+CODEC_CHOICES = ("H.264", "H.265", "AV1", "ProRes Proxy", "ProRes HQ", "FFV1 Lossless RGB 10-bit")
 
 _CODEC_ALIASES = {
     "HEVC": "H.265",
@@ -49,7 +40,7 @@ _NVENC_ENCODERS = {
     "AV1 (NVIDIA NVENC)": "av1_nvenc",
 }
 
-_AUTOMATIC_CONTAINERS = {
+_DEFAULT_CONTAINERS = {
     "H.264": "MP4",
     "H.264 (NVIDIA NVENC)": "MP4",
     "H.265": "MKV",
@@ -88,7 +79,7 @@ def _normalize_codec(codec: str) -> str:
     if not isinstance(codec, str):
         return codec
     c = codec.strip()
-    return _CODEC_ALIASES.get(c, c)
+    return _CODEC_ALIASES.get(c, c).removesuffix(" (NVIDIA NVENC)")
 
 
 def _base_codec(codec: str) -> str:
@@ -113,10 +104,10 @@ def hdr_mode_supported(codec: str) -> bool:
 
 
 def container_for_codec(codec: str) -> str:
-    """Return the single application container selected for a video codec."""
+    """Return a supported default when a codec needs a new container selection."""
     normalized = _normalize_codec(codec)
     try:
-        return _AUTOMATIC_CONTAINERS[normalized]
+        return _DEFAULT_CONTAINERS[normalized]
     except KeyError as exc:
         raise ValueError(f"Unknown video codec: {codec!r}.") from exc
 
@@ -135,7 +126,7 @@ def _hdr_color_args(metadata: dict | None) -> list[str]:
     cs = metadata.get("color_space")
     if isinstance(cs, str) and cs not in ("unknown", "", None):
         # ffmpeg expects 'bt709', 'bt2020nc', 'bt2020c', etc. Probe already returns that.
-        args.extend(["-colorspace", cs])
+        args.extend(["-colorspace", "0" if cs == "gbr" else cs])
     cp = metadata.get("color_primaries")
     if isinstance(cp, str) and cp not in ("unknown", "", None):
         args.extend(["-color_primaries", cp])
@@ -173,15 +164,36 @@ def _x265_hdr_params(metadata: dict | None) -> str | None:
 
 
 def validate_codec_container(codec: str, container: str) -> None:
+    if container not in CONTAINER_CHOICES:
+        raise ValueError(f"Unknown output container: {container!r}.")
     norm = _normalize_codec(codec)
-    if norm == "ProRes Proxy" and container == "MP4":
-        raise ValueError("ProRes Proxy is not supported in MP4. Choose the MOV or MKV container.")
-    if norm in FIXED_QUALITY_CODECS and container != container_for_codec(norm):
-        raise ValueError(f"{norm} requires the {container_for_codec(norm)} container.")
+    if norm in {"ProRes Proxy", "ProRes HQ"} and container == "MP4":
+        raise ValueError(f"{norm} is not supported in MP4. Choose the MOV or MKV container.")
+    if norm == "AV1" and container == "MOV":
+        raise ValueError("AV1 is not supported in MOV. Choose the MP4 or MKV container.")
     if norm not in CODEC_CHOICES and norm not in _CODEC_ALIASES.values():
         # Allow alias but error on truly unknown for early feedback; _codec_command will also validate.
         if norm not in _BASE_CODEC_MAP:
             raise ValueError(f"Unknown video codec: {codec!r}.")
+
+
+def containers_for_codec(codec: str) -> tuple[str, ...]:
+    """Offer only containers accepted by the application's export paths."""
+    container_for_codec(codec)
+    choices = []
+    for container in CONTAINER_CHOICES:
+        try:
+            validate_codec_container(codec, container)
+        except ValueError:
+            continue
+        choices.append(container)
+    return tuple(choices)
+
+
+def resolve_container(codec: str, container: str) -> str:
+    """Validate and honor the user's selected export container."""
+    validate_codec_container(codec, container)
+    return container
 
 
 def calculate_auto_bitrate_kbps(

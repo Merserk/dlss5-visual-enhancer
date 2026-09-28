@@ -24,8 +24,8 @@ Item {
 
     function getLabel(item) {
         if (item === undefined || item === null) return ""
-        if (typeof item === "object" && item.label !== undefined) return item.label
-        return item.toString()
+        if (typeof item === "object" && item.label !== undefined) return qsTranslate("App", item.label)
+        return qsTranslate("App", item.toString())
     }
     function getValue(item) {
         if (item === undefined || item === null) return undefined
@@ -41,7 +41,7 @@ Item {
     }
     function displayText() {
         if (currentIndex >= 0 && model && currentIndex < model.length) return getLabel(model[currentIndex])
-        return currentValue === undefined || currentValue === null || currentValue === "" ? "Select..." : "Unavailable: " + currentValue
+        return currentValue === undefined || currentValue === null || currentValue === "" ? qsTranslate("App", "Select...") : qsTranslate("App", "Unavailable: %1").arg(currentValue)
     }
     onCurrentValueChanged: syncIndex()
     onModelChanged: syncIndex()

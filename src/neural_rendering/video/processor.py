@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 import av
+from ...core.ffmpeg.frames import open_video_decoder, VideoOutput
 import numpy as np
 
 from ...core import app_log, ffmpeg
@@ -73,7 +74,6 @@ def convert_video(
     *, output_dir: str | os.PathLike[str] | None = None, controller=None,
 ) -> ConversionResult:
     options = replace(options) if options is not None else ConversionOptions()
-    options.container = ffmpeg.container_for_codec(options.codec)
     source = Path(input_path).resolve()
     if not source.is_file():
         raise FileNotFoundError(source)
@@ -81,9 +81,6 @@ def convert_video(
     validate_rename(options.rename_mode, options.custom_suffix)
     preview_seconds, preview_frames = _validate_preview_options(options)
     is_preview = preview_seconds is not None or preview_frames is not None
-    # Compat previews use the forced H.264 SDR 8-bit path; user-encoded previews
-    # (Preview Encoding Auto-playable / Disabled) preserve the HDR choice.
-    compat_preview = is_preview and bool(getattr(options, "preview_compat", True))
     # The codec selects the frame boundary and encoder. Neural evaluation
     # always uses CUDA/D3D12, including the CPU encoder route below.
     if options.scale_method not in {"Standard", "DLSS"}:
@@ -91,8 +88,6 @@ def convert_video(
     validate_dlss(options.dlss_mode, options.dlss_preset)
     cuda_path = uses_nvenc_frame_boundary(options.codec)
     hdr_requested = bool(options.preserve_hdr)
-    if compat_preview:
-        hdr_requested = False
     if hdr_requested and not ffmpeg.hdr_mode_supported(options.codec):
         raise ValueError(
             f"HDR Mode is only available for a 10-bit or higher codec; "
@@ -114,7 +109,6 @@ def convert_video(
                 options,
                 preview_seconds=preview_seconds,
                 preview_frames=preview_frames,
-                compat_preview=compat_preview,
                 prepared_runtime=prepared_runtime,
                 controller=controller,
                 progress=progress,
@@ -204,7 +198,7 @@ def convert_video(
                 factor, mode = resolve_upscaling_mode(options.upscaling_factor)
                 output_width, output_height = resolve_output_size(
                     input_width, input_height, factor)
-            effective_hdr = hdr_requested and (not is_preview or not compat_preview)
+            effective_hdr = hdr_requested
             hdr_metadata = {
                 "color_space": metadata.get("color_space", "unknown"),
                 "color_primaries": metadata.get("color_primaries", "unknown"),
@@ -301,7 +295,7 @@ def convert_video(
                     video_gpu = ffmpeg.resolve_video_gpu(
                         prepared_runtime.gpus,
                         encoder_gpu_uuid,
-                        "H.264" if compat_preview else options.codec,
+                        options.codec,
                         output_width,
                         output_height,
                     )
@@ -319,7 +313,7 @@ def convert_video(
                             hdr_mode=effective_hdr,
                             hdr_metadata=output_color_metadata,
                             preserve_timestamps=not metadata["cfr"],
-                            speed_profile="preview" if compat_preview else "neural",
+                            speed_profile="neural",
                             source_audio=source if direct_mux else None,
                             direct_container=options.container if direct_mux else None,
                             comment=direct_comment,
@@ -448,7 +442,7 @@ def convert_video(
                     if preopened_decoder is not None:
                         container = preopened_decoder
                     else:
-                        container = av.open(str(source))
+                        container = open_video_decoder(source, controller, pixel_format="rgba64le" if metadata.get("depth", 8) > 8 else "rgba")
                     stream = container.streams.video[0]
                     stream.thread_type = "AUTO"
                     guides = TemporalGuideGenerator(
@@ -482,7 +476,7 @@ def convert_video(
                         decode_seconds += time.perf_counter() - decode_started
                         index = decoded
                         pts = int(
-                            frame.pts if frame.pts is not None else decoded * default_duration
+                            round(Fraction(frame.pts) * (frame.time_base or metadata["time_base"]) / metadata["time_base"]) if frame.pts is not None else decoded * default_duration
                         )
                         if preview_seconds is not None:
                             timestamp = float(Fraction(pts) * metadata["time_base"])
@@ -511,7 +505,7 @@ def convert_video(
                                 ffmpeg.decoded_rgba(frame, metadata["depth"]), metadata["rotation"]
                             )
                             if dlss_session is None and (rgba.shape[1] != render_width or rgba.shape[0] != render_height):
-                                rgba = resize_fit(rgba, render_width, render_height)
+                                rgba = resize_fit(rgba, render_width, render_height, controller=controller)
                             rgba = np.ascontiguousarray(rgba)
                             prepare_seconds += time.perf_counter() - prepare_started
                             guide_started = time.perf_counter()
@@ -676,7 +670,7 @@ def convert_video(
                 if now - last_progress_update >= 0.1:
                     _report_progress(
                         0.04 + 0.84 * min(1.0, delivered / estimated_frames),
-                        "Rendering video frames",
+                        f"Rendering video frames: {delivered:,} / {estimated_frames:,} frames",
                     )
                     last_progress_update = now
 
@@ -814,7 +808,7 @@ def convert_video(
                 "ProRes HQ": ("prores", "yuv422p10le", 10),
                 "FFV1 Lossless RGB 10-bit": ("ffv1", "gbrp10le", 10),
             }.get(ffmpeg._normalize_codec(options.codec))
-            if expected and not compat_preview and (
+            if expected and (
                 verified.get("codec"), verified.get("pixel_format"),
                 int(verified.get("depth") or 0)
             ) != expected:

@@ -87,7 +87,7 @@ Item {
             iconName: "chevron_up"
             buttonSize: 22
             anchors.verticalCenter: parent.verticalCenter
-            tooltipText: "Move " + card.title + " up"
+            tooltipText: qsTranslate("App", "Move %1 up").arg(card.title)
             enabled: card.stageIndex > 0
             onClicked: {
                 if (card.appBridge)
@@ -98,7 +98,7 @@ Item {
             iconName: "chevron_down"
             buttonSize: 22
             anchors.verticalCenter: parent.verticalCenter
-            tooltipText: "Move " + card.title + " down"
+            tooltipText: qsTranslate("App", "Move %1 down").arg(card.title)
             enabled: card.stageIndex < card.stageCount - 1
             onClicked: {
                 if (card.appBridge)
@@ -109,7 +109,7 @@ Item {
             iconName: card.collapsed ? "chevron_right" : "chevron_left"
             buttonSize: 22
             anchors.verticalCenter: parent.verticalCenter
-            tooltipText: card.collapsed ? "Expand " + card.title : "Collapse " + card.title
+            tooltipText: (card.collapsed ? qsTranslate("App", "Expand %1") : qsTranslate("App", "Collapse %1")).arg(card.title)
             onClicked: card.collapsed = !card.collapsed
         }
 

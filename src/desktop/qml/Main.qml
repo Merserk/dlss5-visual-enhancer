@@ -5,19 +5,22 @@ import QtQuick.Controls as QQC2
 import "."
 import "components"
 import "views"
+import "controls"
 
 Window {
     id: appWindow
-    width: typeof backend !== "undefined" && backend ? backend.windowWidth : 1440
-    height: typeof backend !== "undefined" && backend ? backend.windowHeight : 920
-    x: typeof backend !== "undefined" && backend && backend.windowX >= 0 ? Math.max(0, Math.min(Screen.width - width, backend.windowX)) : Math.max(0, (Screen.width - width) / 2)
-    y: typeof backend !== "undefined" && backend && backend.windowY >= 0 ? Math.max(0, Math.min(Screen.height - height, backend.windowY)) : Math.max(0, (Screen.height - height) / 2)
+    // Python applies the saved rectangle once before creating the native
+    // window. Live geometry bindings would undo OS resizing and snapping.
+    width: 1440
+    height: 920
     minimumWidth: 1080
     minimumHeight: 700
-    // Python reveals the fully prepared window in its saved state.
+    // Python reveals the fully prepared window maximized.
     flags: Qt.Window | Qt.FramelessWindowHint
     title: "Visual Enhancer"
     color: Theme.bgBase
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
 
     readonly property var windowRef: appWindow
     property bool closeApproved: false
@@ -216,7 +219,15 @@ Window {
         focus: true
         modal: true
         closePolicy: QQC2.Popup.CloseOnEscape
-        standardButtons: QQC2.Dialog.Yes | QQC2.Dialog.No
+        footer: Item {
+            implicitHeight: 48
+            Row {
+                anchors.right: parent.right; anchors.rightMargin: 20
+                anchors.verticalCenter: parent.verticalCenter; spacing: 8
+                AppButton { text: qsTranslate("App", "No"); onClicked: closeDialog.reject() }
+                AppButton { text: qsTranslate("App", "Yes"); variant: "danger"; onClicked: closeDialog.accept() }
+            }
+        }
         leftPadding: 20
         rightPadding: 20
         topPadding: 16
@@ -225,7 +236,7 @@ Window {
         // Borderless custom header: the default Dialog title chrome draws
         // its own light separator line under the title.
         header: QQC2.Label {
-            text: "Operation still active"
+            text: qsTranslate("App", "Operation still active")
             color: Theme.textPrimary
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSizeTitle
@@ -236,7 +247,7 @@ Window {
             bottomPadding: 4
         }
         contentItem: Text {
-            text: "A render, preview, scan, or Live session is still active. Cancel it and exit?"
+            text: qsTranslate("App", "A render, preview, scan, or Live session is still active. Cancel it and exit?")
             color: Theme.textPrimary; font.family: Theme.fontFamily; wrapMode: Text.WordWrap; width: 360
         }
         // Borderless: the previous border.color (light gray) read as a

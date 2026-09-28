@@ -8,15 +8,19 @@ Rectangle {
 
     property var appBridge: null
     property string mediaKind: "image/video" // "image", "video", "image/video"
+    property bool emptyState: true
 
-    // No box visuals: transparent background, no border. The whole empty
-    // viewport stays clickable (opens file picker) and droppable.
-    color: dropArea.containsDrag ? Theme.bgSelected : "transparent"
+    // The drop target stays over a loaded preview; only the empty-state
+    // picker and prompt disappear after an input has been selected.
+    color: dropArea.containsDrag ? (emptyState ? Theme.bgSelected : "#220387C2") : "transparent"
+    border.color: !emptyState && dropArea.containsDrag ? Theme.accent : "transparent"
+    border.width: 1
 
     Behavior on color { ColorAnimation { duration: Theme.animFast } }
 
     DropArea {
         id: dropArea
+        objectName: "mediaDropArea"
         anchors.fill: parent
         onDropped: (drop) => {
             if (drop.hasUrls && appBridge) {
@@ -32,6 +36,7 @@ Rectangle {
     MouseArea {
         id: clickArea
         anchors.fill: parent
+        visible: root.emptyState
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: fileDialog.open()
@@ -39,6 +44,7 @@ Rectangle {
 
     Column {
         anchors.centerIn: parent
+        visible: root.emptyState
         spacing: 16
         width: Math.min(parent.width - 40, 480)
 
@@ -52,7 +58,7 @@ Rectangle {
         // Main prompt
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Drag and drop media files here"
+            text: qsTranslate("App", "Drag and drop media files here")
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSizeTitle
             font.weight: Font.DemiBold
@@ -65,14 +71,14 @@ Rectangle {
             spacing: 12
 
             AppButton {
-                text: "Choose Files..."
+                text: qsTranslate("App", "Choose Files...")
                 iconName: "add_file"
                 variant: "secondary"
                 onClicked: fileDialog.open()
             }
 
             AppButton {
-                text: "Choose Folder..."
+                text: qsTranslate("App", "Choose Folder...")
                 iconName: "add_folder"
                 variant: "secondary"
                 onClicked: folderDialog.open()
@@ -82,13 +88,13 @@ Rectangle {
 
     FileDialog {
         id: fileDialog
-        title: "Select Input Media"
+        title: qsTranslate("App", "Select Input Media")
         fileMode: FileDialog.OpenFiles
         nameFilters: [
-            "All Media Files (*.mp4 *.mkv *.mov *.avi *.webm *.png *.jpg *.jpeg *.webp *.avif *.tiff *.bmp *.cr2 *.nef *.arw *.dng *.heic)",
-            "Video Files (*.mp4 *.mkv *.mov *.avi *.webm)",
-            "Image Files (*.png *.jpg *.jpeg *.webp *.avif *.tiff *.bmp *.cr2 *.nef *.arw *.dng *.heic)",
-            "All Files (*.*)"
+            qsTranslate("App", "All Media Files (*.mp4 *.mkv *.mov *.avi *.webm *.png *.jpg *.jpeg *.webp *.avif *.tiff *.bmp *.cr2 *.nef *.arw *.dng *.heic)"),
+            qsTranslate("App", "Video Files (*.mp4 *.mkv *.mov *.avi *.webm)"),
+            qsTranslate("App", "Image Files (*.png *.jpg *.jpeg *.webp *.avif *.tiff *.bmp *.cr2 *.nef *.arw *.dng *.heic)"),
+            qsTranslate("App", "All Files (*.*)")
         ]
         onAccepted: {
             if (appBridge && selectedFiles.length > 0) {
@@ -103,7 +109,7 @@ Rectangle {
 
     FolderDialog {
         id: folderDialog
-        title: "Select Folder Containing Media"
+        title: qsTranslate("App", "Select Folder Containing Media")
         onAccepted: {
             if (appBridge) {
                 var folderPath = selectedFolder.toString()

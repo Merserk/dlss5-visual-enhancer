@@ -233,39 +233,20 @@ def write_failure_report(
 
 
 def resize_fit(rgba: np.ndarray, width: int, height: int, *,
-               interpolation: str = "Lanczos4") -> np.ndarray:
-    source_height, source_width = rgba.shape[:2]
-    if source_width == width and source_height == height:
-        return np.ascontiguousarray(rgba)
-    scale = min(width / source_width, height / source_height)
-    fit_width = max(1, min(width, int(round(source_width * scale))))
-    fit_height = max(1, min(height, int(round(source_height * scale))))
-    methods = {
-        "Lanczos4": cv2.INTER_LANCZOS4,
-        "Area": cv2.INTER_AREA,
-        "Bicubic": cv2.INTER_CUBIC,
-        "Bilinear": cv2.INTER_LINEAR,
-        "Nearest": cv2.INTER_NEAREST,
-    }
-    if interpolation not in methods:
-        raise ValueError(f"Unknown image scaling filter: {interpolation!r}.")
-    resized = cv2.resize(rgba, (fit_width, fit_height), interpolation=methods[interpolation])
-    canvas = np.zeros((height, width, 4), dtype=rgba.dtype)
-    canvas[..., 3] = np.iinfo(rgba.dtype).max
-    x = (width - fit_width) // 2
-    y = (height - fit_height) // 2
-    canvas[y : y + fit_height, x : x + fit_width] = resized
-    return canvas
+               interpolation: str = "Lanczos4", controller=None) -> np.ndarray:
+    from .ffmpeg.filters import resize_fit as vulkan_resize
+    return vulkan_resize(rgba, width, height, interpolation=interpolation, controller=controller)
 
 
-def rotate_frame(frame: np.ndarray, rotation: int) -> np.ndarray:
-    if rotation == 90:
-        return np.ascontiguousarray(np.rot90(frame, 3))
-    if rotation == 180:
-        return np.ascontiguousarray(np.rot90(frame, 2))
-    if rotation == 270:
-        return np.ascontiguousarray(np.rot90(frame, 1))
-    return frame
+def rotate_frame(frame: np.ndarray, rotation: int, *, controller=None) -> np.ndarray:
+    if rotation not in (90, 180, 270):
+        return frame
+    from .ffmpeg.filters import filter_array
+    from .ffmpeg.vulkan import libplacebo
+    width = frame.shape[0] if rotation != 180 else frame.shape[1]
+    height = frame.shape[1] if rotation != 180 else frame.shape[0]
+    graph = libplacebo(f"rotate={rotation // 90}:w={width}:h={height}")
+    return filter_array(frame, graph, width=width, height=height, controller=controller)
 
 
 def validate_runtime_files() -> None:

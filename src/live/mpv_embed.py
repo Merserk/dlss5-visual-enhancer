@@ -39,10 +39,6 @@ except Exception:
     _QRasterWindowBase = None  # type: ignore[assignment, misc]
 
 
-def _pipe_name(stamp: str) -> str:
-    return f"\\\\.\\pipe\\dlss5-live-{stamp}"
-
-
 _request_ids = itertools.count(1)
 _request_lock = threading.Lock()
 

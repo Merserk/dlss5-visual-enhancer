@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import subprocess
+from ...core.ffmpeg.vulkan import prepare_command
 import threading
 from contextlib import suppress
 from fractions import Fraction
@@ -84,6 +85,54 @@ def inspect_video(path: Path, controller=None, *, reject_hdr=False) -> dict:
             "origin": origin, "frames": int(stream.get("nb_frames") or 0) if str(stream.get("nb_frames", "0")).isdigit() else 0}
 
 
+def sdr_normalization_filter(matrix: str, primaries: str, transfer: str, range_in: str) -> str:
+    """Convert to the SDK's pure gamma-2.2 RGB without display black scaling.
+
+    libplacebo's BT.1886 conversion assumes a display black point. RTX's CUDA
+    output conversion, like zscale, uses ideal gamma 2.4 for BT.709. Decode
+    the source curve explicitly before libplacebo handles the gamut/matrix;
+    otherwise the two conversions lift shadows even with TrueHDR disabled.
+    MAIN runs on nonlinear RGB after YUV decoding, before gamut conversion.
+    """
+    from ...core.ffmpeg.filters import shader_filter
+    srgb_curve = ("vec3 linear = mix(pow((v + 0.055) / 1.055, vec3(2.4)), "
+                  "v / 12.92, lessThanEqual(v, vec3(0.04045))); "
+                  "return pow(linear, vec3(1.0 / 2.2));")
+    curve = {
+        "bt470m": "return v;", "gamma22": "return v;",
+        "bt470bg": "return pow(v, vec3(2.8 / 2.2));",
+        "gamma28": "return pow(v, vec3(2.8 / 2.2));",
+        "linear": "return pow(v, vec3(1.0 / 2.2));",
+        "iec61966-2-1": srgb_curve, "srgb": srgb_curve,
+    }.get(transfer)
+    if curve is None:
+        if transfer in {"bt709", "smpte170m", "smpte240m", "bt2020-10", "bt2020-12",
+                        "iec61966-2-4", "bt1361e"}:
+            curve = "return pow(v, vec3(2.4 / 2.2));"
+        else:
+            # Preserve the existing library conversion for less common curves
+            # (e.g. logarithmic footage), rather than assume they are BT.709.
+            return (f"zscale=matrixin={matrix}:primariesin={primaries}:transferin={transfer}:rangein={range_in}:"
+                    "matrix=gbr:primaries=bt709:transfer=bt470m:range=full")
+    shader = """//!HOOK MAIN
+//!BIND HOOKED
+vec3 rtx_gamma22(vec3 v) {
+    v = max(v, vec3(0.0));
+    %s
+}
+vec4 hook() {
+    vec4 pixel = HOOKED_tex(HOOKED_pos);
+    return vec4(rtx_gamma22(pixel.rgb), pixel.a);
+}
+""" % curve
+    # The shader supplies the transfer conversion. Equal gamma-2.2 tags keep
+    # the renderer from adding a second conversion or a display black offset.
+    tags = f"setparams=colorspace={matrix}:color_primaries={primaries}:color_trc=bt470m:range={range_in}"
+    conversion = shader_filter(shader, options="format=gbrp16le:colorspace=0:color_primaries=bt709:"
+                               "color_trc=bt470m:range=pc:gamut_mode=clip")
+    return tags + "," + conversion
+
+
 def decode_filter(meta: dict) -> tuple[str, list[str]]:
     s = meta["stream"]
     sd = int(s["height"]) <= 576
@@ -103,7 +152,7 @@ def decode_filter(meta: dict) -> tuple[str, list[str]]:
     # Planar 10-bit has a stable NUT tag across bundled FFmpeg/PyAV versions.
     # Some releases disagree on the packed x2bgr10 tag (decoded as rgb555).
     packed = "gbrp10le" if meta["depth"] > 8 else "rgba"
-    filters = [f"zscale=matrixin={matrix}:primariesin={primaries}:transferin={transfer}:rangein={range_in}:matrix=gbr:primaries=bt709:transfer=bt470m:range=full", f"format={planar}"]
+    filters = [sdr_normalization_filter(matrix, primaries, transfer, range_in), f"format={planar}"]
     if meta["rotation"] == 90:
         filters.append("transpose=cclock")
     elif meta["rotation"] == 270:
@@ -131,6 +180,7 @@ def start_decoder(source, meta, controller):
                "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", vf, "-c:v", "rawvideo", "-pix_fmt",
                "gbrp10le" if meta["depth"] > 8 else "rgba", "-fps_mode", "passthrough", "-enc_time_base", "demux",
                "-f", "nut", "pipe:1"]
+    command = prepare_command(command)
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     controller.register(process)
     logs = BoundedLogBuffer(max_tail=60)

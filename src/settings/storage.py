@@ -8,8 +8,10 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from ..core.ffmpeg import HDR_ALLOWED_CODECS
+from ..core.ffmpeg import HDR_ALLOWED_CODECS, container_for_codec, containers_for_codec
+from ..core.ffmpeg.vulkan import valid_selection
 from ..core.paths import CONFIG_PATH
+from ..portable import decode_app_path, encode_app_path
 from ..core.naming import RENAME_MODES, validate_rename
 from ..core.runtime import NR_STYLES, resolve_upscaling_mode
 from ..core.dlss_modes import DLSS_METHODS, DLSS_MODES, DLSS_PRESETS
@@ -18,11 +20,13 @@ from .migration import _migrate_codec
 from .models import (
     CODEC_CHOICES, CONFIG_SECTION, CONTAINER_CHOICES, DEFAULT_SETTINGS, IMAGE_FORMAT_CHOICES,
     IMAGE_16BIT_FORMATS, IMAGE_BIT_DEPTH_CHOICES,
-    PREVIEW_ENCODING_CHOICES, QUALITY_CHOICES, UPSCALE_MODE_CHOICES,
+    QUALITY_CHOICES, UPSCALE_MODE_CHOICES,
     UPSCALE_PREVIEW_LENGTH_CHOICES, UISettings, _validate,
     IMAGE_STAGE_ORDER, VIDEO_STAGE_ORDER, IMAGE_SCALING_FILTERS, VIDEO_SCALING_FILTERS,
     LEGACY_IMAGE_STAGE_ORDER, LEGACY_VIDEO_STAGE_ORDER, COLORING_MODES, SHARPENING_METHODS,
     COLOR_MATCH_SOURCES, LUT_ADJUSTMENT_RANGES, LUT_RESOLUTIONS, migrate_stage_layout,
+    CACHE_MEMORY_MODES,
+    CACHE_VIDEO_CODECS,
 )
 from ..upscale.video.models import SETTING_FIELDS, options_from_settings
 from ..upscale.image.models import SETTING_FIELDS as IMAGE_UPSCALE_FIELDS, options_from_settings as image_upscale_options
@@ -166,6 +170,9 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         or DEFAULT_SETTINGS.ai_gpu_uuid,
         video_gpu_uuid=section.get("video_gpu_uuid", DEFAULT_SETTINGS.video_gpu_uuid).strip()
         or DEFAULT_SETTINGS.video_gpu_uuid,
+        ffmpeg_device=section.get("ffmpeg_device", "auto") if valid_selection(section.get("ffmpeg_device", "auto")) else "auto",
+        cache_memory_mode=choice("cache_memory_mode", CACHE_MEMORY_MODES, DEFAULT_SETTINGS.cache_memory_mode),
+        cache_codec=choice("cache_codec", CACHE_VIDEO_CODECS, DEFAULT_SETTINGS.cache_codec),
         nr_style=choice("nr_style", tuple(NR_STYLES), DEFAULT_SETTINGS.nr_style),
         nr_intensity=number("nr_intensity", 0.0, 2.0, DEFAULT_SETTINGS.nr_intensity),
         nr_passes=integer("nr_passes", 1, 4, DEFAULT_SETTINGS.nr_passes),
@@ -220,9 +227,6 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         image_format=image_format,
         image_quality=image_quality(),
         image_bit_depth=image_bit_depth,
-        denoise_strength=integer("denoise_strength", 0, 100, DEFAULT_SETTINGS.denoise_strength),
-        denoise_deblock=boolean("denoise_deblock", DEFAULT_SETTINGS.denoise_deblock),
-        denoise_temporal=integer("denoise_temporal", 0, 100, DEFAULT_SETTINGS.denoise_temporal),
         cas_sharpness=integer("cas_sharpness", 0, 100, DEFAULT_SETTINGS.cas_sharpness),
         sharpening_method=choice("sharpening_method", SHARPENING_METHODS,
                                  DEFAULT_SETTINGS.sharpening_method),
@@ -230,8 +234,9 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
                        choice("coloring_mode", COLORING_MODES, DEFAULT_SETTINGS.coloring_mode)),
         color_match_source=choice("color_match_source", COLOR_MATCH_SOURCES,
                                   DEFAULT_SETTINGS.color_match_source),
-        color_match_reference=section.get("color_match_reference", "")[:4096],
-        lut_path=section.get("lut_path", "")[:4096],
+        color_match_reference=decode_app_path(section.get("color_match_reference", ""))[:4096],
+        lut_path=decode_app_path(section.get("lut_path", ""))[:4096],
+        lut_reference_image=decode_app_path(section.get("lut_reference_image", ""))[:4096],
         lut_resolution=lut_resolution(),
         **{key: (number(key, *bounds, getattr(DEFAULT_SETTINGS, key)) if key == "lut_exposure"
                  else integer(key, *bounds, getattr(DEFAULT_SETTINGS, key)))
@@ -268,11 +273,6 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         ),
         frame_interpolation_rename_mode=frame_interpolation_rename_mode,
         frame_interpolation_custom_suffix=frame_interpolation_custom_suffix,
-        preview_encoding=choice(
-            "preview_encoding",
-            PREVIEW_ENCODING_CHOICES,
-            DEFAULT_SETTINGS.preview_encoding,
-        ),
         upscale_mode=choice(
             "upscale_mode",
             UPSCALE_MODE_CHOICES,
@@ -336,10 +336,19 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
             settings = replace(settings, frame_interpolation_hdr_mode=False)
     except Exception:
         pass
-    upscale_values = {}
+    # Read codec/container together before validating the remaining upscale
+    # fields; manual ProRes settings may change both from their defaults.
+    upscale_codec = codec_choice("upscale_codec", DEFAULT_SETTINGS.upscale_codec)
+    upscale_container = choice("upscale_container", CONTAINER_CHOICES, DEFAULT_SETTINGS.upscale_container)
+    legacy_automatic_container = "automatic_container" in section and boolean("automatic_container", True)
+    if legacy_automatic_container or upscale_container not in containers_for_codec(upscale_codec):
+        upscale_container = container_for_codec(upscale_codec)
+    upscale_values = {"upscale_codec": upscale_codec, "upscale_container": upscale_container}
     for prefix, names, factory in (("upscale_", SETTING_FIELDS, options_from_settings),
                                     ("upscale_image_", IMAGE_UPSCALE_FIELDS, image_upscale_options)):
         for name in names:
+            if prefix == "upscale_" and name in {"codec", "container"}:
+                continue
             key = prefix + name
             default = getattr(DEFAULT_SETTINGS, key)
             raw = section.get(key)
@@ -362,6 +371,16 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
             except (ValueError, TypeError, OverflowError):
                 continue
     settings = replace(settings, **upscale_values)
+    # Preserve the effective selections from the retired automatic mode once.
+    # Invalid combinations in an edited INI recover to a supported default.
+    container_changes = {}
+    for codec_key, container_key in (("codec", "container"),
+                                     ("frame_interpolation_codec", "frame_interpolation_container"),
+                                     ("upscale_codec", "upscale_container")):
+        codec = getattr(settings, codec_key)
+        if legacy_automatic_container or getattr(settings, container_key) not in containers_for_codec(codec):
+            container_changes[container_key] = container_for_codec(codec)
+    settings = replace(settings, **container_changes)
 
     def stage_values(order_key: str, enabled_key: str, default_order: tuple[str, ...], video: bool):
         try:
@@ -372,7 +391,9 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
             engine = settings.upscale_engine if video else settings.upscale_image_engine
             migrated = migrate_stage_layout(order, enabled, video=video,
                                             scale_method=settings.nr_scale_method,
-                                            upscale_engine=engine)
+                                            upscale_engine=engine,
+                                            upscale_vsr_enabled=settings.upscale_vsr_enabled,
+                                            upscale_hdr_enabled=settings.upscale_hdr_enabled)
             return migrated[0], migrated[1], (order, enabled) if legacy else None
         except (TypeError, ValueError, json.JSONDecodeError):
             return default_order, (), None
@@ -415,15 +436,13 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         "video_stage_order": json.dumps(settings.video_stage_order),
         "image_enabled_stages": json.dumps(settings.image_enabled_stages),
         "video_enabled_stages": json.dumps(settings.video_enabled_stages),
-        "denoise_strength": str(settings.denoise_strength),
-        "denoise_deblock": str(settings.denoise_deblock).lower(),
-        "denoise_temporal": str(settings.denoise_temporal),
         "cas_sharpness": str(settings.cas_sharpness),
         "sharpening_method": settings.sharpening_method,
         "coloring_mode": settings.coloring_mode,
         "color_match_source": settings.color_match_source,
-        "color_match_reference": settings.color_match_reference.replace("%", "%%"),
-        "lut_path": settings.lut_path.replace("%", "%%"),
+        "color_match_reference": encode_app_path(settings.color_match_reference).replace("%", "%%"),
+        "lut_path": encode_app_path(settings.lut_path).replace("%", "%%"),
+        "lut_reference_image": encode_app_path(settings.lut_reference_image).replace("%", "%%"),
         "lut_resolution": str(settings.lut_resolution),
         **{key: str(getattr(settings, key)) for key in LUT_ADJUSTMENT_RANGES},
         **{"upscale_image_" + name: str(getattr(settings, "upscale_image_" + name)) for name in IMAGE_UPSCALE_FIELDS},
@@ -432,6 +451,9 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         "upscale_preview_length": settings.upscale_preview_length,
         "ai_gpu_uuid": settings.ai_gpu_uuid,
         "video_gpu_uuid": settings.video_gpu_uuid,
+        "ffmpeg_device": settings.ffmpeg_device,
+        "cache_memory_mode": settings.cache_memory_mode,
+        "cache_codec": settings.cache_codec,
         "nr_style": settings.nr_style,
         "nr_intensity": f"{settings.nr_intensity:.2f}",
         "nr_passes": str(settings.nr_passes),
@@ -486,7 +508,6 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         "frame_interpolation_preview_length": settings.frame_interpolation_preview_length,
         "frame_interpolation_rename_mode": settings.frame_interpolation_rename_mode,
         "frame_interpolation_custom_suffix": settings.frame_interpolation_custom_suffix,
-        "preview_encoding": settings.preview_encoding,
     }
 
     temporary = config_path.with_name(f".{config_path.name}.tmp")
@@ -512,11 +533,3 @@ def processing_gpu_settings() -> tuple[str, str]:
     with SETTINGS_STATE.lock:
         settings = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
     return settings.ai_gpu_uuid, settings.video_gpu_uuid
-
-
-def current_preview_encoding() -> str:
-    from ..core.ffmpeg.preview import normalize_preview_encoding
-
-    with SETTINGS_STATE.lock:
-        settings = SETTINGS_STATE.current or load_settings(CONFIG_PATH)
-    return normalize_preview_encoding(settings.preview_encoding)

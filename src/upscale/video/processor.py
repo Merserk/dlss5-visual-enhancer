@@ -18,7 +18,6 @@ def upscale_video(input_path, options: UpscaleOptions | None = None, progress=No
                   output_dir=None, controller=None, _owns_slot=False,
                   _capabilities=None) -> UpscaleResult:
     options = replace(options) if options else UpscaleOptions()
-    options.container = ffmpeg.container_for_codec(options.codec)
     options.validate()
     source = Path(input_path).resolve()
     if not source.is_file():

@@ -295,14 +295,6 @@ def _text(value: bytes | None) -> str:
     return value.decode("utf-8", "replace") if value else ""
 
 
-def _json_line(event: str, **values: Any) -> str:
-    return json.dumps(
-        {"event": event, "monotonic_seconds": time.monotonic(), **values},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-
-
 class _CudaDriver:
     """Small CUDA Driver API wrapper; no CUDA toolkit or Python add-on needed."""
 

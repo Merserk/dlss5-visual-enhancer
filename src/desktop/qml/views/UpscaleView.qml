@@ -36,8 +36,9 @@ Item {
                 anchors.right: parent.right
                 appBridge: root.appBridge
                 queueModel: root.activeQueue
+                imageQueue: root.isImage
                 hidden: appBridge ? appBridge.focusPreview : false
-                expandedHeight: appBridge ? appBridge.queueHeight : 190
+                expandedHeight: appBridge ? appBridge.queueHeight : 330
             }
         }
 
@@ -111,7 +112,7 @@ Item {
                         // Card 1: Super Resolution
                         AppCard {
                             width: parent.width
-                            title: "DLSS Super Resolution"
+                            title: qsTranslate("App", "DLSS Super Resolution")
 
                             Column {
                                 width: parent.width
@@ -119,7 +120,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Engine"
+                                    label: qsTranslate("App", "Engine")
                                     model: appBridge ? appBridge.upscaleEngineChoices : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageEngine : "RTX Video Super Resolution") : (appBridge ? appBridge.upscaleEngine : "RTX Video Super Resolution")
                                     onActivated: (v) => {
@@ -132,7 +133,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "DLSS Mode"
+                                    label: qsTranslate("App", "DLSS Mode")
                                     visible: appBridge && (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) === "DLSS"
                                     model: appBridge ? appBridge.dlssModeChoices : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageDlssMode : "Quality") : (appBridge ? appBridge.upscaleDlssMode : "Quality")
@@ -146,7 +147,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "DLSS Preset"
+                                    label: qsTranslate("App", "DLSS Preset")
                                     visible: appBridge && (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) === "DLSS"
                                     model: appBridge ? appBridge.dlssPresetChoices : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageDlssPreset : "Default") : (appBridge ? appBridge.upscaleDlssPreset : "Default")
@@ -161,7 +162,7 @@ Item {
                                 AppSwitch {
                                     visible: !root.isImage
                                              && appBridge && appBridge.upscaleEngine !== "DLSS"
-                                    label: "Enable RTX VSR"
+                                    label: qsTranslate("App", "Enable RTX VSR")
                                     checked: appBridge ? appBridge.upscaleVsrEnabled : true
                                     enabled: appBridge ? (!checked || appBridge.upscaleHdrEnabled) : true
                                     onToggled: (c) => { if (appBridge) appBridge.upscaleVsrEnabled = c }
@@ -169,7 +170,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "VSR Quality"
+                                    label: qsTranslate("App", "VSR Quality")
                                     visible: !appBridge || (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS"
 model: appBridge ? appBridge.vsrQualityChoices : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageVsrQuality : 4) : (appBridge ? appBridge.upscaleVsrQuality : 4)
@@ -183,7 +184,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppSegmentedControl {
                                     width: parent.width
-                                    label: "Sizing Mode"
+                                    label: qsTranslate("App", "Sizing Mode")
                                     visible: !appBridge || (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS"
                                     model: appBridge ? (root.isImage ? appBridge.imageSizeModeChoices : appBridge.videoSizeModeChoices) : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageSizeMode : "Scale factor") : (appBridge ? appBridge.upscaleSizeMode : "Scale factor")
@@ -197,7 +198,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Scale Factor"
+                                    label: qsTranslate("App", "Scale Factor")
                                     visible: appBridge && (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS" && (root.isImage ? appBridge.upscaleImageSizeMode : appBridge.upscaleSizeMode) === "Scale factor"
                                     model: appBridge ? (root.isImage ? appBridge.imageScaleFactorChoices : appBridge.videoScaleFactorChoices) : []
                                     currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageScaleFactor : 2.0) : (appBridge ? appBridge.upscaleScaleFactor : 2.0)
@@ -216,7 +217,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                     AppTextField {
                                         width: (parent.width - 8) / 2
-                                        label: "Width (px)"
+                                        label: qsTranslate("App", "Width (px)")
                                         text: (root.isImage ? appBridge.upscaleImageWidth : appBridge.upscaleWidth).toString()
                                         commitOnEveryEdit: false
                                         onTextEdited: (t) => {
@@ -230,7 +231,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                     AppTextField {
                                         width: (parent.width - 8) / 2
-                                        label: "Height (px)"
+                                        label: qsTranslate("App", "Height (px)")
                                         text: (root.isImage ? appBridge.upscaleImageHeight : appBridge.upscaleHeight).toString()
                                         commitOnEveryEdit: false
                                         onTextEdited: (t) => {
@@ -244,7 +245,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                 }
 
                                 AppCheckBox {
-                                    label: "Lock Aspect Ratio"
+                                    label: qsTranslate("App", "Lock Aspect Ratio")
                                     visible: !appBridge || (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS"
                                     checked: root.isImage ? (appBridge ? appBridge.upscaleImageAspectLock : true) : (appBridge ? appBridge.upscaleAspectLock : true)
                                     onToggled: (c) => {
@@ -271,14 +272,14 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                         AppCard {
                             visible: !root.isImage
                             width: parent.width
-                            title: "RTX Video HDR"
+                            title: qsTranslate("App", "RTX Video HDR")
 
                             Column {
                                 width: parent.width
                                 spacing: 12
 
                                 AppSwitch {
-                                    label: "Convert SDR to HDR"
+                                    label: qsTranslate("App", "Convert SDR to HDR")
                                     checked: appBridge ? appBridge.upscaleHdrEnabled : false
                                     enabled: appBridge ? (appBridge.upscaleHdrSupported && (!checked || appBridge.upscaleVsrEnabled || appBridge.upscaleEngine === "DLSS")) : false
                                     onToggled: (c) => { if (appBridge) appBridge.upscaleHdrEnabled = c }
@@ -286,7 +287,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "HDR Contrast"
+                                    label: qsTranslate("App", "HDR Contrast")
                                     from: 0
                                     to: 200
                                     stepSize: 1
@@ -298,7 +299,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "HDR Saturation"
+                                    label: qsTranslate("App", "HDR Saturation")
                                     from: 0
                                     to: 200
                                     stepSize: 1
@@ -310,7 +311,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "Middle Gray"
+                                    label: qsTranslate("App", "Middle Gray")
                                     from: 10
                                     to: 100
                                     stepSize: 1
@@ -322,7 +323,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "Peak Luminance"
+                                    label: qsTranslate("App", "Peak Luminance")
                                     unit: "nits"
                                     from: 400
                                     to: 2000
@@ -335,7 +336,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                 AppSegmentedControl {
                                     width: parent.width
-                                    label: "HDR Precision"
+                                    label: qsTranslate("App", "HDR Precision")
                                     model: appBridge ? appBridge.hdrPrecisionChoices : []
                                     currentValue: appBridge ? appBridge.upscaleHdrPrecision : "Packed 10-bit"
                                     onActivated: (v) => { if (appBridge) appBridge.upscaleHdrPrecision = v }
@@ -346,7 +347,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                         // Card 3: Export Settings
                         AppCard {
                             width: parent.width
-                            title: "Export & Formats"
+                            title: qsTranslate("App", "Export & Formats")
 
                             Column {
                                 width: parent.width
@@ -359,7 +360,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                     AppComboBox {
                                         width: parent.width
-                                        label: "Format"
+                                        label: qsTranslate("App", "Format")
                                         model: appBridge ? appBridge.imageFormatChoices : []
                                         currentValue: appBridge ? appBridge.upscaleImageOutputFormat : "PNG"
                                         onActivated: (v) => { if (appBridge) appBridge.upscaleImageOutputFormat = v }
@@ -367,7 +368,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                     AppSlider {
                                         width: parent.width
-                                        label: "Quality"
+                                        label: qsTranslate("App", "Quality")
                                         from: 1
                                         to: 100
                                         stepSize: 1
@@ -386,15 +387,25 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                     AppComboBox {
                                         width: parent.width
-                                        label: "Codec"
+                                        label: qsTranslate("App", "Codec")
                                         model: appBridge ? appBridge.codecChoices : []
                                         currentValue: appBridge ? appBridge.upscaleCodec : "H.265 (NVIDIA NVENC)"
                                         onActivated: (v) => { if (appBridge) appBridge.upscaleCodec = v }
                                     }
 
                                     AppComboBox {
+                                        objectName: "upscaleContainerSelector"
                                         width: parent.width
-                                        label: "Quality"
+                                        label: qsTranslate("App", "Container")
+                                        model: appBridge ? appBridge.upscaleContainerChoices : []
+                                        currentValue: appBridge ? appBridge.upscaleContainer : "MKV"
+                                        enabled: !!appBridge
+                                        onActivated: (v) => { if (appBridge) appBridge.upscaleContainer = v }
+                                    }
+
+                                    AppComboBox {
+                                        width: parent.width
+                                        label: qsTranslate("App", "Quality")
                                         visible: !appBridge || appBridge.fixedQualityCodecs.indexOf(appBridge.upscaleCodec) < 0
                                         model: appBridge ? appBridge.encodingQualityChoices : []
                                         currentValue: appBridge ? appBridge.upscaleQuality : "Auto (Default)"
@@ -403,7 +414,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
 
                                     Text {
                                         visible: appBridge && appBridge.fixedQualityCodecs.indexOf(appBridge.upscaleCodec) >= 0
-                                        text: "Quality: Fixed by codec"
+                                        text: qsTranslate("App", "Quality: Fixed by codec")
                                         color: Theme.textSecondary
                                         font.pixelSize: Theme.fontSizeSmall
                                     }
@@ -434,7 +445,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                             visible: root.isImage
 
                             AppButton {
-                                text: "Preview"
+                                text: qsTranslate("App", "Preview")
                                 iconName: "preview"
                                 width: (parent.width - 16) / 3
                                 buttonHeight: 30
@@ -445,7 +456,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                             }
 
                             AppButton {
-                                text: "Reset"
+                                text: qsTranslate("App", "Reset")
                                 iconName: "reset"
                                 width: (parent.width - 16) / 3
                                 buttonHeight: 30
@@ -453,7 +464,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                             }
 
                             AppButton {
-                                text: "Outputs"
+                                text: qsTranslate("App", "Outputs")
                                 iconName: "outputs_folder"
                                 width: (parent.width - 16) / 3
                                 buttonHeight: 30
@@ -467,7 +478,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                             visible: !root.isImage
 
                             AppButton {
-                                text: "Preview"
+                                text: qsTranslate("App", "Preview")
                                 iconName: "preview"
                                 width: Math.max(100, parent.width - 156)
                                 buttonHeight: 30
@@ -487,20 +498,20 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                             AppIconButton {
                                 iconName: "reset"
                                 buttonSize: 30
-                                tooltipText: "Reset upscale settings"
+                                tooltipText: qsTranslate("App", "Reset upscale settings")
                                 onClicked: { if (appBridge) appBridge.resetTabSettings("upscale") }
                             }
 
                             AppIconButton {
                                 iconName: "outputs_folder"
                                 buttonSize: 30
-                                tooltipText: "Open outputs folder"
+                                tooltipText: qsTranslate("App", "Open outputs folder")
                                 onClicked: { if (appBridge) appBridge.openFolder("") }
                             }
                         }
 
                         AppButton {
-                            text: appBridge && appBridge.canStop ? "Stop" : (root.isImage ? "Upscale Image(s)" : "Upscale Video(s)")
+                            text: appBridge && appBridge.canStop ? qsTranslate("App", "Stop") : (root.isImage ? qsTranslate("App", "Upscale Image(s)") : qsTranslate("App", "Upscale Video(s)"))
                             iconName: appBridge && appBridge.canStop ? "stop" : "start_render"
                             variant: appBridge && appBridge.canStop ? "danger" : "primary"
                             width: parent.width

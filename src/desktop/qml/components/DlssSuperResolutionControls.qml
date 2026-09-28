@@ -11,7 +11,7 @@ Column {
 
     AppComboBox {
         width: parent.width
-        label: "DLSS Mode"
+        label: qsTranslate("App", "DLSS Mode")
         model: appBridge ? appBridge.dlssModeChoices : []
         currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageDlssMode : "Quality")
                                    : (appBridge ? appBridge.upscaleDlssMode : "Quality")
@@ -27,7 +27,7 @@ Column {
 
     AppComboBox {
         width: parent.width
-        label: "DLSS Preset"
+        label: qsTranslate("App", "DLSS Preset")
         model: appBridge ? appBridge.dlssPresetChoices : []
         currentValue: root.isImage ? (appBridge ? appBridge.upscaleImageDlssPreset : "Default")
                                    : (appBridge ? appBridge.upscaleDlssPreset : "Default")

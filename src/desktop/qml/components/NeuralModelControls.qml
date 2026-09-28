@@ -11,7 +11,7 @@ Column {
     spacing: 12
     AppSegmentedControl {
         width: parent.width
-        label: "NR Style"
+        label: qsTranslate("App", "NR Style")
         model: appBridge ? appBridge.nrStyleChoices : []
         currentValue: appBridge ? appBridge.nrStyle : "Default"
         onActivated: v => {
@@ -22,7 +22,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "NR Intensity"
+        label: qsTranslate("App", "NR Intensity")
         from: 0.0
         to: 2.0
         stepSize: 0.05
@@ -36,7 +36,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "NR Passes"
+        label: qsTranslate("App", "NR Passes")
         from: 1
         to: 4
         stepSize: 1
@@ -51,7 +51,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "Local Tone Strength"
+        label: qsTranslate("App", "Local Tone Strength")
         from: 0.0
         to: 2.0
         stepSize: 0.05
@@ -65,7 +65,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "Local Structure Strength"
+        label: qsTranslate("App", "Local Structure Strength")
         from: 0.0
         to: 2.0
         stepSize: 0.05
@@ -79,7 +79,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "Skin Structure Strength"
+        label: qsTranslate("App", "Skin Structure Strength")
         from: -1.0
         to: 2.0
         stepSize: 0.05
@@ -92,7 +92,7 @@ Column {
     }
 
     AppSwitch {
-        label: "Automatic Mask"
+        label: qsTranslate("App", "Automatic Mask")
         checked: appBridge ? appBridge.automaticMask : false
         onToggled: c => {
             if (appBridge)
@@ -103,7 +103,7 @@ Column {
     AppSlider {
         visible: !root.isImage
         width: parent.width
-        label: "Shimmer Suppression"
+        label: qsTranslate("App", "Shimmer Suppression")
         from: 0.0
         to: 1.0
         stepSize: 0.05
@@ -117,7 +117,7 @@ Column {
 
     Text {
         width: parent.width
-        text: "Composition & Masking"
+        text: qsTranslate("App", "Composition & Masking")
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSizeSubtitle
         color: Theme.textSecondary
@@ -128,7 +128,7 @@ Column {
         spacing: 8
 
         AppButton {
-            text: "Apply Detail-Only Preset"
+            text: qsTranslate("App", "Apply Detail-Only Preset")
             iconName: "quality_enhance"
             width: parent.width
             buttonHeight: 28
@@ -142,7 +142,7 @@ Column {
     // Sliders
     AppSlider {
         width: parent.width
-        label: "NR Color Strength"
+        label: qsTranslate("App", "NR Color Strength")
         from: 0.0
         to: 1.0
         stepSize: 0.05
@@ -156,7 +156,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "Tone Preservation"
+        label: qsTranslate("App", "Tone Preservation")
         from: 0.0
         to: 1.0
         stepSize: 0.05
@@ -170,7 +170,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "Face / Skin Protection"
+        label: qsTranslate("App", "Face / Skin Protection")
         from: 0.0
         to: 1.0
         stepSize: 0.05
@@ -184,7 +184,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "Grain Preservation"
+        label: qsTranslate("App", "Grain Preservation")
         from: 0.0
         to: 1.0
         stepSize: 0.05
@@ -198,7 +198,7 @@ Column {
 
     AppSlider {
         width: parent.width
-        label: "Mask Feather"
+        label: qsTranslate("App", "Mask Feather")
         unit: "px"
         from: 0
         to: 128
@@ -230,14 +230,14 @@ Column {
                 spacing: 8
 
                 AppButton {
-                    text: "Load Custom Mask..."
+                    text: qsTranslate("App", "Load Custom Mask...")
                     iconName: "load_mask"
                     buttonHeight: 24
                     onClicked: maskDialog.open()
                 }
 
                 AppButton {
-                    text: "Clear Mask"
+                    text: qsTranslate("App", "Clear Mask")
                     iconName: "clear_mask"
                     buttonHeight: 24
                     onClicked: {
@@ -249,7 +249,7 @@ Column {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: appBridge ? appBridge.customMaskStatus : "No mask loaded"
+                text: appBridge ? appBridge.customMaskStatus : qsTranslate("App", "No mask loaded")
                 font.family: Theme.monoFontFamily
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.textMuted
@@ -259,8 +259,8 @@ Column {
 
     FileDialog {
         id: maskDialog
-        title: "Select Custom NR Mask"
-        nameFilters: ["Image Files (*.png *.jpg *.jpeg *.webp *.tiff *.bmp)", "All Files (*.*)"]
+        title: qsTranslate("App", "Select Custom NR Mask")
+        nameFilters: [qsTranslate("App", "Image Files (*.png *.jpg *.jpeg *.webp *.tiff *.bmp)"), qsTranslate("App", "All Files (*.*)")]
         onAccepted: {
             if (appBridge && selectedFile) {
                 appBridge.selectCustomMask(selectedFile.toString());

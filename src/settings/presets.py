@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from ..core.paths import APP_TEMP
+from ..portable import decode_app_path, encode_app_path
+from ..core.ffmpeg import container_for_codec
 from .models import (
     DEFAULT_SETTINGS, MAX_PRESET_BYTES, PRESET_FORMAT, PRESET_SCHEMA_VERSION, UISettings, _validate,
     LUT_ADJUSTMENT_RANGES, migrate_stage_layout,
@@ -55,6 +57,8 @@ def preset_document(name: str, settings: UISettings) -> dict[str, Any]:
     _validate(settings)
     values = asdict(settings)
     values.pop("nr_mask", None)
+    for key in ("color_match_reference", "lut_path", "lut_reference_image"):
+        values[key] = encode_app_path(values[key])
     return {
         "format": PRESET_FORMAT,
         "schema_version": PRESET_SCHEMA_VERSION,
@@ -146,6 +150,9 @@ def import_settings_preset(
         for key, value in imported.items()
         if key in known_names and key != "nr_mask"
     }
+    for key in ("color_match_reference", "lut_path", "lut_reference_image"):
+        if key in changes:
+            changes[key] = decode_app_path(changes[key])
     if version == 1:
         # v1's DLSS model-preset field was never applied by feature 18. Ignore
         # it. (The retired GPU staging switch from old presets is filtered by
@@ -189,6 +196,8 @@ def import_settings_preset(
                 changes[order_key], changes[enabled_key] = migrate_stage_layout(
                     old_order, old_enabled, video=mode == "Video",
                     scale_method=old_scale, upscale_engine=engine,
+                    upscale_vsr_enabled=changes.get("upscale_vsr_enabled", DEFAULT_SETTINGS.upscale_vsr_enabled),
+                    upscale_hdr_enabled=changes.get("upscale_hdr_enabled", DEFAULT_SETTINGS.upscale_hdr_enabled),
                 )
                 if (old_scale == "DLSS" and "scale_method" in old_enabled and
                         ("super_resolution" not in old_enabled or engine != "DLSS" or
@@ -221,6 +230,8 @@ def import_settings_preset(
             old_order, old_enabled, video=True,
             scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
             upscale_engine=changes.get("upscale_engine", DEFAULT_SETTINGS.upscale_engine),
+            upscale_vsr_enabled=changes.get("upscale_vsr_enabled", DEFAULT_SETTINGS.upscale_vsr_enabled),
+            upscale_hdr_enabled=changes.get("upscale_hdr_enabled", DEFAULT_SETTINGS.upscale_hdr_enabled),
         )
         if changes.get("coloring_mode") == "Mode 2":
             changes["coloring_mode"] = "LUT"
@@ -230,39 +241,43 @@ def import_settings_preset(
     if version < 15:
         for key in ("lut_resolution", *LUT_ADJUSTMENT_RANGES):
             changes[key] = getattr(DEFAULT_SETTINGS, key)
-    if version < 16:
+    if version < 19:
+        layout_defaults = DEFAULT_SETTINGS if version < 17 else current
         for mode, prefix in (("Image", "image"), ("Video", "video")):
             order_key = f"{prefix}_stage_order"
             enabled_key = f"{prefix}_enabled_stages"
             changes[order_key], changes[enabled_key] = migrate_stage_layout(
-                changes.get(order_key, getattr(DEFAULT_SETTINGS, order_key)),
-                changes.get(enabled_key, getattr(DEFAULT_SETTINGS, enabled_key)),
+                changes.get(order_key, getattr(layout_defaults, order_key)),
+                changes.get(enabled_key, getattr(layout_defaults, enabled_key)),
                 video=mode == "Video",
                 scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
                 upscale_engine=changes.get(
                     "upscale_engine" if mode == "Video" else "upscale_image_engine",
                     DEFAULT_SETTINGS.upscale_engine if mode == "Video" else DEFAULT_SETTINGS.upscale_image_engine,
                 ),
+                upscale_vsr_enabled=changes.get("upscale_vsr_enabled", DEFAULT_SETTINGS.upscale_vsr_enabled),
+                upscale_hdr_enabled=changes.get("upscale_hdr_enabled", DEFAULT_SETTINGS.upscale_hdr_enabled),
             )
-        for key in ("denoise_strength", "denoise_deblock", "denoise_temporal"):
-            changes[key] = getattr(DEFAULT_SETTINGS, key)
     if version < 17:
-        for mode, prefix in (("Image", "image"), ("Video", "video")):
-            order_key = f"{prefix}_stage_order"
-            enabled_key = f"{prefix}_enabled_stages"
-            changes[order_key], changes[enabled_key] = migrate_stage_layout(
-                changes.get(order_key, getattr(DEFAULT_SETTINGS, order_key)),
-                changes.get(enabled_key, getattr(DEFAULT_SETTINGS, enabled_key)),
-                video=mode == "Video",
-                scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
-                upscale_engine=changes.get(
-                    "upscale_engine" if mode == "Video" else "upscale_image_engine",
-                    DEFAULT_SETTINGS.upscale_engine if mode == "Video" else DEFAULT_SETTINGS.upscale_image_engine,
-                ),
-            )
         changes["cas_sharpness"] = DEFAULT_SETTINGS.cas_sharpness
     if version < 18:
         changes["sharpening_method"] = DEFAULT_SETTINGS.sharpening_method
+    if version < 20:
+        changes["ffmpeg_device"] = DEFAULT_SETTINGS.ffmpeg_device
+    if version < 21:
+        changes["video_stage_order"], changes["video_enabled_stages"] = migrate_stage_layout(
+            changes.get("video_stage_order", current.video_stage_order),
+            changes.get("video_enabled_stages", current.video_enabled_stages),
+            video=True,
+            scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
+            upscale_engine=changes.get("upscale_engine", DEFAULT_SETTINGS.upscale_engine),
+            upscale_vsr_enabled=changes.get("upscale_vsr_enabled", DEFAULT_SETTINGS.upscale_vsr_enabled),
+            upscale_hdr_enabled=changes.get("upscale_hdr_enabled", DEFAULT_SETTINGS.upscale_hdr_enabled),
+        )
+    if version < 22:
+        changes["lut_reference_image"] = DEFAULT_SETTINGS.lut_reference_image
+    if version < 27:
+        changes["cache_codec"] = DEFAULT_SETTINGS.cache_codec
     # NR Preset was removed entirely (non-functional). Old preset files still
     # carry it; ignore so imports from previous builds keep working.
     # (Unknown keys are already filtered above; this covers any edge case where
@@ -276,6 +291,17 @@ def import_settings_preset(
     if changes.get("upscale_vsr_quality") == 0:
         changes["upscale_vsr_quality"] = DEFAULT_SETTINGS.upscale_vsr_quality
     merged = replace(current, **changes)
+    if version < 24:
+        legacy_automatic = True if version < 23 else imported.get("automatic_container", True)
+        if not isinstance(legacy_automatic, bool):
+            raise ValueError("Preset setting 'automatic_container' must be a boolean.")
+        if legacy_automatic:
+            merged = replace(
+                merged,
+                container=container_for_codec(merged.codec),
+                frame_interpolation_container=container_for_codec(merged.frame_interpolation_codec),
+                upscale_container=container_for_codec(merged.upscale_codec),
+            )
     return name, _validate(merged)
 
 

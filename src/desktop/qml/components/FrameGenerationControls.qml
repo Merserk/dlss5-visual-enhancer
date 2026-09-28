@@ -11,7 +11,7 @@ Column {
     spacing: 12
     AppComboBox {
         width: parent.width
-        label: "Target Output Frame Rate"
+        label: qsTranslate("App", "Target Output Frame Rate")
         model: appBridge ? appBridge.fiFpsChoices : []
         currentValue: appBridge ? appBridge.fiTargetFps : "60"
         onActivated: v => {
@@ -22,7 +22,7 @@ Column {
 
     AppSegmentedControl {
         width: parent.width
-        label: "DLSS-G Engine"
+        label: qsTranslate("App", "DLSS-G Engine")
         model: appBridge ? appBridge.fiEngineChoices : []
         currentValue: appBridge ? appBridge.fiEngine : "Auto"
         onActivated: v => {

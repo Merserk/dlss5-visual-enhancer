@@ -133,6 +133,8 @@ class LiveSession(threading.Thread):
         self.controller.stop()
 
     def _spawn(self, name: str, command: list[str], **kwargs) -> subprocess.Popen:
+        from ..core.ffmpeg.vulkan import prepare_command
+        command = prepare_command(command, dimensions=tuple(map(int, self.snapshot().output_size.split("x"))) if name == "encoder" else None)
         process = subprocess.Popen(command, stderr=subprocess.PIPE,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), **kwargs)
         self.controller.register(process)
@@ -807,9 +809,9 @@ class LiveSession(threading.Thread):
         gpu = resolve_runtime_ai_gpu(prepared_runtime.gpus, prepared_runtime.runtime_bundle, ai_uuid)
         # NVENC on the AI GPU keeps frames on device; a CPU encoder uses
         # host frame boundaries around the same CUDA/D3D12 evaluation.
-        nvenc, ordinal = self._select_encoder(prepared_runtime.gpus, ai_uuid, out_w, out_h)
+        nvenc, ordinal = False, None
         self._set(input_size=f"{in_w}x{in_h}", output_size=f"{out_w}x{out_h}",
-                  encoder="NVIDIA NVENC" if nvenc else "CPU x264")
+                  encoder="FFmpeg/Vulkan (software fallback)")
         cuda_path = bool(nvenc and ordinal is not None)
         if cuda_path:
             self._produce_cuda(

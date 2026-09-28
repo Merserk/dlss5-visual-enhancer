@@ -9,7 +9,7 @@ Item {
     property string selectedPath: ""
     property bool selectFolder: false
     property bool enabled: true
-    property var nameFilters: ["All Files (*.*)"]
+    property var nameFilters: [qsTranslate("App", "All Files (*.*)")]
     signal pathChanged(string path)
 
     implicitWidth: 260
@@ -67,14 +67,14 @@ Item {
             }
         }
         AppButton {
-            id: browseBtn; text: "Browse"; iconName: "browse_folder"; width: 88; buttonHeight: Theme.controlHeight; enabled: control.enabled
+            id: browseBtn; text: qsTranslate("App", "Browse"); iconName: "browse_folder"; width: 88; buttonHeight: Theme.controlHeight; enabled: control.enabled
             onClicked: control.selectFolder ? folderDialog.open() : fileDialog.open()
         }
     }
 
     FolderDialog {
         id: folderDialog
-        title: "Select Folder"
+        title: qsTranslate("App", "Select Folder")
         onAccepted: {
             // NOTE: QML url has no toLocalFile(); pass the URL string and
             // let Python _clean_path() convert via QUrl.toLocalFile().
@@ -85,7 +85,7 @@ Item {
     }
     FileDialog {
         id: fileDialog
-        title: "Select File"
+        title: qsTranslate("App", "Select File")
         fileMode: FileDialog.OpenFile
         nameFilters: control.nameFilters
         onAccepted: {

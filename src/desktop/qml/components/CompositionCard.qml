@@ -7,7 +7,7 @@ AppCard {
     id: root
 
     property var appBridge: null
-    title: "Composition & Masking"
+    title: qsTranslate("App", "Composition & Masking")
 
     Column {
         width: parent.width
@@ -19,7 +19,7 @@ AppCard {
             spacing: 8
 
             AppButton {
-                text: "Apply Detail-Only Preset"
+                text: qsTranslate("App", "Apply Detail-Only Preset")
                 iconName: "quality_enhance"
                 width: parent.width
                 buttonHeight: 28
@@ -32,7 +32,7 @@ AppCard {
         // Sliders
         AppSlider {
             width: parent.width
-            label: "NR Color Strength"
+            label: qsTranslate("App", "NR Color Strength")
             from: 0.0
             to: 1.0
             stepSize: 0.05
@@ -43,7 +43,7 @@ AppCard {
 
         AppSlider {
             width: parent.width
-            label: "Tone Preservation"
+            label: qsTranslate("App", "Tone Preservation")
             from: 0.0
             to: 1.0
             stepSize: 0.05
@@ -54,7 +54,7 @@ AppCard {
 
         AppSlider {
             width: parent.width
-            label: "Face / Skin Protection"
+            label: qsTranslate("App", "Face / Skin Protection")
             from: 0.0
             to: 1.0
             stepSize: 0.05
@@ -65,7 +65,7 @@ AppCard {
 
         AppSlider {
             width: parent.width
-            label: "Grain Preservation"
+            label: qsTranslate("App", "Grain Preservation")
             from: 0.0
             to: 1.0
             stepSize: 0.05
@@ -76,7 +76,7 @@ AppCard {
 
         AppSlider {
             width: parent.width
-            label: "Mask Feather"
+            label: qsTranslate("App", "Mask Feather")
             unit: "px"
             from: 0
             to: 128
@@ -105,14 +105,14 @@ AppCard {
                     spacing: 8
 
                     AppButton {
-                        text: "Load Custom Mask..."
+                        text: qsTranslate("App", "Load Custom Mask...")
                         iconName: "load_mask"
                         buttonHeight: 24
                         onClicked: maskDialog.open()
                     }
 
                     AppButton {
-                        text: "Clear Mask"
+                        text: qsTranslate("App", "Clear Mask")
                         iconName: "clear_mask"
                         buttonHeight: 24
                         onClicked: {
@@ -123,7 +123,7 @@ AppCard {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: appBridge ? appBridge.customMaskStatus : "No mask loaded"
+                    text: appBridge ? appBridge.customMaskStatus : qsTranslate("App", "No mask loaded")
                     font.family: Theme.monoFontFamily
                     font.pixelSize: Theme.fontSizeSmall
                     color: Theme.textMuted
@@ -134,8 +134,8 @@ AppCard {
 
     FileDialog {
         id: maskDialog
-        title: "Select Custom NR Mask"
-        nameFilters: ["Image Files (*.png *.jpg *.jpeg *.webp *.tiff *.bmp)", "All Files (*.*)"]
+        title: qsTranslate("App", "Select Custom NR Mask")
+        nameFilters: [qsTranslate("App", "Image Files (*.png *.jpg *.jpeg *.webp *.tiff *.bmp)"), qsTranslate("App", "All Files (*.*)")]
         onAccepted: {
             if (appBridge && selectedFile) {
                 appBridge.selectCustomMask(selectedFile.toString())

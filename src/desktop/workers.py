@@ -14,6 +14,7 @@ class WorkerSignals(QObject):
     started = Signal()
     progress = Signal(float, str)
     itemUpdated = Signal(int, str, float, str, str, float)
+    metadataReady = Signal(str, object)
     finished = Signal(object)
     failed = Signal(str)
     cancelled = Signal()

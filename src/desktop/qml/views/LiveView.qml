@@ -89,7 +89,7 @@ Item {
                     }
 
                     Text {
-                        text: appBridge && appBridge.isLiveRunning ? "LIVE STREAM ACTIVE" : "LIVE ENGINE STANDBY"
+                        text: appBridge && appBridge.isLiveRunning ? qsTranslate("App", "LIVE STREAM ACTIVE") : qsTranslate("App", "LIVE ENGINE STANDBY")
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSizeTitle
                         font.weight: Font.Bold
@@ -155,8 +155,8 @@ Item {
 
                             Text {
                                 text: appBridge && appBridge.operationState === "LiveStarting"
-                                      ? "Loading... Please wait."
-                                      : "Buffering... Please wait."
+                                      ? qsTranslate("App", "Loading... Please wait.")
+                                      : qsTranslate("App", "Buffering... Please wait.")
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontSizeBody
                                 color: Theme.textSecondary
@@ -174,7 +174,7 @@ Item {
                         AppButton {
                             width: 96
                             buttonHeight: 32
-                            text: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.paused ? "Resume" : "Pause"
+                            text: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.paused ? qsTranslate("App", "Resume") : qsTranslate("App", "Pause")
                             iconName: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.paused ? "play" : "pause"
                             enabled: appBridge && appBridge.isLiveRunning
                             onClicked: { if (appBridge && appBridge.mpvEmbed) appBridge.mpvEmbed.togglePause() }
@@ -182,7 +182,7 @@ Item {
                         AppButton {
                             width: 96
                             buttonHeight: 32
-                            text: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.muted ? "Unmute" : "Mute"
+                            text: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.muted ? qsTranslate("App", "Unmute") : qsTranslate("App", "Mute")
                             iconName: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.muted ? "volume_up" : "mute"
                             enabled: appBridge && appBridge.isLiveRunning
                             onClicked: { if (appBridge && appBridge.mpvEmbed) appBridge.mpvEmbed.toggleMute() }
@@ -190,13 +190,13 @@ Item {
                         AppIconButton {
                             buttonSize: 32
                             iconName: "volume_down"
-                            tooltipText: "Volume down"
+                            tooltipText: qsTranslate("App", "Volume down")
                             enabled: appBridge && appBridge.isLiveRunning
                             onClicked: { if (appBridge && appBridge.mpvEmbed) appBridge.mpvEmbed.volumeDown() }
                         }
                         Text {
                             width: 56
-                            text: appBridge && appBridge.mpvEmbed ? "Vol " + appBridge.mpvEmbed.volume : "Vol -"
+                            text: qsTranslate("App", "Vol %1").arg(appBridge && appBridge.mpvEmbed ? appBridge.mpvEmbed.volume : "-")
                             font.family: Theme.monoFontFamily
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.textSecondary
@@ -207,7 +207,7 @@ Item {
                         AppIconButton {
                             buttonSize: 32
                             iconName: "volume_up"
-                            tooltipText: "Volume up"
+                            tooltipText: qsTranslate("App", "Volume up")
                             enabled: appBridge && appBridge.isLiveRunning
                             onClicked: { if (appBridge && appBridge.mpvEmbed) appBridge.mpvEmbed.volumeUp() }
                         }
@@ -221,7 +221,7 @@ Item {
                         AppButton {
                             width: 104
                             buttonHeight: 32
-                            text: root.videoExpanded ? "Restore" : "Expand"
+                            text: root.videoExpanded ? qsTranslate("App", "Restore") : qsTranslate("App", "Expand")
                             iconName: root.videoExpanded ? "collapse" : "expand"
                             enabled: appBridge && appBridge.isLiveRunning
                             onClicked: { root.videoExpanded = !root.videoExpanded; Qt.callLater(root.syncLiveVideo) }
@@ -229,7 +229,7 @@ Item {
                         AppButton {
                             width: 124
                             buttonHeight: 32
-                            text: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.fullscreen ? "Exit Full" : "Full Screen"
+                            text: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.fullscreen ? qsTranslate("App", "Exit Full") : qsTranslate("App", "Full Screen")
                             iconName: appBridge && appBridge.mpvEmbed && appBridge.mpvEmbed.fullscreen ? "exit_fullscreen" : "fullscreen"
                             enabled: appBridge && appBridge.isLiveRunning
                             onClicked: { if (appBridge && appBridge.mpvEmbed) appBridge.mpvEmbed.toggleFullscreen() }
@@ -238,11 +238,12 @@ Item {
                 }
 
                 Connections {
-                    target: Window.window
+                    target: root.Window.window
                     function onXChanged() { root.syncLiveVideo() }
                     function onYChanged() { root.syncLiveVideo() }
                     function onWidthChanged() { root.syncLiveVideo() }
                     function onHeightChanged() { root.syncLiveVideo() }
+                    function onScreenChanged() { Qt.callLater(root.syncLiveVideo) }
                 }
 
                 Connections {
@@ -271,12 +272,12 @@ Item {
 
                     Repeater {
                         model: [
-                            { label: "SOURCE", value: appBridge && appBridge.liveSourceFps > 0 ? appBridge.liveSourceFps.toFixed(2) + " fps" : "-" },
-                            { label: "OUTPUT", value: appBridge && appBridge.liveEffectiveFps > 0 ? appBridge.liveEffectiveFps.toFixed(2) + " fps" : (appBridge && appBridge.liveTargetFps > 0 ? appBridge.liveTargetFps.toFixed(2) + " fps" : "-") },
+                            { label: qsTranslate("App", "SOURCE"), value: appBridge && appBridge.liveSourceFps > 0 ? appBridge.liveSourceFps.toFixed(2) + " fps" : "-" },
+                            { label: qsTranslate("App", "OUTPUT"), value: appBridge && appBridge.liveEffectiveFps > 0 ? appBridge.liveEffectiveFps.toFixed(2) + " fps" : (appBridge && appBridge.liveTargetFps > 0 ? appBridge.liveTargetFps.toFixed(2) + " fps" : "-") },
                             { label: "DLSS", value: appBridge && appBridge.liveDlssMs > 0 ? appBridge.liveDlssMs.toFixed(1) + " ms" : "-" },
-                            { label: "ENCODE", value: appBridge && appBridge.liveEncodeMs > 0 ? appBridge.liveEncodeMs.toFixed(1) + " ms" : "-" },
-                            { label: "DROPPED", value: appBridge ? String(appBridge.liveDroppedFrames) : "0" },
-                            { label: "REBUFFER", value: appBridge ? String(appBridge.liveRebufferEvents) : "0" }
+                            { label: qsTranslate("App", "ENCODE"), value: appBridge && appBridge.liveEncodeMs > 0 ? appBridge.liveEncodeMs.toFixed(1) + " ms" : "-" },
+                            { label: qsTranslate("App", "DROPPED"), value: appBridge ? String(appBridge.liveDroppedFrames) : "0" },
+                            { label: qsTranslate("App", "REBUFFER"), value: appBridge ? String(appBridge.liveRebufferEvents) : "0" }
                         ]
                         delegate: Rectangle {
                             required property var modelData
@@ -320,7 +321,7 @@ Item {
                         Text {
                             id: telemetryText
                             width: parent.width
-                            text: appBridge ? appBridge.liveStatusText : "Idle."
+                            text: appBridge ? appBridge.liveStatusText : qsTranslate("App", "Idle.")
                             font.family: Theme.monoFontFamily
                             font.pixelSize: 13
                             lineHeight: 1.4
@@ -348,7 +349,7 @@ Item {
                 onPositionChanged: (mouse) => {
                     if (!pressed || !appBridge) return
                     var pt = inspectorResizeHandle.mapToItem(root, mouse.x, mouse.y)
-                    appBridge.inspectorWidth = Math.max(300, Math.min(560, root.width - pt.x))
+                    appBridge.inspectorWidth = Math.max(300, Math.min(560, root.LayoutMirroring.enabled ? pt.x : root.width - pt.x))
                 }
             }
 
@@ -374,7 +375,7 @@ Item {
                         // Card 1: Source Selection
                         AppCard {
                             width: parent.width
-                            title: "Stream Source"
+                            title: qsTranslate("App", "Stream Source")
 
                             Column {
                                 width: parent.width
@@ -390,8 +391,8 @@ Item {
                                 AppTextField {
                                     visible: root.sourceMode === "Online"
                                     width: parent.width
-                                    label: "Online Stream URL"
-                                    placeholderText: "YouTube, Twitch, or HLS/RTMP URL..."
+                                    label: qsTranslate("App", "Online Stream URL")
+                                    placeholderText: qsTranslate("App", "YouTube, Twitch, or HLS/RTMP URL...")
                                     text: root.onlineUrl
                                     onTextEdited: (t) => { root.onlineUrl = t }
                                 }
@@ -399,19 +400,19 @@ Item {
                                 AppFilePicker {
                                     visible: root.sourceMode === "Local"
                                     width: parent.width
-                                    label: "Local Video File"
-                                    placeholderText: "Select MP4/MKV video..."
+                                    label: qsTranslate("App", "Local Video File")
+                                    placeholderText: qsTranslate("App", "Select MP4/MKV video...")
                                     selectedPath: root.localVideoPath
                                     nameFilters: [
-                                        "Video Files (*.mp4 *.mkv *.mov *.avi *.webm *.m4v *.ts *.mts *.m2ts *.mxf *.vob *.wmv *.flv *.mpg *.mpeg *.mpe *.ogv *.3gp *.3g2 *.asf *.divx *.f4v *.m2v *.m1v *.m2t)",
-                                        "All Files (*.*)"
+                                        qsTranslate("App", "Video Files (*.mp4 *.mkv *.mov *.avi *.webm *.m4v *.ts *.mts *.m2ts *.mxf *.vob *.wmv *.flv *.mpg *.mpeg *.mpe *.ogv *.3gp *.3g2 *.asf *.divx *.f4v *.m2v *.m1v *.m2t)"),
+                                        qsTranslate("App", "All Files (*.*)")
                                     ]
                                     onPathChanged: (p) => { root.localVideoPath = p }
                                 }
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Source Quality"
+                                    label: qsTranslate("App", "Source Quality")
                                     model: appBridge ? appBridge.liveSourceQualityChoices : []
                                     currentValue: root.sourceQuality
                                     onActivated: (v) => { root.sourceQuality = v }
@@ -419,7 +420,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Max Input Resolution"
+                                    label: qsTranslate("App", "Max Input Resolution")
                                     model: appBridge ? appBridge.liveMaxHeightChoices : []
                                     currentValue: root.maxHeight
                                     onActivated: (v) => { root.maxHeight = v }
@@ -427,7 +428,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "HLS Segment Duration"
+                                    label: qsTranslate("App", "HLS Segment Duration")
                                     model: appBridge ? appBridge.liveSegmentChoices : []
                                     currentValue: root.segmentSeconds
                                     onActivated: (v) => { root.segmentSeconds = v }
@@ -435,7 +436,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Target FPS"
+                                    label: qsTranslate("App", "Target FPS")
                                     model: appBridge ? appBridge.liveFpsChoices : []
                                     currentValue: root.targetFps
                                     onActivated: (v) => { root.targetFps = v }
@@ -443,8 +444,8 @@ Item {
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "Playback Buffer"
-                                    unit: "sec"
+                                    label: qsTranslate("App", "Playback Buffer")
+                                    unit: qsTranslate("App", "sec")
                                     from: 2
                                     to: 30
                                     stepSize: 1
@@ -459,7 +460,7 @@ Item {
                         // Card 2: Live AI Neural Controls (Dynamic Live Sync!)
                         AppCard {
                             width: parent.width
-                            title: "Live DLSS Effects"
+                            title: qsTranslate("App", "Live DLSS Effects")
 
                             Column {
                                 width: parent.width
@@ -467,7 +468,7 @@ Item {
 
                                 AppSegmentedControl {
                                     width: parent.width
-                                    label: "NR Style"
+                                    label: qsTranslate("App", "NR Style")
                                     model: appBridge ? appBridge.nrStyleChoices : []
                                     currentValue: appBridge ? appBridge.liveNrStyle : "Default"
                                     onActivated: (v) => { if (appBridge) appBridge.liveNrStyle = v }
@@ -475,7 +476,7 @@ Item {
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "NR Intensity"
+                                    label: qsTranslate("App", "NR Intensity")
                                     from: 0.0
                                     to: 2.0
                                     stepSize: 0.05
@@ -486,7 +487,7 @@ Item {
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "Shimmer Suppression"
+                                    label: qsTranslate("App", "Shimmer Suppression")
                                     from: 0.0
                                     to: 1.0
                                     stepSize: 0.05
@@ -497,7 +498,7 @@ Item {
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "Local Tone Strength"
+                                    label: qsTranslate("App", "Local Tone Strength")
                                     from: 0.0
                                     to: 2.0
                                     stepSize: 0.05
@@ -508,7 +509,7 @@ Item {
 
                                 AppSlider {
                                     width: parent.width
-                                    label: "Local Structure Strength"
+                                    label: qsTranslate("App", "Local Structure Strength")
                                     from: 0.0
                                     to: 2.0
                                     stepSize: 0.05
@@ -517,15 +518,15 @@ Item {
                                     onValueModified: (v) => { if (appBridge) appBridge.liveLocalStructureStrength = v }
                                 }
 
-                                AppSlider { width: parent.width; label: "NR Passes"; from: 1; to: 4; stepSize: 1; precision: 0; defaultValue: 1; value: appBridge ? appBridge.liveNrPasses : 1; onValueModified: (v) => { if (appBridge) appBridge.liveNrPasses = Math.round(v) } }
-                                AppSlider { width: parent.width; label: "Skin Structure"; from: -1; to: 2; stepSize: 0.05; defaultValue: -1; value: appBridge ? appBridge.liveSkinStructureStrength : -1; onValueModified: (v) => { if (appBridge) appBridge.liveSkinStructureStrength = v } }
-                                AppSwitch { label: "Automatic Mask"; checked: appBridge ? appBridge.liveAutomaticMask : false; onToggled: (v) => { if (appBridge) appBridge.liveAutomaticMask = v } }
-                                AppSlider { width: parent.width; label: "Color Strength"; from: 0; to: 1; stepSize: 0.05; defaultValue: 1; value: appBridge ? appBridge.liveNrColorStrength : 1; onValueModified: (v) => { if (appBridge) appBridge.liveNrColorStrength = v } }
-                                AppSlider { width: parent.width; label: "Tone Preservation"; from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveTonePreservation : 0; onValueModified: (v) => { if (appBridge) appBridge.liveTonePreservation = v } }
-                                AppSlider { width: parent.width; label: "Face / Skin Protection"; from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveFaceSkinProtection : 0; onValueModified: (v) => { if (appBridge) appBridge.liveFaceSkinProtection = v } }
-                                AppSlider { width: parent.width; label: "Grain Preservation"; from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveGrainPreservation : 0; onValueModified: (v) => { if (appBridge) appBridge.liveGrainPreservation = v } }
-                                AppSlider { width: parent.width; label: "Mask Feather"; from: 0; to: 128; stepSize: 1; precision: 0; defaultValue: 0; value: appBridge ? appBridge.liveMaskFeather : 0; onValueModified: (v) => { if (appBridge) appBridge.liveMaskFeather = Math.round(v) } }
-                                AppComboBox { width: parent.width; dropUp: true; label: "Live Scale"; model: appBridge ? appBridge.nrScaleChoices : []; currentValue: appBridge ? appBridge.liveUpscalingFactor : 1.0; onActivated: (v) => { if (appBridge) appBridge.liveUpscalingFactor = v } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "NR Passes"); from: 1; to: 4; stepSize: 1; precision: 0; defaultValue: 1; value: appBridge ? appBridge.liveNrPasses : 1; onValueModified: (v) => { if (appBridge) appBridge.liveNrPasses = Math.round(v) } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "Skin Structure"); from: -1; to: 2; stepSize: 0.05; defaultValue: -1; value: appBridge ? appBridge.liveSkinStructureStrength : -1; onValueModified: (v) => { if (appBridge) appBridge.liveSkinStructureStrength = v } }
+                                AppSwitch { label: qsTranslate("App", "Automatic Mask"); checked: appBridge ? appBridge.liveAutomaticMask : false; onToggled: (v) => { if (appBridge) appBridge.liveAutomaticMask = v } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "Color Strength"); from: 0; to: 1; stepSize: 0.05; defaultValue: 1; value: appBridge ? appBridge.liveNrColorStrength : 1; onValueModified: (v) => { if (appBridge) appBridge.liveNrColorStrength = v } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "Tone Preservation"); from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveTonePreservation : 0; onValueModified: (v) => { if (appBridge) appBridge.liveTonePreservation = v } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "Face / Skin Protection"); from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveFaceSkinProtection : 0; onValueModified: (v) => { if (appBridge) appBridge.liveFaceSkinProtection = v } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "Grain Preservation"); from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveGrainPreservation : 0; onValueModified: (v) => { if (appBridge) appBridge.liveGrainPreservation = v } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "Mask Feather"); from: 0; to: 128; stepSize: 1; precision: 0; defaultValue: 0; value: appBridge ? appBridge.liveMaskFeather : 0; onValueModified: (v) => { if (appBridge) appBridge.liveMaskFeather = Math.round(v) } }
+                                AppComboBox { width: parent.width; dropUp: true; label: qsTranslate("App", "Live Scale"); model: appBridge ? appBridge.nrScaleChoices : []; currentValue: appBridge ? appBridge.liveUpscalingFactor : 1.0; onActivated: (v) => { if (appBridge) appBridge.liveUpscalingFactor = v } }
                             }
                         }
                     }
@@ -548,7 +549,7 @@ Item {
                         AppButton {
                             width: parent.width - 98
                             buttonHeight: 36
-                            text: appBridge && appBridge.operationState === "LiveStarting" ? "Cancel Live Startup" : (appBridge && appBridge.isLiveRunning ? "Stop Live Session" : (appBridge && appBridge.operationState === "LiveStopping" ? "Stopping Live..." : "Start Live Session"))
+                            text: appBridge && appBridge.operationState === "LiveStarting" ? qsTranslate("App", "Cancel Live Startup") : (appBridge && appBridge.isLiveRunning ? qsTranslate("App", "Stop Live Session") : (appBridge && appBridge.operationState === "LiveStopping" ? qsTranslate("App", "Stopping Live...") : qsTranslate("App", "Start Live Session")))
                             iconName: appBridge && appBridge.canStop ? "stop" : "start_render"
                             variant: appBridge && appBridge.canStop ? "danger" : "primary"
                             enabled: appBridge ? (appBridge.canStartLive || appBridge.canStop) : false
@@ -572,7 +573,7 @@ Item {
                         }
 
                         AppButton {
-                            text: "Reset"
+                            text: qsTranslate("App", "Reset")
                             iconName: "reset"
                             width: 90
                             buttonHeight: 36

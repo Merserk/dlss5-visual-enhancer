@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from ...core.batch_progress import BatchItemUpdate, BatchProgress
+from ...core import app_log
 from ...core.disk_paths import OutputFile, prepare_output_dir
 from ...core.dlss_modes import DLSS_MODES, validate_dlss
 from ...core.gpu_selection import resolve_runtime_ai_gpu
@@ -30,8 +31,7 @@ from .models import (
     ImageConversionOptions, ImageConversionResult,
 )
 from .reports import (
-    IncrementalImageArchive, _ImageReportData, _SessionReportData, _build_manifest,
-    _report_data, _write_report, snapshot_session, update_report_performance,
+    IncrementalImageArchive, record_image_result,
 )
 
 
@@ -42,10 +42,7 @@ class _OutputTask:
     output: Path
     processed: np.ndarray
     metadata: dict[str, object]
-    report_data: _ImageReportData
-    session_data: _SessionReportData
-    evidence: dict[str, object]
-    gpu: dict[str, object]
+    gpu_name: str
     input_width: int
     input_height: int
     render_width: int
@@ -130,13 +127,13 @@ def _finalize_output(
         if controller.cancel.is_set():
             raise Cancelled("Image rendering stopped by user.")
 
-        reporter.advance(task.index, .95, "Writing diagnostic report")
+        reporter.advance(task.index, .95, "Finalizing image")
         result = ImageConversionResult(
             input_path=str(task.path),
             output_path=str(task.output),
             report_path="",
             elapsed_seconds=reporter.elapsed(task.index),
-            gpu=str(task.gpu["display_name"]),
+            gpu=task.gpu_name,
             input_width=task.input_width,
             input_height=task.input_height,
             render_width=task.render_width,
@@ -153,22 +150,16 @@ def _finalize_output(
             warnings=[*task.source_warnings, *warnings],
             timings=task.timings,
         )
-        # Keep the externally reported GPU name identical to the selected GPU.
-        # The batch caller replaces the temporary value below before report write.
-        report_started = time.monotonic()
-        result.report_path = _write_report(
-            result, options, task.report_data,
-            task.gpu,
-            task.session_data, task.evidence,
-            metadata_diagnostics=metadata_diagnostics,
-        )
-        task.timings["report"] = time.monotonic() - report_started
         if controller.cancel.is_set():
             raise Cancelled("Image rendering stopped by user.")
 
         publish_started = time.monotonic()
         output_file.publish()
         task.timings["publish"] = time.monotonic() - publish_started
+        result.elapsed_seconds = reporter.elapsed(task.index)
+        report_started = time.monotonic()
+        result.report_path = record_image_result(result)
+        task.timings["report"] = time.monotonic() - report_started
 
         # Archive work is deliberately after publication: cancellation or archive
         # failure must never roll back a valid completed image.
@@ -182,8 +173,6 @@ def _finalize_output(
 
         result.elapsed_seconds = reporter.elapsed(task.index)
         task.timings["total"] = result.elapsed_seconds
-        with suppress(Exception):
-            update_report_performance(result)
         reporter.complete(
             task.index, str(task.output),
             "; ".join([*result.warnings, f"Report: {result.report_path}"]),
@@ -351,7 +340,7 @@ def convert_images(
                         prep_started = time.monotonic()
                         render_rgba = resize_fit(
                             dlss_rgba if dlss_rgba is not None else decoded.rgba,
-                            session.render_width, session.render_height)
+                            session.render_width, session.render_height, controller=controller)
                         session.diagnostics.source_format = (
                             f"{decoded.metadata['source_format']}/{decoded.metadata['source_bit_depth']}"
                         )
@@ -395,8 +384,6 @@ def convert_images(
                                 )
                         session.diagnostics.output_format = f"{options.output_format}/{output_depth}"
 
-                        session_data = snapshot_session(session)
-                        evidence_snapshot = dict(session_evidence)
                         render_width = session.render_width
                         render_height = session.render_height
                         resize_method = "dlss" if dlss_details else ("none" if factor == 1.0 else "lanczos")
@@ -428,10 +415,7 @@ def convert_images(
                             output=output,
                             processed=processed,
                             metadata=decoded.metadata,
-                            report_data=_report_data(decoded),
-                            session_data=session_data,
-                            evidence=evidence_snapshot,
-                            gpu=dict(gpu),
+                            gpu_name=str(gpu["display_name"]),
                             input_width=width,
                             input_height=height,
                             render_width=render_width,
@@ -512,11 +496,9 @@ def convert_images(
 
         zip_path = archive.finish(cancelled=cancelled) if archive is not None else None
         archive_error = archive.error if archive is not None else None
-        manifest = _build_manifest(
-            stamp, options, successes, failures, cancelled,
-            output_dir=destination,
-            batch_diagnostics=reporter.diagnostics(final=True),
-            archive_error=archive_error,
+        manifest = app_log.record_batch_summary(
+            "image-batch", len(successes), len(failures), cancelled,
+            archive_error=archive_error or "",
         )
         reporter.finish(cancelled=cancelled, manifest_path=manifest)
         return ImageBatchResult(successes, failures, cancelled, manifest, zip_path)

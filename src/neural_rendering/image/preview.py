@@ -102,6 +102,7 @@ def render_image_preview(
             render_rgba = resize_fit(
                 dlss_rgba if dlss_rgba is not None else decoded.rgba,
                 session.render_width, session.render_height,
+                controller=controller,
             )
             session.diagnostics.source_format = (
                 f"{decoded.metadata['source_format']}/{decoded.metadata['source_bit_depth']}"

@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 from ..core import app_log
 from ..core.jobs import Cancelled, JobController
-from ..core.paths import FFPROBE, YTDLP
+from ..core.paths import FFPROBE, YTDLP, APP_TEMP
 from .models import LIVE_SOURCE_QUALITY_CHOICES, ResolvedSource
 
 
@@ -93,7 +93,8 @@ def resolve_source(raw: str, max_height: int,
     if not YTDLP.is_file():
         raise RuntimeError(f"yt-dlp is missing: {YTDLP}")
     source_height = max_height if source_quality == "Auto" else int(source_quality)
-    result = run_capture([str(YTDLP), "--no-playlist", "--no-warnings", "--skip-download",
+    result = run_capture([str(YTDLP), "--cache-dir", str(APP_TEMP / "yt-dlp"),
+        "--no-playlist", "--no-warnings", "--skip-download",
         "--dump-single-json", "--socket-timeout", "15", "--retries", "2", "-f",
         f"bv*[height<={source_height}]+ba/b[height<={source_height}]/b", text], controller, 90)
     if result.returncode:

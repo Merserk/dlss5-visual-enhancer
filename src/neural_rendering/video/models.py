@@ -26,7 +26,7 @@ class ConversionOptions:
     scale_method: str = "Standard"
     dlss_mode: str = "Quality"
     dlss_preset: str = "Default"
-    codec: str = "H.264 (NVIDIA NVENC)"
+    codec: str = "H.264"
     container: str = "MP4"
     quality: str = "Auto (Default)"
     preserve_hdr: bool = False
@@ -36,14 +36,11 @@ class ConversionOptions:
     automatic_mask: bool = False
     rename_mode: str = "Auto"
     custom_suffix: str = "_Neural_Rendering"
-    # True = truncated preview uses the forced H.264 SDR path (current behavior).
-    # False = truncated preview uses the user's codec/container (HDR preserved).
-    preview_compat: bool = True
 
 @dataclass(slots=True)
 class ConversionResult:
     output_path: str
-    report_path: str
+    report_path: str  # Shared session log; field name is kept for existing callers.
     frames: int
     nr_count_evidence: int
     elapsed_seconds: float
@@ -81,6 +78,6 @@ class VideoBatchResult:
     successes: list[VideoConversionSuccess]
     failures: list[VideoConversionFailure]
     cancelled: bool
-    manifest_path: str
+    manifest_path: str  # Shared session log; field name is kept for existing callers.
     archive_path: str | None = None
     archive_error: str = ""

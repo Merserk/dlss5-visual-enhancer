@@ -17,6 +17,7 @@ class JobController:
 
     def __init__(self) -> None:
         self.cancel = threading.Event()
+        self.ffmpeg_device: str | None = None
         self._lock = threading.Lock()
         self._processes: list[subprocess.Popen] = []
 

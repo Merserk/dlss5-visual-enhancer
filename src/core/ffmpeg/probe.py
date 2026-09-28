@@ -126,7 +126,7 @@ def probe_video(
         raise ValueError("Strict decoding requires count_mode='exact'.")
     count_args = {
         "metadata": [],
-        "exact": ["-count_frames"],
+        "exact": [],
         "packets": ["-count_packets"],
     }[count_mode]
     data = _run_json(
@@ -160,6 +160,12 @@ def probe_video(
         width, height = height, width
     declared_frames = _positive_count(stream.get("nb_frames"))
     decoded_frames = _positive_count(stream.get("nb_read_frames"))
+    if count_mode == "exact":
+        from .frames import open_video_decoder
+        counter_controller = controller or JobController()
+        with open_video_decoder(path, counter_controller, pixel_format="rgba",
+                                video_filter="scale=2:2:flags=neighbor") as decoded:
+            decoded_frames = sum(1 for _ in decoded.decode(decoded.streams.video[0]))
     packet_frames = _positive_count(stream.get("nb_read_packets"))
     if count_mode == "packets":
         frames = packet_frames or declared_frames
@@ -231,7 +237,9 @@ def probe_video(
 
 def preview_frame_count(source: Path, seconds: float) -> int:
     """Count frames whose presentation times fall within the opening interval."""
-    container = av.open(str(source))
+    from .frames import open_video_decoder
+    from ..jobs import JobController
+    container = open_video_decoder(source, JobController())
     try:
         stream = container.streams.video[0]
         rate = float(stream.average_rate or 30)

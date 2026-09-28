@@ -28,8 +28,8 @@ Item {
 
     function getLabel(item) {
         if (item === undefined || item === null) return ""
-        if (typeof item === "object" && item.label !== undefined) return item.label
-        return item.toString()
+        if (typeof item === "object" && item.label !== undefined) return qsTranslate("App", item.label)
+        return qsTranslate("App", item.toString())
     }
 
     function getValue(item) {
@@ -82,7 +82,7 @@ Item {
             y: 2
             height: parent.height - 4
             width: (parent.width - 4) / Math.max(1, (control.model ? control.model.length : 1))
-            x: 2 + Math.max(0, control.currentIndex) * width
+            x: 2 + (control.LayoutMirroring.enabled ? Math.max(0, control.model.length - 1 - control.currentIndex) : Math.max(0, control.currentIndex)) * width
             visible: control.currentIndex >= 0
             radius: Theme.radiusSmall
             color: Theme.bgCard

@@ -1,35 +1,42 @@
 import QtQuick
 import QtMultimedia
+import QtQuick.Controls as QQC2
+import QtQuick.Controls.Basic as Basic
 import ".."
 import "../controls"
 
 Rectangle {
     id: root
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: true
     property var player: null
     property real frameRate: 30.0
-    property bool muted: false
-    // Fallback metadata from ffprobe (bridge.sourceDuration/sourceFps) so the
-    // timeline never sticks at 00:00 when MediaPlayer hasn't loaded yet.
+    property var audioOutput: null
+    // Use probe metadata until the player has loaded the source.
     property real fallbackDurationMs: 0
     property real fallbackFrameRate: 30.0
-    // Emitted only for direct user timeline moves (scrub/step/jump), never
-    // for programmatic seeks or playback ticks. The viewport debounces these
-    // into scrub-realtime preview refreshes.
+    // Only user actions refresh the viewport's preview, never playback ticks.
     signal userScrubbed(real posMs)
-    // Pre-rendered video preview spans (seconds) painted green for Frame
-    // Interpolation and timed Upscale previews:
-    // [{start: 12.0, end: 15.0, url: ...}].
     property var renderedRanges: []
-    height: 50
-    color: Theme.bgSurface
+
+    readonly property bool stacked: width < 640
+    readonly property bool compact: width < 480
+    readonly property real effectiveFps: frameRate > 0.01 ? frameRate : (fallbackFrameRate > 0.01 ? fallbackFrameRate : 30.0)
+    readonly property real effectiveDuration: Math.max(0, player && player.duration > 0 ? player.duration : fallbackDurationMs)
+    readonly property real effectivePosition: player ? Math.max(0, Math.min(effectiveDuration > 0 ? effectiveDuration : player.position, player.position)) : 0
+    readonly property int totalFrames: effectiveDuration > 0 ? Math.max(1, Math.round(effectiveDuration * effectiveFps / 1000)) : 0
+    readonly property int currentFrame: frameAt(effectivePosition)
+    readonly property bool canSeek: !!player && effectiveDuration > 0
+    readonly property real lastFramePosition: framePosition(totalFrames)
+    readonly property int timeCellWidth: Math.ceil(timeMetrics.advanceWidth)
+    readonly property real rulerLabelGap: Math.max(72, timeCellWidth + 24)
+    readonly property real rulerStep: niceInterval(effectiveDuration / 1000 / Math.max(1, Math.floor(timelineFace.width / rulerLabelGap)))
+
+    implicitHeight: stacked ? 108 : 72
+    height: implicitHeight
+    color: Theme.bgInput
     border.color: Theme.borderSubtle
     border.width: 1
-
-    readonly property real effectiveFps: frameRate > 0.01 ? frameRate : (fallbackFrameRate > 0.01 ? fallbackFrameRate : 30.0)
-    readonly property real effectiveDuration: root.player && root.player.duration > 0 ? root.player.duration : fallbackDurationMs
-    readonly property real effectivePosition: root.player ? Math.max(0, Math.min(effectiveDuration > 0 ? effectiveDuration : root.player.position, root.player.position)) : 0
-    readonly property int currentFrame: Math.floor(effectivePosition * effectiveFps / 1000.0) + (effectiveDuration > 0 ? 1 : 0)
-    readonly property int totalFrames: effectiveFps > 0 && effectiveDuration > 0 ? Math.max(1, Math.round(effectiveDuration * effectiveFps / 1000.0)) : 0
 
     function fmt(ms) {
         var total = Math.max(0, Math.floor(ms / 1000))
@@ -40,138 +47,321 @@ Rectangle {
         return h > 0 ? (h + ":" + pad(m) + ":" + pad(s)) : (pad(m) + ":" + pad(s))
     }
     function fmtPrecise(ms) {
-        // Sub-second durations (single-frame previews) would floor to 00:00;
-        // show tenths so a 41ms preview reads 00:00.0 instead of 00:00.
-        if (ms < 1000) {
-            var tenths = Math.max(0, Math.floor(ms / 100))
-            return "00:00." + tenths
-        }
-        return fmt(ms)
+        return fmt(ms) + "." + Math.floor(Math.max(0, ms) % 1000 / 100)
     }
     function fmtDuration(ms) {
         return ms > 0 && ms < 1000 ? fmtPrecise(ms) : fmt(ms)
     }
+    function fmtExact(ms) {
+        var fraction = Math.max(0, Math.floor(ms)) % 1000
+        return fmt(ms) + "." + ("00" + fraction).slice(-3)
+    }
+    function frameAt(ms) {
+        return totalFrames > 0 ? Math.min(totalFrames, Math.max(1, Math.floor(ms * effectiveFps / 1000 + 0.000001) + 1)) : 0
+    }
+    function fractionAt(ms) {
+        return effectiveDuration > 0 && isFinite(ms) ? Math.max(0, Math.min(1, ms / effectiveDuration)) : 0
+    }
+    function framePosition(frame) {
+        // MediaPlayer seeks in integer milliseconds. Round into the selected
+        // frame, rather than letting a fractional start truncate into N-1.
+        return Math.max(0, Math.min(effectiveDuration, Math.ceil((frame - 1) * 1000 / effectiveFps - 0.000001)))
+    }
+    function nearestFramePosition(ms) {
+        var frame = Math.max(1, Math.min(totalFrames, Math.round(ms * effectiveFps / 1000) + 1))
+        return framePosition(frame)
+    }
+    function niceInterval(seconds) {
+        var intervals = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 28800, 86400]
+        for (var i = 0; i < intervals.length; ++i) {
+            if (seconds <= intervals[i]) return intervals[i]
+        }
+        return Math.ceil(seconds / 86400) * 86400
+    }
+    function seekTo(posMs) {
+        if (!canSeek) return
+        var target = framePosition(frameAt(Math.max(0, Math.min(effectiveDuration, posMs))))
+        player.position = target
+        userScrubbed(target)
+    }
+    function jumpTo(end) {
+        if (!canSeek) return
+        player.pause()
+        // Show the last frame instead of seeking past it into end-of-stream.
+        seekTo(end ? lastFramePosition : 0)
+    }
     function stepFrames(frames) {
-        if (!root.player) return
-        var dur = root.player.duration > 0 ? root.player.duration : fallbackDurationMs
-        if (!root.player.seekable && root.player.duration <= 0 && dur <= 0) return
-        root.player.pause()
-        var target = root.player.position + frames * 1000.0 / effectiveFps
-        if (dur > 0) target = Math.max(0, Math.min(dur, target))
-        else target = Math.max(0, target)
-        root.player.position = target
-        root.userScrubbed(target)
+        if (!canSeek) return
+        player.pause()
+        seekTo(framePosition(Math.max(1, Math.min(totalFrames, currentFrame + frames))))
+    }
+    function togglePlayback() {
+        if (!player) return
+        if (player.playbackState === MediaPlayer.PlayingState) player.pause()
+        else player.play()
+    }
+
+    TextMetrics {
+        id: timeMetrics
+        font.family: Theme.monoFontFamily
+        font.pixelSize: Theme.fontSizeBody
+        text: root.fmtDuration(root.effectiveDuration)
     }
 
     Row {
-        id: transportRow
-        anchors.fill: parent
-        anchors.margins: 8
-        spacing: 7
+        id: playbackControls
+        objectName: "playbackControls"
+        x: 12
+        y: root.stacked ? root.height - height - 8 : (root.height - height) / 2
+        spacing: root.compact ? 2 : 4
 
-        AppIconButton { id: startButton; iconName: "go_to_start"; tooltipText: "Start"; onClicked: { if (root.player) { root.player.pause(); root.player.position = 0; root.userScrubbed(0) } } }
-        AppIconButton { id: previousFrameButton; iconName: "previous_frame"; tooltipText: "Previous frame"; onClicked: root.stepFrames(-1) }
         AppIconButton {
-            id: playPauseButton
-            tooltipText: root.player && root.player.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play"
-            iconName: root.player && root.player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
-            onClicked: {
-                if (!root.player) return
-                if (root.player.playbackState === MediaPlayer.PlayingState) root.player.pause()
-                else root.player.play()
-            }
-        }
-        AppIconButton { id: nextFrameButton; iconName: "next_frame"; tooltipText: "Next frame"; onClicked: root.stepFrames(1) }
-
-        Rectangle {
-            width: Math.max(96, transportRow.width - startButton.width - previousFrameButton.width
-                - playPauseButton.width - nextFrameButton.width - timeLabel.implicitWidth
-                - speedCombo.width - 6 * transportRow.spacing)
-            height: 14; radius: 7; anchors.verticalCenter: parent.verticalCenter; color: Theme.bgInput
-            clip: true
-            Rectangle {
-                id: playheadFill
-                readonly property bool atEnd: width >= parent.width || (root.effectiveDuration > 0 && root.effectivePosition >= root.effectiveDuration)
-                width: parent.width * (root.effectiveDuration > 0 ? Math.max(0, Math.min(1, root.effectivePosition / root.effectiveDuration)) : 0)
-                height: parent.height
-                color: Theme.accent
-                topLeftRadius: 7
-                bottomLeftRadius: 7
-                topRightRadius: atEnd ? 7 : 0
-                bottomRightRadius: atEnd ? 7 : 0
-
-                // Thin white vertical cutoff line at the moving head
-                Rectangle {
-                    id: playheadCutoff
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: 1.5
-                    color: "#FFFFFF"
-                    visible: parent.width >= 2 && !playheadFill.atEnd
-                }
-            }
-            // Green pre-rendered preview spans. Painted over the
-            // accent playhead fill so a rendered span always reads green:
-            // blue advances up to it, green holds while playing through it,
-            // blue resumes after it. Exact position still shows in the label.
-            Repeater {
-                model: root.renderedRanges
-                Rectangle {
-                    required property var modelData
-                    y: 0; height: parent.height; radius: 0; color: Theme.success
-                    x: {
-                        var dur = root.effectiveDuration
-                        if (!(dur > 0)) return 0
-                        var s = Math.max(0, Math.min(dur / 1000.0, modelData.start || 0))
-                        return parent.width * (s / (dur / 1000.0))
-                    }
-                    width: {
-                        var dur = root.effectiveDuration
-                        if (!(dur > 0)) return 0
-                        var total = dur / 1000.0
-                        var s = Math.max(0, Math.min(total, modelData.start || 0))
-                        var e = Math.max(0, Math.min(total, modelData.end || 0))
-                        return Math.max(0, parent.width * ((e - s) / total))
-                    }
-                }
-            }
-            MouseArea {
-                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                function seek(mouseX) {
-                    var dur = root.player && root.player.duration > 0 ? root.player.duration : root.fallbackDurationMs
-                    if (root.player && dur > 0) {
-                        var target = Math.max(0, Math.min(dur, mouseX / width * dur))
-                        root.player.position = target
-                        root.userScrubbed(target)
-                    }
-                }
-                onPressed: (mouse) => seek(mouse.x)
-                onPositionChanged: (mouse) => { if (pressed) seek(mouse.x) }
-            }
-        }
-
-        Text {
-            id: timeLabel
+            objectName: "timelineStart"
+            buttonSize: root.compact ? 20 : 30
             anchors.verticalCenter: parent.verticalCenter
-            text: {
-                var pos = root.player ? root.player.position : 0
-                var dur = root.player && root.player.duration > 0 ? root.player.duration : root.fallbackDurationMs
-                var label = root.fmt(pos) + " / " + root.fmtDuration(dur)
-                if (root.totalFrames > 0 && root.totalFrames < 100000)
-                    label += "  -  f" + root.currentFrame + "/" + root.totalFrames
-                else if (root.player && root.player.duration > 0 && root.player.duration < 1000)
-                    label += "  -  1 frame"
-                return label
+            iconName: "go_to_start"; tooltipText: qsTranslate("App", "Start")
+            enabled: root.canSeek
+            onClicked: root.jumpTo(false)
+        }
+        AppIconButton {
+            objectName: "timelinePreviousFrame"
+            buttonSize: root.compact ? 20 : 30
+            anchors.verticalCenter: parent.verticalCenter
+            iconName: "previous_frame"; tooltipText: qsTranslate("App", "Previous frame")
+            enabled: root.canSeek
+            onClicked: root.stepFrames(-1)
+        }
+        AppIconButton {
+            objectName: "timelinePlayPause"
+            buttonSize: root.compact ? 28 : 36
+            iconSize: 20
+            activeColor: Theme.textPrimary
+            enabled: !!root.player
+            tooltipText: root.player && root.player.playbackState === MediaPlayer.PlayingState ? qsTranslate("App", "Pause") : qsTranslate("App", "Play")
+            iconName: root.player && root.player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
+            onClicked: root.togglePlayback()
+            Rectangle {
+                z: -1; anchors.fill: parent; radius: Theme.radiusSmall
+                color: Theme.bgSurface; border.color: Theme.borderDefault; border.width: 1
             }
-            color: Theme.textSecondary; font.family: Theme.monoFontFamily; font.pixelSize: Theme.fontSizeSmall
+        }
+        AppIconButton {
+            objectName: "timelineNextFrame"
+            buttonSize: root.compact ? 20 : 30
+            anchors.verticalCenter: parent.verticalCenter
+            iconName: "next_frame"; tooltipText: qsTranslate("App", "Next frame")
+            enabled: root.canSeek
+            onClicked: root.stepFrames(1)
+        }
+        AppIconButton {
+            objectName: "timelineEnd"
+            buttonSize: root.compact ? 20 : 30
+            anchors.verticalCenter: parent.verticalCenter
+            iconName: "go_to_end"; tooltipText: qsTranslate("App", "End")
+            enabled: root.canSeek
+            onClicked: root.jumpTo(true)
+        }
+    }
+
+    Rectangle {
+        visible: !root.stacked
+        x: playbackControls.x + playbackControls.width + 12
+        y: (root.height - height) / 2
+        width: 1; height: 28; color: Theme.borderSubtle
+    }
+
+    Basic.Slider {
+        id: seekSlider
+        objectName: "timelineSeek"
+        x: root.stacked ? 12 : playbackControls.x + playbackControls.width + 28
+        y: 8
+        width: Math.max(0, (root.stacked ? root.width - 12 : metadataControls.x - 16) - x)
+        height: 52
+        padding: 0
+        from: 0; to: Math.max(1, root.effectiveDuration)
+        value: root.effectivePosition
+        stepSize: 1000 / root.effectiveFps
+        snapMode: Basic.Slider.SnapAlways
+        enabled: root.canSeek
+        live: true
+        hoverEnabled: true
+        focusPolicy: Qt.StrongFocus
+        Accessible.name: qsTranslate("App", "Timeline")
+        onMoved: root.seekTo(value)
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Left || event.key === Qt.Key_Down) {
+                root.stepFrames(-1); event.accepted = true
+            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Up) {
+                root.stepFrames(1); event.accepted = true
+            } else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {
+                root.jumpTo(event.key === Qt.Key_End); event.accepted = true
+            } else if (event.key === Qt.Key_Space) {
+                root.togglePlayback(); event.accepted = true
+            }
         }
 
+        background: Item {
+            id: timelineFace
+            x: 6
+            width: Math.max(0, seekSlider.width - 12)
+            height: seekSlider.height
+            opacity: root.canSeek ? 1 : 0.45
+
+            Repeater {
+                model: root.effectiveDuration > 0 ? Math.floor(root.effectiveDuration / 1000 / (root.rulerStep / 4)) + 1 : 1
+                Rectangle {
+                    required property int index
+                    x: timelineFace.width * root.fractionAt(index * root.rulerStep / 4 * 1000)
+                    y: index % 4 === 0 ? 25 : 29
+                    width: 1; height: index % 4 === 0 ? 7 : 3
+                    color: index % 4 === 0 ? Theme.textMuted : Theme.borderDefault
+                }
+            }
+            Repeater {
+                model: root.effectiveDuration > 0 ? Math.floor(root.effectiveDuration / 1000 / root.rulerStep) + 1 : 1
+                Text {
+                    required property int index
+                    readonly property real tickMs: index * root.rulerStep * 1000
+                    readonly property real tickX: timelineFace.width * root.fractionAt(tickMs)
+                    objectName: "timelineRulerLabel"
+                    // Avoid colliding with the duration at the end of the ruler.
+                    visible: index === 0 || timelineFace.width - tickX >= root.rulerLabelGap
+                    x: Math.max(0, Math.min(timelineFace.width - implicitWidth, tickX - implicitWidth / 2))
+                    y: 3
+                    text: root.rulerStep < 1 ? root.fmtPrecise(Math.round(tickMs)) : root.fmt(tickMs)
+                    font.family: Theme.monoFontFamily; font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.textSecondary
+                }
+            }
+            Text {
+                objectName: "timelineDurationLabel"
+                visible: root.effectiveDuration > 0
+                anchors.right: parent.right; y: 3
+                text: root.fmtDuration(root.effectiveDuration)
+                font.family: Theme.monoFontFamily; font.pixelSize: Theme.fontSizeSmall
+                color: Theme.textSecondary
+            }
+            Rectangle {
+                visible: root.effectiveDuration > 0
+                x: parent.width - 1; y: 25; width: 1; height: 7
+                color: Theme.textMuted
+            }
+            Rectangle {
+                id: groove
+                objectName: "timelineGroove"
+                y: 36; width: parent.width; height: 8; radius: 4
+                color: Theme.bgSelected
+                Rectangle {
+                    width: parent.width * seekSlider.position
+                    height: parent.height
+                    topLeftRadius: 4; bottomLeftRadius: 4
+                    topRightRadius: 0; bottomRightRadius: 0
+                    color: Theme.accent
+                }
+                // Preview ranges stay green above the played portion.
+                Repeater {
+                    model: root.renderedRanges
+                    Rectangle {
+                        required property var modelData
+                        readonly property real startFraction: root.fractionAt(Number(modelData.start) * 1000)
+                        readonly property real endFraction: root.fractionAt(Number(modelData.end) * 1000)
+                        objectName: "timelineRenderedRange"
+                        x: groove.width * startFraction
+                        width: Math.max(0, groove.width * (endFraction - startFraction))
+                        height: groove.height
+                        topLeftRadius: startFraction === 0 ? 4 : 0
+                        bottomLeftRadius: topLeftRadius
+                        topRightRadius: endFraction === 1 ? 4 : 0
+                        bottomRightRadius: topRightRadius
+                        color: Theme.success
+                    }
+                }
+            }
+        }
+
+        handle: Item {
+            objectName: "timelinePlayhead"
+            x: seekSlider.visualPosition * (seekSlider.availableWidth - width)
+            y: 0
+            implicitWidth: 12; implicitHeight: seekSlider.height
+            width: implicitWidth; height: implicitHeight
+            opacity: root.canSeek ? 1 : 0.45
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top; anchors.bottom: parent.bottom
+                width: 2
+                color: Theme.accent
+            }
+        }
+
+        HoverHandler {
+            id: timelineHover
+            enabled: seekSlider.enabled
+            cursorShape: Qt.PointingHandCursor
+        }
+        QQC2.ToolTip {
+            id: seekTip
+            objectName: "timelineSeekTip"
+            readonly property real targetMs: seekSlider.pressed ? root.framePosition(root.frameAt(seekSlider.value)) : root.nearestFramePosition(root.effectiveDuration * Math.max(0, Math.min(1, (timelineHover.point.position.x - timelineFace.x) / Math.max(1, timelineFace.width))))
+            visible: seekSlider.enabled && (timelineHover.hovered || seekSlider.pressed)
+            delay: seekSlider.pressed ? 0 : 180
+            x: Math.max(0, Math.min(seekSlider.width - width, (seekSlider.pressed ? seekSlider.handle.x + 6 : timelineHover.point.position.x) - width / 2))
+            y: -height - 6
+            text: root.fmtExact(targetMs) + "\n" + qsTranslate("App", "Frame %1 of %2").arg(root.frameAt(targetMs)).arg(root.totalFrames)
+            leftPadding: 8; rightPadding: 8; topPadding: 5; bottomPadding: 5
+            contentItem: Text {
+                text: seekTip.text; color: Theme.textPrimary
+                font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeSmall
+            }
+            background: Rectangle {
+                color: Theme.bgInput; radius: Theme.radiusSmall
+                border.color: Theme.borderActive; border.width: 1
+            }
+        }
+    }
+
+    Row {
+        id: metadataControls
+        objectName: "timelineMetadata"
+        anchors.right: parent.right; anchors.rightMargin: 12
+        y: root.stacked ? root.height - height - 11 : (root.height - height) / 2
+        spacing: root.compact ? 8 : 12
+        Item {
+            objectName: "timelineTimeReadout"
+            width: root.compact ? root.timeCellWidth + 12 : root.timeCellWidth * 2 + 20
+            height: root.compact ? 32 : 30
+            Text {
+                objectName: "timelineCurrentTime"
+                x: 0; y: root.compact ? 0 : (parent.height - height) / 2
+                text: root.fmt(root.effectivePosition)
+                font.family: Theme.monoFontFamily; font.pixelSize: Theme.fontSizeBody; font.weight: Font.DemiBold
+                color: Theme.textPrimary
+            }
+            Text {
+                objectName: "timelineTotalTime"
+                x: root.compact ? 0 : root.timeCellWidth + 8
+                y: root.compact ? parent.height - height : (parent.height - height) / 2
+                text: "/ " + root.fmtDuration(root.effectiveDuration)
+                font.family: Theme.monoFontFamily; font.pixelSize: Theme.fontSizeBody
+                color: Theme.textSecondary
+            }
+        }
+        PlaybackVolumeControl {
+            objectName: "timelineVolume"
+            audioOutput: root.player ? root.audioOutput : null
+            buttonSize: root.compact ? 24 : 28
+            anchors.verticalCenter: parent.verticalCenter
+        }
         AppComboBox {
             id: speedCombo
-            width: 72; comboHeight: 30
-            model: [{label:"0.5x",value:0.5},{label:"1x",value:1.0},{label:"1.5x",value:1.5},{label:"2x",value:2.0}]
-            currentValue: root.player ? root.player.playbackRate : 1.0
+            objectName: "timelineSpeed"
+            width: root.compact ? 60 : 72; comboHeight: 30
+            anchors.verticalCenter: parent.verticalCenter
+            enabled: !!root.player
+            dropUp: true
+            Accessible.name: qsTranslate("App", "Playback speed")
+            model: [{label: "0.5x", value: 0.5}, {label: "1x", value: 1}, {label: "1.5x", value: 1.5}, {label: "2x", value: 2}]
+            currentValue: root.player ? root.player.playbackRate : 1
             onActivated: (v) => { if (root.player) root.player.playbackRate = v }
         }
     }

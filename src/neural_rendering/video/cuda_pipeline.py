@@ -113,7 +113,6 @@ def convert_video_cuda_nvenc(
     *,
     preview_seconds: float | None,
     preview_frames: int | None,
-    compat_preview: bool,
     prepared_runtime: Any,
     controller: Any,
     progress: Callable[[float, str], None] | None,
@@ -157,7 +156,7 @@ def convert_video_cuda_nvenc(
             dlss_output_size(input_width, input_height, options.dlss_mode, even=True)
             if options.scale_method == "DLSS" else
             resolve_output_size(input_width, input_height, factor))
-        effective_hdr = bool(options.preserve_hdr and not compat_preview)
+        effective_hdr = bool(options.preserve_hdr)
         output_depth = ffmpeg.output_video_depth(metadata["depth"], options.codec, effective_hdr)
         output_p010 = output_depth > 8
         output_color_metadata = dict(metadata)

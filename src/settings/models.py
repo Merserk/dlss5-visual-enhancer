@@ -4,45 +4,45 @@ from dataclasses import dataclass, replace
 import math
 from types import SimpleNamespace
 
-from ..core.ffmpeg import CODEC_CHOICES as FFMPEG_CODEC_CHOICES, ENCODING_QUALITIES, HDR_ALLOWED_CODECS, hdr_mode_supported
+from ..core.ffmpeg import CODEC_CHOICES as FFMPEG_CODEC_CHOICES, CONTAINER_CHOICES, ENCODING_QUALITIES, HDR_ALLOWED_CODECS, hdr_mode_supported, resolve_container
+from ..core.ffmpeg.vulkan import valid_selection
+from ..core.cache_video import CACHE_VIDEO_CODECS
 from ..core.naming import validate_rename
 from ..core.runtime import resolve_native_settings, resolve_upscaling_mode
 from ..core.dlss_modes import DLSS_METHODS, validate_dlss
 from ..frame_interpolation.models import ENGINE_CHOICES, FPS_CHOICES, PREVIEW_LENGTH_CHOICES
-from .migration import _migrate_codec
+from .migration import RETIRED_STAGE_IDS, _migrate_codec
 from ..upscale.video.models import options_from_settings
 from ..upscale.image.models import options_from_settings as image_upscale_options
 
 QUALITY_CHOICES = ENCODING_QUALITIES
 CODEC_CHOICES = FFMPEG_CODEC_CHOICES
-CONTAINER_CHOICES = ("MP4", "MKV", "MOV")
 IMAGE_FORMAT_CHOICES = ("PNG", "JPEG", "WebP", "AVIF", "TIFF")
 IMAGE_16BIT_FORMATS = ("PNG", "TIFF")
 IMAGE_BIT_DEPTH_CHOICES = (8, 16)
 CONFIG_SECTION = "Settings"
 PRESET_FORMAT = "dlss5-visual-enhancer-settings-preset"
-PRESET_SCHEMA_VERSION = 18
+PRESET_SCHEMA_VERSION = 27
 MAX_PRESET_BYTES = 1024 * 1024
 
 AUTOMATIC_MASK_CHOICES = ("Off", "On")
 
-PREVIEW_ENCODING_CHOICES = ("Auto", "Always H.264", "Disabled")
 UPSCALE_MODE_CHOICES = ("Image", "Video")
 UPSCALE_PREVIEW_LENGTH_CHOICES = PREVIEW_LENGTH_CHOICES
 
 IMAGE_SCALING_FILTERS = ("Lanczos4", "Area", "Bicubic", "Bilinear", "Nearest")
-VIDEO_SCALING_FILTERS = ("Spline36", "Lanczos", "Bicubic", "Area", "Bilinear", "EWA Lanczos")
+VIDEO_SCALING_FILTERS = ("Spline36", "Lanczos", "Bicubic", "Area", "Bilinear")
+CACHE_MEMORY_MODES = ("stage", "rolling")
 
 LEGACY_IMAGE_STAGE_ORDER = ("neural_model", "scale_method", "super_resolution")
 LEGACY_VIDEO_STAGE_ORDER = (*LEGACY_IMAGE_STAGE_ORDER, "frame_generation")
 PREVIOUS_IMAGE_STAGE_ORDER = ("neural_model", "scale_method", "dlss_super_resolution", "super_resolution")
-BEFORE_DENOISING_IMAGE_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "coloring")
-BEFORE_CAS_IMAGE_STAGE_ORDER = ("denoising", *BEFORE_DENOISING_IMAGE_STAGE_ORDER)
+BEFORE_CAS_IMAGE_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "coloring")
 IMAGE_STAGE_ORDER = (*BEFORE_CAS_IMAGE_STAGE_ORDER, "cas_sharpening")
 PREVIOUS_VIDEO_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "frame_generation")
-BEFORE_DENOISING_VIDEO_STAGE_ORDER = (*PREVIOUS_VIDEO_STAGE_ORDER, "coloring")
-BEFORE_CAS_VIDEO_STAGE_ORDER = ("denoising", *BEFORE_DENOISING_VIDEO_STAGE_ORDER)
-VIDEO_STAGE_ORDER = (*BEFORE_CAS_VIDEO_STAGE_ORDER, "cas_sharpening")
+BEFORE_CAS_VIDEO_STAGE_ORDER = (*PREVIOUS_VIDEO_STAGE_ORDER, "coloring")
+BEFORE_HDR_VIDEO_STAGE_ORDER = (*BEFORE_CAS_VIDEO_STAGE_ORDER, "cas_sharpening")
+VIDEO_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "rtx_video_hdr", "frame_generation", "coloring", "cas_sharpening")
 COLORING_MODES = ("Color Match", "LUT")
 SHARPENING_METHODS = ("NVIDIA NIS", "AMD CAS")
 COLOR_MATCH_SOURCES = ("Input Image", "Selected Image")
@@ -73,36 +73,46 @@ def validate_stage_layout(order: tuple[str, ...], enabled: tuple[str, ...], *, v
 
 
 def migrate_stage_layout(order: tuple[str, ...], enabled: tuple[str, ...], *,
-                         video: bool, scale_method: str, upscale_engine: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+                         video: bool, scale_method: str, upscale_engine: str,
+                         upscale_vsr_enabled: bool = True,
+                         upscale_hdr_enabled: bool = False) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Upgrade old card layouts while retaining their order and enabled behavior."""
+    if len(order) != len(set(order)) or len(enabled) != len(set(enabled)) or not set(enabled) <= set(order):
+        raise ValueError("Pipeline order contains unknown or duplicate processing cards.")
+    order = tuple(stage for stage in order if stage not in RETIRED_STAGE_IDS)
+    enabled = tuple(stage for stage in enabled if stage not in RETIRED_STAGE_IDS)
+
+    def finish(new_order: tuple[str, ...], new_enabled: tuple[str, ...]):
+        if video and "rtx_video_hdr" not in new_order:
+            position = new_order.index("super_resolution") + 1
+            new_order = (*new_order[:position], "rtx_video_hdr", *new_order[position:])
+            active = set(new_enabled)
+            # The old card could run VSR, HDR, or both. Keep its position and
+            # enabled behavior when converting it to two independent cards.
+            if "super_resolution" in active:
+                if upscale_hdr_enabled:
+                    active.add("rtx_video_hdr")
+                if not upscale_vsr_enabled and upscale_hdr_enabled:
+                    active.remove("super_resolution")
+            new_enabled = tuple(stage for stage in new_order if stage in active)
+        validate_stage_layout(new_order, new_enabled, video=video)
+        return new_order, new_enabled
+
     allowed = VIDEO_STAGE_ORDER if video else IMAGE_STAGE_ORDER
     if set(order) == set(allowed) and len(order) == len(allowed):
-        validate_stage_layout(order, enabled, video=video)
-        return order, enabled
+        return finish(order, enabled)
+    if video and len(order) == len(BEFORE_HDR_VIDEO_STAGE_ORDER) and set(order) == set(BEFORE_HDR_VIDEO_STAGE_ORDER):
+        return finish(order, enabled)
     before_cas = BEFORE_CAS_VIDEO_STAGE_ORDER if video else BEFORE_CAS_IMAGE_STAGE_ORDER
     if len(order) == len(before_cas) and set(order) == set(before_cas):
-        if len(enabled) != len(set(enabled)) or not set(enabled) <= set(order):
-            raise ValueError("Pipeline enabled stages contain an unavailable or duplicate card.")
         result = (*order, "cas_sharpening"), enabled
-        validate_stage_layout(*result, video=video)
-        return result
-    before_denoising = (BEFORE_DENOISING_VIDEO_STAGE_ORDER if video
-                        else BEFORE_DENOISING_IMAGE_STAGE_ORDER)
-    if len(order) == len(before_denoising) and set(order) == set(before_denoising):
-        if len(enabled) != len(set(enabled)) or not set(enabled) <= set(order):
-            raise ValueError("Pipeline enabled stages contain an unavailable or duplicate card.")
-        result = ("denoising", *order, "cas_sharpening"), enabled
-        validate_stage_layout(*result, video=video)
-        return result
+        return finish(*result)
     previous = PREVIOUS_VIDEO_STAGE_ORDER if video else PREVIOUS_IMAGE_STAGE_ORDER
     if len(order) == len(previous) and set(order) == set(previous):
-        if len(enabled) != len(set(enabled)) or not set(enabled) <= set(order):
-            raise ValueError("Pipeline enabled stages contain an unavailable or duplicate card.")
-        result = ("denoising", *order, "coloring", "cas_sharpening"), enabled
-        validate_stage_layout(*result, video=video)
-        return result
+        result = (*order, "coloring", "cas_sharpening"), enabled
+        return finish(*result)
     old = LEGACY_VIDEO_STAGE_ORDER if video else LEGACY_IMAGE_STAGE_ORDER
-    if len(order) != len(old) or set(order) != set(old) or len(enabled) != len(set(enabled)) or not set(enabled) <= set(old):
+    if len(order) != len(old) or set(order) != set(old):
         raise ValueError("Pipeline order contains unknown or duplicate processing cards.")
     scale_dlss_active = "scale_method" in enabled and scale_method == "DLSS"
     upscale_dlss_active = "super_resolution" in enabled and upscale_engine == "DLSS"
@@ -130,9 +140,8 @@ def migrate_stage_layout(order: tuple[str, ...], enabled: tuple[str, ...], *,
     if "super_resolution" in enabled:
         migrated_enabled.add("dlss_super_resolution" if upscale_engine == "DLSS" else "super_resolution")
     result = tuple(migrated_order), tuple(stage for stage in migrated_order if stage in migrated_enabled)
-    result = ("denoising", *result[0], "coloring", "cas_sharpening"), result[1]
-    validate_stage_layout(*result, video=video)
-    return result
+    result = (*result[0], "coloring", "cas_sharpening"), result[1]
+    return finish(*result)
 
 
 def coerce_hdr_mode(codec: str, enabled: bool) -> bool:
@@ -155,9 +164,6 @@ class UISettings:
     video_stage_order: tuple[str, ...] = VIDEO_STAGE_ORDER
     image_enabled_stages: tuple[str, ...] = ()
     video_enabled_stages: tuple[str, ...] = ()
-    denoise_strength: int = 50
-    denoise_deblock: bool = True
-    denoise_temporal: int = 30
     sharpening_method: str = "AMD CAS"
     # Legacy key retained so existing CAS settings and presets keep their value.
     cas_sharpness: int = 50
@@ -165,6 +171,7 @@ class UISettings:
     color_match_source: str = "Input Image"
     color_match_reference: str = ""
     lut_path: str = ""
+    lut_reference_image: str = ""
     lut_resolution: int = 33
     lut_mix: int = 100
     lut_exposure: float = 0.0
@@ -181,6 +188,9 @@ class UISettings:
     lut_saturation: int = 0
     ai_gpu_uuid: str = "auto"
     video_gpu_uuid: str = "auto"
+    ffmpeg_device: str = "auto"
+    cache_memory_mode: str = "stage"
+    cache_codec: str = "FFV1"
     nr_style: str = "Default"
     nr_intensity: float = 1.0
     nr_passes: int = 1
@@ -223,7 +233,7 @@ class UISettings:
     live_automatic_mask: bool = False
     live_upscaling_factor: float = 1.0
     # Factory default only. Existing saved codec values are loaded unchanged.
-    codec: str = "H.264 (NVIDIA NVENC)"
+    codec: str = "H.264"
     container: str = "MP4"
     quality: str = "Auto (Default)"
     hdr_mode: bool = False
@@ -238,14 +248,13 @@ class UISettings:
     frame_interpolation_target_fps: str = "60"
     frame_interpolation_engine: str = "Auto"
     # Factory default only. Existing saved selections are loaded unchanged.
-    frame_interpolation_codec: str = "H.264 (NVIDIA NVENC)"
+    frame_interpolation_codec: str = "H.264"
     frame_interpolation_container: str = "MP4"
     frame_interpolation_quality: str = "Auto (Default)"
     frame_interpolation_hdr_mode: bool = False
     frame_interpolation_rename_mode: str = "Auto"
     frame_interpolation_custom_suffix: str = "_Frame_Interpolation"
     frame_interpolation_preview_length: str = "3"
-    preview_encoding: str = "Auto"
     upscale_mode: str = "Image"
     upscale_image_vsr_quality: int = 4
     upscale_image_engine: str = "RTX Video Super Resolution"
@@ -276,7 +285,7 @@ class UISettings:
     upscale_hdr_middle_gray: int = 50
     upscale_hdr_peak_luminance: int = 1000
     upscale_hdr_precision: str = "Packed 10-bit"
-    upscale_codec: str = "H.265 (NVIDIA NVENC)"
+    upscale_codec: str = "H.265"
     upscale_container: str = "MKV"
     upscale_quality: str = "Auto (Default)"
     upscale_preview_length: str = "3"
@@ -337,12 +346,9 @@ DEFAULT_SETTINGS = UISettings()
 def _validate(settings: UISettings) -> UISettings:
     validate_stage_layout(settings.image_stage_order, settings.image_enabled_stages, video=False)
     validate_stage_layout(settings.video_stage_order, settings.video_enabled_stages, video=True)
-    for name in ("denoise_strength", "denoise_temporal", "cas_sharpness"):
-        value = getattr(settings, name)
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
-            raise ValueError(f"{name} must be an integer from 0 to 100.")
-    if not isinstance(settings.denoise_deblock, bool):
-        raise ValueError("Compression artifact cleanup must be a boolean value.")
+    value = settings.cas_sharpness
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
+        raise ValueError("cas_sharpness must be an integer from 0 to 100.")
     if settings.sharpening_method not in SHARPENING_METHODS:
         raise ValueError(f"Unknown sharpening method: {settings.sharpening_method!r}.")
     if settings.coloring_mode not in COLORING_MODES:
@@ -353,6 +359,8 @@ def _validate(settings: UISettings) -> UISettings:
         raise ValueError("Color Match reference must be a valid image path.")
     if not isinstance(settings.lut_path, str) or len(settings.lut_path) > 4096:
         raise ValueError("LUT must be a valid .cube file path.")
+    if not isinstance(settings.lut_reference_image, str) or len(settings.lut_reference_image) > 4096:
+        raise ValueError("LUT reference must be a valid image path.")
     if isinstance(settings.lut_resolution, bool) or settings.lut_resolution not in LUT_RESOLUTIONS:
         raise ValueError("LUT resolution must be 33, 65, or 129.")
     for name, (minimum, maximum) in LUT_ADJUSTMENT_RANGES.items():
@@ -365,6 +373,12 @@ def _validate(settings: UISettings) -> UISettings:
             raise ValueError(f"{name} must be between {minimum} and {maximum}.")
     options_from_settings(settings).validate(for_render=False)
     image_upscale_options(settings).validate(for_render=False)
+    if not valid_selection(settings.ffmpeg_device):
+        raise ValueError("FFmpeg/Vulkan must be Automatic, CPU, or a Vulkan GPU UUID.")
+    if settings.cache_memory_mode not in CACHE_MEMORY_MODES:
+        raise ValueError("Cache Memory must be Stage by Stage or Rolling Cache (5 GB).")
+    if settings.cache_codec not in CACHE_VIDEO_CODECS:
+        raise ValueError("Cache Memory codec must be FFV1 or ProRes Proxy.")
     for label, value in (
         ("AI Processing GPU", settings.ai_gpu_uuid),
         ("Video Processing GPU", settings.video_gpu_uuid),
@@ -459,10 +473,6 @@ def _validate(settings: UISettings) -> UISettings:
             settings.nr_preview_length,
             PREVIEW_LENGTH_CHOICES,
         ),
-        "Preview encoding": (
-            settings.preview_encoding,
-            PREVIEW_ENCODING_CHOICES,
-        ),
         "Upscale mode": (
             settings.upscale_mode,
             UPSCALE_MODE_CHOICES,
@@ -471,6 +481,12 @@ def _validate(settings: UISettings) -> UISettings:
     for label, (value, choices) in allowed.items():
         if value not in choices:
             raise ValueError(f"Unknown {label}: {value!r}.")
+    for codec, container in (
+        (settings.codec, settings.container),
+        (settings.frame_interpolation_codec, settings.frame_interpolation_container),
+        (settings.upscale_codec, settings.upscale_container),
+    ):
+        resolve_container(codec, container)
     if isinstance(settings.image_quality, bool) or not 1 <= int(settings.image_quality) <= 100:
         raise ValueError("Image quality must be an integer from 1 to 100.")
     if int(settings.image_quality) != settings.image_quality:

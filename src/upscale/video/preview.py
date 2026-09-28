@@ -4,35 +4,8 @@ import math
 from dataclasses import replace
 from pathlib import Path
 
-from ...core.ffmpeg.preview import is_browser_playable, make_browser_preview
+from ...core.ffmpeg.preview import LOSSLESS_PREVIEW_CODEC, decode_preview_frame
 from .processor import upscale_video
-
-
-def display_result_native(result, options, *, preview_encoding: str = "Auto", controller=None, output_dir=None):
-    """Return a plain media path/detail tuple with no UI-framework objects."""
-    mode = preview_encoding
-    if mode == "Disabled":
-        return result.output_path, "Actual output; HDR/codec support depends on the native media backend."
-    if not options.hdr_enabled and mode == "Auto" and is_browser_playable(result.output_path):
-        return result.output_path, ""
-    vf = None
-    if options.hdr_enabled:
-        peak = options.hdr_peak_luminance / 100
-        vf = (
-            "zscale=matrixin=bt2020nc:primariesin=bt2020:transferin=smpte2084:rangein=limited:"
-            "transfer=linear:npl=100,format=gbrpf32le,zscale=primaries=bt709,"
-            f"tonemap=mobius:desat=2:peak={peak:g},zscale=transfer=bt709:matrix=bt709:range=limited,format=yuv420p"
-        )
-    try:
-        path = make_browser_preview(
-            result.output_path, dest_dir=output_dir, controller=controller, sdr_filter=vf
-        )
-    except Exception as exc:
-        return None, f"Output saved; compatibility preview unavailable: {exc}"
-    return path, (
-        "SDR tone-mapped compatibility preview. Open the original for HDR playback."
-        if options.hdr_enabled else "H.264 compatibility preview."
-    )
 
 
 def preview_upscale_native(
@@ -43,7 +16,6 @@ def preview_upscale_native(
     progress=None,
     controller=None,
     output_dir=None,
-    preview_encoding: str = "Auto",
     start_seconds: float | None = None,
     frame_index: int | None = None,
     preview_seconds: float | None = None,
@@ -66,7 +38,7 @@ def preview_upscale_native(
     # Both preview modes start at the parked timeline frame. Extract only
     # when seeking: processing the original directly avoids an extra encode
     # at the beginning of the source.
-    if start > 0.05:
+    if start > 0:
         from ...core.ffmpeg.preview import extract_preview_subclip
         if progress:
             try:
@@ -79,12 +51,15 @@ def preview_upscale_native(
             single_frame=one_frame, controller=controller,
         )
         effective_path = temp_clip
-    opts = replace(
-        options,
-        preview_frames=1 if one_frame else None,
-        preview_seconds=None if one_frame else length_seconds,
-    )
     try:
+        opts = replace(
+            options,
+            codec=LOSSLESS_PREVIEW_CODEC,
+            container="MKV",
+            quality="Auto (Default)",
+            preview_frames=1 if one_frame else None,
+            preview_seconds=None if one_frame else length_seconds,
+        )
         result = upscale_video(
             effective_path, opts, progress=progress, controller=controller, output_dir=output_dir
         )
@@ -94,16 +69,11 @@ def preview_upscale_native(
                 Path(temp_clip).unlink(missing_ok=True)
             except OSError:
                 pass
-    display, detail = display_result_native(
-        result,
-        opts,
-        preview_encoding=preview_encoding,
-        controller=controller,
-        output_dir=output_dir,
-    )
+    display = (decode_preview_frame(result.output_path, controller=controller)
+               if one_frame else result.output_path)
     stamp = (f" f{frame_no} @ {start:.2f}s" if one_frame and start > 0.05 else
              f" {length_seconds:g}s @ {start:.2f}s" if not one_frame else "")
     return display, (
         f"Preview complete{stamp}: {result.output_width}×{result.output_height}, {result.frames} frames.\n"
-        f"{detail}\nOriginal preview file: {result.output_path}\nReport: {result.report_path}"
+        f"Cached clip: {result.output_path}\nReport: {result.report_path}"
     )

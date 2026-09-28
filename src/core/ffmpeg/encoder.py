@@ -90,46 +90,9 @@ def resolve_video_gpu(
     width: int,
     height: int,
 ) -> dict | None:
-    """Resolve a stable UUID to a device that supports the requested NVENC codec.
-
-    CPU codecs (plain H.264/H.265/AV1 without '(NVIDIA NVENC)') never require a GPU.
-    NVENC codecs explicitly require a cuda device that can init the encoder.
-    """
-    norm = _normalize_codec(codec)
-    if norm == "ProRes Proxy":
-        return None
-    # CPU variants do not need a GPU
-    if not _is_nvenc_codec(norm):
-        # Validate that plain codecs are known; if unknown, raise.
-        if norm not in CODEC_CHOICES and norm not in ("HEVC", "H.265"):
-            # Try base check
-            try:
-                _base_codec(norm)
-            except ValueError as exc:
-                raise ValueError(f"Unknown video codec: {codec!r}.") from exc
-        # Plain variants: no GPU needed (CPU encoding)
-        return None
-    # NVENC path
-    try:
-        encoder = _NVENC_ENCODERS[norm]
-    except KeyError as exc:
-        raise ValueError(f"Unknown video codec: {codec!r}.") from exc
-    candidates = [gpu for gpu in gpus if gpu.get("cuda_ordinal") is not None]
-    if gpu_uuid != "auto":
-        candidates = [gpu for gpu in candidates if gpu.get("uuid") == gpu_uuid]
-        if not candidates:
-            raise RuntimeError("The selected Video Processing GPU is unavailable.")
-    for gpu in candidates:
-        ordinal = int(gpu["cuda_ordinal"])
-        if _encoder_probe(encoder, width, height, ordinal):
-            selected = dict(gpu)
-            selected["nvenc_codec"] = encoder
-            return selected
-    selection = "selected GPU" if gpu_uuid != "auto" else "available NVIDIA GPUs"
-    raise RuntimeError(
-        f"{norm} cannot encode the requested {width}×{height} output on the "
-        f"{selection}. Choose another Video Processing GPU, codec, or output size."
-    )
+    """Legacy NVIDIA selector; FFmpeg/Vulkan now owns codec assignment."""
+    _base_codec(codec)
+    return None
 
 
 def _codec_command(
@@ -145,14 +108,9 @@ def _codec_command(
     *,
     speed_profile: str = "default", output_depth: int | None = None,
 ) -> tuple[list[str], str, dict]:
-    """Return FFmpeg codec args for an explicit user-facing codec choice.
+    """Return software fallback args; command planning selects Vulkan codecs.
 
-    Plain names (H.264, H.265, AV1) are strictly CPU (libx264/libx265/libsvtav1).
-    Suffixed names (H.264 (NVIDIA NVENC) etc.) are strictly NVENC and require a GPU.
-    `require_nvenc` is kept for backward compat – NVENC codecs always require NVENC,
-    CPU codecs always forbid fallback to NVENC.
-    When ``hdr_mode`` is True, output is 10-bit (yuv420p10le/p010le) and input
-    colorspace is copied via ``hdr_metadata`` for HDR_ALLOWED_CODECS.
+    HDR/source depth is retained independently of the codec backend.
     """
     if speed_profile not in {"default", "neural", "preview"}:
         raise ValueError(f"Unknown encoder speed profile: {speed_profile!r}.")
@@ -214,10 +172,6 @@ def _codec_command(
     # CPU variants – never probe NVENC, always use software encoder
     if norm == "H.264":
         # H.264 is always 8-bit SDR – HDR Mode is not allowed (checked above), so plain yuv420p
-        if require_nvenc:
-            raise RuntimeError(
-                f"H.264 (CPU) was requested but NVENC was required; choose H.264 (NVIDIA NVENC) for GPU encoding."
-            )
         if hdr_mode:
             raise ValueError("HDR Mode is not available for H.264; choose H.265/AV1/ProRes.")
         x264_color = _x265_hdr_params(signal_metadata)
@@ -229,10 +183,6 @@ def _codec_command(
             quality,
         )
     if norm == "H.265" or norm == "HEVC":
-        if require_nvenc:
-            raise RuntimeError(
-                f"H.265 (CPU) was requested but NVENC was required; choose H.265 (NVIDIA NVENC) for GPU encoding."
-            )
         # Source precision or HDR selects 10-bit independently of SDR transfer.
         pix_fmt = "yuv420p10le" if high_depth else "yuv420p"
         if high_depth:
@@ -255,10 +205,6 @@ def _codec_command(
             quality,
         )
     if norm == "AV1":
-        if require_nvenc:
-            raise RuntimeError(
-                "AV1 (CPU) was requested but NVENC was required; choose AV1 (NVIDIA NVENC) for GPU encoding."
-            )
         pix_fmt = "yuv420p10le" if high_depth else "yuv420p"
         # Prefer libsvtav1 (fastest CPU AV1), fallback to libaom-av1
         if _cpu_encoder_available("libsvtav1"):
@@ -287,53 +233,7 @@ def _codec_command(
             )
         raise RuntimeError(
             "AV1 CPU encoding is unavailable: neither libsvtav1 nor libaom-av1 can initialize. "
-            "Choose H.264/H.265 or AV1 (NVIDIA NVENC) if a GPU is available."
-        )
-
-    # NVENC variants – strictly require NVENC probe success
-    if norm == "H.264 (NVIDIA NVENC)":
-        if hdr_mode:
-            raise ValueError("HDR Mode is not available for H.264 (NVIDIA NVENC); choose H.265/AV1.")
-        if not _encoder_probe("h264_nvenc", width, height, gpu_ordinal):
-            raise RuntimeError(
-                f"H.264 (NVIDIA NVENC) cannot encode {width}×{height} on the selected Video Processing GPU. "
-                "Choose H.264 (CPU) or another GPU."
-            )
-        return (
-            [
-                "-c:v", "h264_nvenc", *gpu_args, "-preset", "p6", "-tune", "hq",
-                *nvenc_quality, "-pix_fmt", "yuv420p",
-            ],
-            "h264_nvenc",
-            quality,
-        )
-    if norm == "H.265 (NVIDIA NVENC)":
-        if not _encoder_probe("hevc_nvenc", width, height, gpu_ordinal):
-            raise RuntimeError(
-                f"H.265 (NVIDIA NVENC) cannot encode {width}×{height} on the selected Video Processing GPU. "
-                "Choose H.265 (CPU) or another GPU."
-            )
-        pix_fmt = "p010le" if high_depth else "yuv420p"
-        # HEVC HDR should use main10 implicitly via p010le
-        return (
-            [
-                "-c:v", "hevc_nvenc", *gpu_args, "-preset", "p6", "-tune", "hq",
-                *nvenc_quality, "-pix_fmt", pix_fmt, *hdr_color,
-            ],
-            "hevc_nvenc",
-            quality,
-        )
-    if norm == "AV1 (NVIDIA NVENC)":
-        if not _encoder_probe("av1_nvenc", width, height, gpu_ordinal):
-            raise RuntimeError(
-                f"AV1 (NVIDIA NVENC) cannot encode {width}×{height} on the selected GPU/driver. "
-                "Choose AV1 (CPU) with libsvtav1, or H.264/H.265, or a lower upscaling factor."
-            )
-        pix_fmt = "p010le" if high_depth else "yuv420p"
-        return (
-            ["-c:v", "av1_nvenc", *gpu_args, "-preset", "p6", *nvenc_quality, "-pix_fmt", pix_fmt, *hdr_color],
-            "av1_nvenc",
-            quality,
+            "Choose H.264 or H.265."
         )
 
     raise ValueError(f"Unknown video codec: {codec!r}.")
@@ -389,6 +289,18 @@ def start_encoder(
                           f"color_primaries={primaries}:color_trc={transfer}:"
                           f"colorspace={matrix}:range=limited")
         video_filter = f"{video_filter},{tag_filter}" if video_filter else tag_filter
+    # Raw NUT RGB frames do not reliably carry transfer/primaries tags between
+    # the bundled FFmpeg and PyAV versions. Describe their actual signal before
+    # Vulkan format conversion so PQ is preserved instead of reinterpreted as SDR.
+    colors = hdr_metadata or {}
+    primaries = str(colors.get("color_primaries") or ("bt2020" if hdr_mode else "bt709"))
+    transfer = str(colors.get("color_transfer") or ("smpte2084" if hdr_mode else "bt709"))
+    if primaries in {"unknown", "unspecified"}:
+        primaries = "bt2020" if hdr_mode else "bt709"
+    if transfer in {"unknown", "unspecified"}:
+        transfer = "smpte2084" if hdr_mode else "bt709"
+    input_tags = f"setparams=colorspace=gbr:range=full:color_primaries={primaries}:color_trc={transfer}"
+    video_filter = input_tags + ("," + video_filter if video_filter else "")
     direct_mux = source_audio is not None and direct_container in {"MP4", "MOV"}
     if direct_mux:
         selected_audio = audio_plan or plan_audio_streams(source_audio, direct_container, controller)
@@ -448,6 +360,10 @@ def start_encoder(
             *( ["-avoid_negative_ts", "disabled"] if keep_start_time else [] ),
             str(temp_video),
         ]
+    from .vulkan import prepare_command
+    command = prepare_command(command, selection=getattr(controller, "ffmpeg_device", None), dimensions=(width, height),
+                              rate=str(fps), time_base=str((hdr_metadata or {}).get("time_base") or "1/90000") if preserve_timestamps else None)
+    selected = command[command.index("-c:v") + 1]
     process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,

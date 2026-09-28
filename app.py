@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import sys
 
+sys.dont_write_bytecode = True
+
+from src.portable import configure_portable_environment
+
+configure_portable_environment()
+
 from src.desktop.app import launch_desktop
 
 

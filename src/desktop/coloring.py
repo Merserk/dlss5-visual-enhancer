@@ -206,12 +206,15 @@ def _graded_cube_slices(source: CubeLUT, settings: UISettings, size: int):
         yield grade_lut_rgb(identity, sampled, settings).reshape(size, size, 3)
 
 
-def compose_cube_lut(source: CubeLUT, settings: UISettings, size: int) -> CubeLUT:
+def compose_cube_lut(source: CubeLUT, settings: UISettings, size: int, *, controller=None) -> CubeLUT:
     """Bake the selected LUT and grading controls into a standard RGB cube."""
     if size not in (33, 65, 129):
         raise ValueError("LUT resolution must be 33, 65, or 129.")
     values = np.empty((size, size, size, 3), dtype=np.float32)
     for index, plane in enumerate(_graded_cube_slices(source, settings, size)):
+        if controller is not None and controller.cancel.is_set():
+            from ..core.jobs import Cancelled
+            raise Cancelled("LUT preview cancelled.")
         values[index] = plane
     return CubeLUT(size, np.zeros(3, dtype=np.float32),
                    np.ones(3, dtype=np.float32), values)
@@ -248,18 +251,37 @@ def save_cube_lut(destination: str | Path, source_path: str | Path | None,
     return target
 
 
-def apply_cube_lut(rgba: np.ndarray, lut: CubeLUT) -> np.ndarray:
-    """Apply trilinear RGB interpolation in chunks, preserving source alpha and depth."""
-    result = np.empty_like(rgba)
+def write_composed_lut(path: str | Path, lut: CubeLUT, *, controller=None) -> None:
+    """Serialize an already composed cube without changing its precision."""
+    with Path(path).open("w", encoding="ascii") as stream:
+        stream.write(f"LUT_3D_SIZE {lut.size}\n")
+        stream.write("DOMAIN_MIN " + " ".join(map(str, lut.domain_min)) + "\n")
+        stream.write("DOMAIN_MAX " + " ".join(map(str, lut.domain_max)) + "\n")
+        for plane in lut.values:
+            if controller is not None and controller.cancel.is_set():
+                from ..core.jobs import Cancelled
+                raise Cancelled("LUT preview cancelled.")
+            np.savetxt(stream, plane.reshape(-1, 3), fmt="%.9f")
+
+
+def apply_cube_lut_file(rgba: np.ndarray, path: str | Path, *, controller=None, selection=None) -> np.ndarray:
+    """Apply a prepared cube on Vulkan, preserving alpha and sample depth."""
+    from ..core.ffmpeg.filters import filter_array
+    from ..core.ffmpeg.vulkan import libplacebo, quote_filter_path
+    opaque = rgba.copy()
+    opaque[..., 3] = np.iinfo(rgba.dtype).max
+    result = filter_array(opaque, libplacebo("lut=" + quote_filter_path(path) + ":lut_type=native"),
+                          controller=controller, selection=selection)
     result[..., 3] = rgba[..., 3]
-    maximum = float(np.iinfo(rgba.dtype).max)
-    rows_per_chunk = max(1, 262_144 // max(1, rgba.shape[1]))
-    for top in range(0, rgba.shape[0], rows_per_chunk):
-        bottom = min(rgba.shape[0], top + rows_per_chunk)
-        rgb = rgba[top:bottom, :, :3].astype(np.float32) / maximum
-        color = sample_cube_lut(rgb, lut)
-        result[top:bottom, :, :3] = np.rint(np.clip(color, 0.0, 1.0) * maximum).astype(rgba.dtype)
     return result
+
+
+def apply_cube_lut(rgba: np.ndarray, lut: CubeLUT, *, controller=None, selection=None) -> np.ndarray:
+    """Apply a cube on Vulkan, preserving source alpha and sample depth."""
+    with tempfile.TemporaryDirectory(prefix="visual-enhancer-lut-") as directory:
+        path = Path(directory) / "filter.cube"
+        write_composed_lut(path, lut, controller=controller)
+        return apply_cube_lut_file(rgba, path, controller=controller, selection=selection)
 
 
 def _lab_statistics(rgba: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:

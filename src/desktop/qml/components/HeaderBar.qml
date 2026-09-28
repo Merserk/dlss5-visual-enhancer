@@ -5,6 +5,9 @@ import "../controls"
 
 Rectangle {
     id: root
+    // Native window buttons retain their Windows positions in RTL locales.
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: true
     property var appBridge: null
     property var windowRef: null
     readonly property bool compact: width < 1320
@@ -126,10 +129,10 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 4
         readonly property var tabs: [
-            { id:"neural-rendering", full:"Neural Rendering", short:"Neural", icon:"neural_rendering" },
-            { id:"live", full:"Live", short:"Live", icon:"live_video" },
-            { id:"settings", full:"Settings", short:"Settings", icon:"settings" },
-            { id:"help", full:"Help", short:"Help", icon:"help" }
+            { id:"neural-rendering", full:qsTranslate("App", "Neural Rendering"), short:qsTranslate("App", "Neural"), icon:"neural_rendering" },
+            { id:"live", full:qsTranslate("App", "Live"), short:qsTranslate("App", "Live"), icon:"live_video" },
+            { id:"settings", full:qsTranslate("App", "Settings"), short:qsTranslate("App", "Settings"), icon:"settings" },
+            { id:"help", full:qsTranslate("App", "Help"), short:qsTranslate("App", "Help"), icon:"help" }
         ]
         Repeater {
             model: navTabs.tabs

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""In-process NVDEC/software -> RTX Video -> pinned host -> CPU encoder pipeline."""
+"""FFmpeg Vulkan/software -> RTX Video -> pinned host -> FFmpeg codec pipeline."""
 
 import ctypes
 import gc
@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import av
+from ...core.ffmpeg.frames import open_video_decoder, VideoOutput
 from av.codec.hwaccel import HWAccel
 
 from ...core import app_log, ffmpeg
@@ -28,7 +29,6 @@ from ...core.paths import JOBS
 from ...core.ffmpeg.codecs import _x265_hdr_params
 from .cuda_pipeline import (
     _END,
-    _SoftwareNormalizer,
     _chroma_location_code,
     _get_bounded,
     _matrix_code,
@@ -63,11 +63,8 @@ class _EncoderSettings:
 
 
 def _codec_available(name: str) -> bool:
-    try:
-        av.codec.Codec(name, "w")
-        return True
-    except Exception:
-        return False
+    from ...core.ffmpeg.vulkan import ffmpeg_encoders
+    return name in ffmpeg_encoders()
 
 
 def _encoder_settings(options: UpscaleOptions, width: int, height: int,
@@ -353,7 +350,9 @@ def convert_video_inprocess_host(
             decode_device = HWAccel(
                 "cuda", device=str(ordinal), allow_software_fallback=True,
                 options={"primary_ctx": "1"}, is_hw_owned=True)
-            decoded_container = av.open(str(source), hwaccel=decode_device)
+            from .media import decode_filter
+            normalization, _ = decode_filter(metadata)
+            decoded_container = open_video_decoder(source, controller, pixel_format="gbrp10le" if input_format == 2 else "rgba", video_filter=normalization)
             input_stream = decoded_container.streams.video[0]
             input_stream.thread_type = "AUTO"
             decoder_iterator = iter(decoded_container.decode(input_stream))
@@ -364,7 +363,7 @@ def convert_video_inprocess_host(
                 raise ValueError("The input contains no decodable video frames.") from exc
             timings["decode_seconds"] += time.perf_counter() - tick
 
-            encoded_container = av.open(str(temp_video), mode="w")
+            encoded_container = VideoOutput(temp_video, controller)
             output_stream = encoded_container.add_stream(encoder.codec, rate=metadata["rate"])
             output_stream.width, output_stream.height = output_width, output_height
             output_stream.pix_fmt = encoder.pixel_format
@@ -434,15 +433,6 @@ def convert_video_inprocess_host(
                         encode_tick = time.perf_counter()
                         frame, copy_seconds = item.to_av_frame()
                         timings["host_copy_seconds"] += copy_seconds
-                        if frame.format.name != encoder.pixel_format:
-                            copy_tick = time.perf_counter()
-                            frame = frame.reformat(format=encoder.pixel_format)
-                            timings["host_copy_seconds"] += time.perf_counter() - copy_tick
-                        if encoder.codec == "ffv1":
-                            frame.color_primaries = 9 if options.hdr_enabled else 1
-                            frame.color_trc = 16 if options.hdr_enabled else 1
-                            frame.colorspace = 0
-                            frame.color_range = 2
                         for packet in output_stream.encode(frame):
                             encoded_container.mux(packet)
                         timings["encode_seconds"] += time.perf_counter() - encode_tick
@@ -470,7 +460,6 @@ def convert_video_inprocess_host(
             last_pts: int | None = None
             timestamp_fallbacks = 0
             stopped_early = False
-            software_normalizer: _SoftwareNormalizer | None = None
             source_dimensions = (int(first_frame.width), int(first_frame.height))
             estimated = int(metadata["frames"] or max(
                 1, math.ceil(metadata["duration"] * float(metadata["rate"]))))
@@ -515,12 +504,9 @@ def convert_video_inprocess_host(
                             chroma_location=_chroma_location_code(metadata),
                             rotation=int(metadata["rotation"]))
                     else:
-                        decode_backends.add("software")
+                        decode_backends.add("ffmpeg-vulkan")
                         prepare_tick = time.perf_counter()
-                        if software_normalizer is None:
-                            software_normalizer = _SoftwareNormalizer(
-                                frame, metadata, width, height, input_format == 2)
-                        packed = software_normalizer.convert(frame)
+                        packed = packed_bytes(frame)
                         timings["software_prepare_seconds"] += time.perf_counter() - prepare_tick
                         detail = session.process_host_to_host_planar(
                             packed, output_format=encoder.native_format,
@@ -547,7 +533,7 @@ def convert_video_inprocess_host(
                 if now - last_update > 0.2:
                     update(
                         min(0.87, 0.05 + 0.82 * delivered / max(1, estimated)),
-                        "Upscaling video")
+                        f"Upscaling video: {delivered:,} / {estimated:,} frames")
                     last_update = now
             if not delivered:
                 raise ValueError("The input contains no decodable video frames.")
@@ -561,6 +547,7 @@ def convert_video_inprocess_host(
                 raise failures[0]
             if encoded_frames[0] != delivered:
                 raise RuntimeError(f"The encoder accepted {encoded_frames[0]} frames instead of {delivered}.")
+            actual_encoder = encoded_container.actual_encoder
             encoded_container.close()
             encoded_container = None
             decoded_container.close()
@@ -571,7 +558,7 @@ def convert_video_inprocess_host(
             pinned_pool = None
             session_status = session.structured_status(
                 decode_backend="+".join(sorted(decode_backends)) or "unknown",
-                encode_backend=encoder.display_name)
+                encode_backend=actual_encoder)
             session.close()
             if session.completed_frames != delivered:
                 raise RuntimeError("RTX Video bridge completion does not match frame accounting.")
@@ -644,13 +631,13 @@ def convert_video_inprocess_host(
             session_status["timings"] = dict(timings)
             session_status["memory_path"] = memory_path
             session_status["pinned_pool"] = pool_status
-            session_status["adapters"] = {"ai": ai_gpu, "decode": ai_gpu, "encode": "CPU"}
+            session_status["adapters"] = {"ai": ai_gpu, "decode": ai_gpu, "encode": actual_encoder}
             session_status["audio_streams"] = audio_diagnostics.get("streams", [])
             destination_file.publish()
             app_log.info(
                 "upscale-host", f"done src={source.name} out={output.name} frames={delivered} "
                 f"elapsed={elapsed:.2f}s fps={delivered / max(elapsed, 1e-9):.1f} "
-                f"encoder={encoder.display_name}")
+                f"encoder={actual_encoder}")
             update(1.0, "Complete — in-process pinned RTX Video path confirmed")
             return UpscaleResult(
                 str(output), report_path, delivered, output_width, output_height,
@@ -658,7 +645,7 @@ def convert_video_inprocess_host(
                 bridge_version=str(capabilities.bridge_version),
                 memory_path=memory_path,
                 decode_backend="+".join(sorted(decode_backends)) or "unknown",
-                encode_backend=encoder.display_name, timings=timings,
+                encode_backend=actual_encoder, timings=timings,
                 bridge_status=session_status)
         finally:
             job.cleanup()

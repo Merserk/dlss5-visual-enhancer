@@ -29,7 +29,7 @@ import time
 from ctypes import wintypes
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractNativeEventFilter, QCoreApplication
+from PySide6.QtCore import QAbstractNativeEventFilter, QCoreApplication, Qt
 
 from ..core.paths import LOGS
 
@@ -44,7 +44,7 @@ WM_NCLBUTTONDOWN = 0x00A1
 # so the QML unsaved-operation confirm dialog keeps working.
 SC_MINIMIZE = 0xF020
 SC_MAXIMIZE = 0xF030
-SC_RESTORE = 0xF061
+SC_RESTORE = 0xF060
 
 SW_MINIMIZE = 6
 SW_MAXIMIZE = 3
@@ -330,27 +330,40 @@ class WinFramelessFilter(QAbstractNativeEventFilter):
         if self._in_dip_rect("minBtnRect", px, py, cx, cy, dpr, CHROME_BTN_TOL_DIP):
             return HTMINBUTTON
 
-        # Resize frame (corners before edges).
-        in_left = px < left + frame
-        in_right = px >= right - frame
-        in_top = py < top + frame
-        in_bottom = py >= bottom - frame
-        if in_top and in_left:
-            return HTTOPLEFT
-        if in_top and in_right:
-            return HTTOPRIGHT
-        if in_bottom and in_left:
-            return HTBOTTOMLEFT
-        if in_bottom and in_right:
-            return HTBOTTOMRIGHT
-        if in_left:
-            return HTLEFT
-        if in_right:
-            return HTRIGHT
-        if in_top:
-            return HTTOP
-        if in_bottom:
-            return HTBOTTOM
+        try:
+            state = self._window.windowState()
+        except Exception:
+            state = Qt.WindowNoState
+        fullscreen = bool(state & Qt.WindowFullScreen)
+        maximized = bool(state & Qt.WindowMaximized)
+        try:
+            maximized = maximized or bool(_user32().IsZoomed(self._hwnd))
+        except Exception:
+            pass
+
+        # Resize only restored windows. The top of a maximized header must
+        # remain a caption so dragging it can restore and move the window.
+        if not maximized and not fullscreen:
+            in_left = px < left + frame
+            in_right = px >= right - frame
+            in_top = py < top + frame
+            in_bottom = py >= bottom - frame
+            if in_top and in_left:
+                return HTTOPLEFT
+            if in_top and in_right:
+                return HTTOPRIGHT
+            if in_bottom and in_left:
+                return HTBOTTOMLEFT
+            if in_bottom and in_right:
+                return HTBOTTOMRIGHT
+            if in_left:
+                return HTLEFT
+            if in_right:
+                return HTRIGHT
+            if in_top:
+                return HTTOP
+            if in_bottom:
+                return HTBOTTOM
 
         # Until QML publishes hit-test rects, keep the header client-side so
         # every button stays clickable via the QML fallbacks.
@@ -363,7 +376,7 @@ class WinFramelessFilter(QAbstractNativeEventFilter):
 
         # Empty header background behaves like a title bar (native drag,
         # double-click maximize, drag-to-snap with proportional restore).
-        if (py - cy) < HEADER_HEIGHT_DIP * dpr:
+        if not fullscreen and (py - cy) < HEADER_HEIGHT_DIP * dpr:
             return HTCAPTION
         return HTCLIENT
 

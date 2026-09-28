@@ -50,6 +50,17 @@ def _redact(text: str) -> str:
     return re.sub(r"(https?://[^\s?]+)\?[^\s'\"]+", r"\1?<redacted>", text)
 
 
+def record_batch_summary(kind: str, completed: int, failed: int,
+                         cancelled: bool, *, archive_error: str = "") -> str:
+    """Write one batch result and return the shared session log path."""
+    status = "cancelled" if cancelled else ("partial" if failed else "success")
+    detail = f"{status} ok={completed} failed={failed}"
+    if archive_error:
+        detail += f" archive_warning={archive_error}"
+    info(kind, detail)
+    return session_path()
+
+
 def sweep_old_sessions(days: int = RETENTION_DAYS) -> None:
     try:
         cutoff = time.time() - days * 86400

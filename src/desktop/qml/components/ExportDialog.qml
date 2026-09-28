@@ -54,7 +54,7 @@ QQC2.Dialog {
     bottomPadding: 20
 
     header: QQC2.Label {
-        text: "Export"
+        text: qsTranslate("App", "Export")
         color: Theme.textPrimary
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSizeTitle
@@ -72,11 +72,11 @@ QQC2.Dialog {
 
         AppSegmentedControl {
             width: parent.width
-            label: "Export Path"
+            label: qsTranslate("App", "Export Path")
             model: [
-                { label: "Same as Input", value: "input" },
-                { label: "Output", value: "output" },
-                { label: "Select Folder", value: "folder" }
+                { label: qsTranslate("App", "Same as Input"), value: "input" },
+                { label: qsTranslate("App", "Output"), value: "output" },
+                { label: qsTranslate("App", "Select Folder"), value: "folder" }
             ]
             currentValue: exportDialog.destinationMode
             onActivated: (value) => { exportDialog.destinationMode = value; exportDialog.errorMessage = "" }
@@ -86,10 +86,10 @@ QQC2.Dialog {
             width: parent.width
             wrapMode: Text.WordWrap
             text: exportDialog.destinationMode === "input"
-                  ? "Save each result beside its source file."
+                  ? qsTranslate("App", "Save each result beside its source file.")
                   : (exportDialog.destinationMode === "output"
-                     ? "Save results in the program's outputs folder."
-                     : "Choose the folder where results will be saved.")
+                     ? qsTranslate("App", "Save results in the program's outputs folder.")
+                     : qsTranslate("App", "Choose the folder where results will be saved."))
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSizeLabel
             color: Theme.textSecondary
@@ -100,7 +100,7 @@ QQC2.Dialog {
             spacing: 6
             visible: exportDialog.destinationMode === "folder"
             AppButton {
-                text: "Choose Folder..."
+                text: qsTranslate("App", "Choose Folder...")
                 iconName: "browse_folder"
                 onClicked: folderDialog.open()
             }
@@ -108,7 +108,7 @@ QQC2.Dialog {
                 width: parent.width
                 text: exportDialog.selectedFolder
                       ? decodeURIComponent(exportDialog.selectedFolder.replace(/^file:\/\/\//, ""))
-                      : "No folder selected"
+                      : qsTranslate("App", "No folder selected")
                 elide: Text.ElideMiddle
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeLabel
@@ -118,7 +118,7 @@ QQC2.Dialog {
 
         AppSegmentedControl {
             width: parent.width
-            label: "Rename Mode"
+            label: qsTranslate("App", "Rename Mode")
             model: exportDialog.appBridge ? exportDialog.appBridge.renameModeChoices : []
             currentValue: exportDialog.renameMode
             onActivated: (value) => { exportDialog.renameMode = value; exportDialog.errorMessage = "" }
@@ -127,7 +127,7 @@ QQC2.Dialog {
         AppTextField {
             visible: exportDialog.renameMode === "Custom"
             width: parent.width
-            label: "Custom Suffix"
+            label: qsTranslate("App", "Custom Suffix")
             text: exportDialog.customSuffix
             onTextEdited: (value) => { exportDialog.customSuffix = value; exportDialog.errorMessage = "" }
         }
@@ -146,12 +146,12 @@ QQC2.Dialog {
             width: parent.width
             spacing: 8
             AppButton {
-                text: "Cancel"
+                text: qsTranslate("App", "Cancel")
                 width: (parent.width - 8) / 2
                 onClicked: exportDialog.close()
             }
             AppButton {
-                text: "Export / Start"
+                text: qsTranslate("App", "Export / Start")
                 iconName: "start_render"
                 variant: "primary"
                 width: (parent.width - 8) / 2
@@ -172,7 +172,7 @@ QQC2.Dialog {
 
     FolderDialog {
         id: folderDialog
-        title: "Select Export Folder"
+        title: qsTranslate("App", "Select Export Folder")
         onAccepted: {
             exportDialog.selectedFolder = selectedFolder.toString()
             exportDialog.errorMessage = ""

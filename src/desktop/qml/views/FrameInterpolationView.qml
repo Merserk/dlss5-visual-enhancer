@@ -34,7 +34,7 @@ Item {
                 appBridge: root.appBridge
                 queueModel: root.appBridge ? root.appBridge.fiQueue : null
                 hidden: appBridge ? appBridge.focusPreview : false
-                expandedHeight: appBridge ? appBridge.queueHeight : 190
+                expandedHeight: appBridge ? appBridge.queueHeight : 330
             }
         }
 
@@ -85,7 +85,7 @@ Item {
                         // Card 1: Frame Generation Configuration
                         AppCard {
                             width: parent.width
-                            title: "DLSS Frame Generation"
+                            title: qsTranslate("App", "DLSS Frame Generation")
 
                             Column {
                                 width: parent.width
@@ -93,7 +93,7 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Target Output Frame Rate"
+                                    label: qsTranslate("App", "Target Output Frame Rate")
                                     model: appBridge ? appBridge.fiFpsChoices : []
                                     currentValue: appBridge ? appBridge.fiTargetFps : "60"
                                     onActivated: (v) => { if (appBridge) appBridge.fiTargetFps = v }
@@ -101,7 +101,7 @@ Item {
 
                                 AppSegmentedControl {
                                     width: parent.width
-                                    label: "DLSS-G Engine"
+                                    label: qsTranslate("App", "DLSS-G Engine")
                                     model: appBridge ? appBridge.fiEngineChoices : []
                                     currentValue: appBridge ? appBridge.fiEngine : "Auto"
                                     onActivated: (v) => { if (appBridge) appBridge.fiEngine = v }
@@ -121,7 +121,7 @@ Item {
                         // Card 2: Export Settings
                         AppCard {
                             width: parent.width
-                            title: "Encoding & Output"
+                            title: qsTranslate("App", "Encoding & Output")
 
                             Column {
                                 width: parent.width
@@ -129,23 +129,25 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Video Codec"
+                                    label: qsTranslate("App", "Video Codec")
                                     model: appBridge ? appBridge.codecChoices : []
                                     currentValue: appBridge ? appBridge.fiCodec : "H.264 (NVIDIA NVENC)"
                                     onActivated: (v) => { if (appBridge) appBridge.fiCodec = v }
                                 }
 
                                 AppComboBox {
+                                    objectName: "fiContainerSelector"
                                     width: parent.width
-                                    label: "Container (automatic)"
-                                    model: appBridge ? appBridge.containerChoices : []
+                                    label: qsTranslate("App", "Container")
+                                    model: appBridge ? appBridge.fiContainerChoices : []
                                     currentValue: appBridge ? appBridge.fiContainer : "MP4"
-                                    enabled: false
+                                    enabled: !!appBridge
+                                    onActivated: (v) => { if (appBridge) appBridge.fiContainer = v }
                                 }
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: "Quality Preset"
+                                    label: qsTranslate("App", "Quality Preset")
                                     visible: !appBridge || appBridge.fixedQualityCodecs.indexOf(appBridge.fiCodec) < 0
                                     model: appBridge ? appBridge.encodingQualityChoices : []
                                     currentValue: appBridge ? appBridge.fiQuality : "Auto (Default)"
@@ -154,13 +156,13 @@ Item {
 
                                 Text {
                                     visible: appBridge && appBridge.fixedQualityCodecs.indexOf(appBridge.fiCodec) >= 0
-                                    text: "Quality Preset: Fixed by codec"
+                                    text: qsTranslate("App", "Quality Preset: Fixed by codec")
                                     color: Theme.textSecondary
                                     font.pixelSize: Theme.fontSizeSmall
                                 }
 
                                 AppCheckBox {
-                                    label: "Preserve 10-bit HDR"
+                                    label: qsTranslate("App", "Preserve 10-bit HDR")
                                     checked: appBridge ? appBridge.fiHdrMode : false
                                     enabled: appBridge ? appBridge.fiHdrSupported : false
                                     onToggled: (c) => { if (appBridge) appBridge.fiHdrMode = c }
@@ -190,7 +192,7 @@ Item {
                             spacing: 8
 
                             AppButton {
-                                text: "Preview"
+                                text: qsTranslate("App", "Preview")
                                 iconName: "preview"
                                 width: Math.max(100, parent.width - 156)
                                 buttonHeight: 30
@@ -210,20 +212,20 @@ Item {
                             AppIconButton {
                                 iconName: "reset"
                                 buttonSize: 30
-                                tooltipText: "Reset interpolation settings"
+                                tooltipText: qsTranslate("App", "Reset interpolation settings")
                                 onClicked: { if (appBridge) appBridge.resetTabSettings("frame-interpolation") }
                             }
 
                             AppIconButton {
                                 iconName: "outputs_folder"
                                 buttonSize: 30
-                                tooltipText: "Open outputs folder"
+                                tooltipText: qsTranslate("App", "Open outputs folder")
                                 onClicked: { if (appBridge) appBridge.openFolder("") }
                             }
                         }
 
                         AppButton {
-                            text: appBridge && appBridge.canStop ? "Stop" : "Interpolate Video(s)"
+                            text: appBridge && appBridge.canStop ? qsTranslate("App", "Stop") : qsTranslate("App", "Interpolate Video(s)")
                             iconName: appBridge && appBridge.canStop ? "stop" : "start_render"
                             variant: appBridge && appBridge.canStop ? "danger" : "primary"
                             width: parent.width

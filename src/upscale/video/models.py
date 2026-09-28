@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass, field, fields
 from fractions import Fraction
 
-from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, container_for_codec, hdr_mode_supported, validate_codec_container
+from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, hdr_mode_supported, resolve_container, validate_codec_container
 from ...core.naming import validate_rename
 from ...core.dlss_modes import UPSCALE_ENGINES, dlss_output_size, validate_dlss
 
@@ -34,7 +34,7 @@ class UpscaleOptions:
     hdr_middle_gray: int = 50
     hdr_peak_luminance: int = 1000
     hdr_precision: str = "Packed 10-bit"
-    codec: str = "H.265 (NVIDIA NVENC)"
+    codec: str = "H.265"
     container: str = "MKV"
     quality: str = "Auto (Default)"
     rename_mode: str = "Auto"
@@ -94,7 +94,7 @@ SETTING_FIELDS = tuple(f.name for f in fields(UpscaleOptions) if f.name not in {
 
 def options_from_settings(settings) -> UpscaleOptions:
     values = {name: getattr(settings, "upscale_" + name) for name in SETTING_FIELDS}
-    values["container"] = container_for_codec(values["codec"])
+    values["container"] = resolve_container(values["codec"], values["container"])
     return UpscaleOptions(**values,
                           ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid)
 

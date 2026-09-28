@@ -20,7 +20,7 @@ from typing import Any
 from ..core.paths import PREVIEW_CACHE
 
 
-CACHE_SCHEMA = 1
+CACHE_SCHEMA = 2
 _LOCK = threading.RLock()
 
 

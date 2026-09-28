@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import os
 import shutil
 import tempfile
 import time
@@ -14,10 +15,12 @@ import numpy as np
 from ..core import app_log, ffmpeg
 from ..core.batch_progress import BatchProgress
 from ..core.cache_cleanup import prune_preview_cache
+from ..core.cache_video import cache_ffmpeg_args, cache_video_format
 from ..core.disk_paths import OutputFile, prepare_output_dir
 from ..core.dlss_modes import dlss_output_size
 from ..core.ffmpeg.audio import plan_audio_streams
 from ..core.ffmpeg.encoder import _codec_command
+from ..core.ffmpeg.preview import decode_preview_frame, extract_preview_subclip
 from ..core.gpu_detection import detect_gpus
 from ..core.jobs import Cancelled, JobController
 from ..core.naming import output_filename, unique_output_path
@@ -45,17 +48,16 @@ from ..upscale.video.processor import upscale_video
 from .coloring import (apply_cube_lut, compose_cube_lut, has_lut_adjustments,
                        identity_cube_lut, load_cube_lut, match_image_colors, save_cube_lut)
 from .cas_sharpening import sharpen_image, sharpen_video
-from .denoising import denoise_image, denoise_video
 from .preview_cache import PreviewStageCache, cache_key, file_identity, optional_file_identity
 
 
 LOSSLESS_VIDEO = "FFV1 Lossless RGB 10-bit"
 STAGE_LABELS = {
-    "denoising": "Denoising",
     "neural_model": "DLSS Neural Rendering",
     "scale_method": "Scaling",
     "dlss_super_resolution": "DLSS Super Resolution",
     "super_resolution": "RTX Super Resolution",
+    "rtx_video_hdr": "RTX Video HDR",
     "frame_generation": "DLSS Frame Generation",
     "coloring": "Coloring",
     "cas_sharpening": "Sharpening",
@@ -80,9 +82,12 @@ _IMAGE_VSR_FIELDS = (
     "upscale_image_height", "upscale_image_aspect_lock",
 )
 _VIDEO_VSR_FIELDS = (
-    "upscale_vsr_enabled", "upscale_vsr_quality", "upscale_size_mode",
+    "upscale_vsr_quality", "upscale_size_mode",
     "upscale_scale_factor", "upscale_width", "upscale_height",
-    "upscale_aspect_lock", "upscale_hdr_enabled", "upscale_hdr_contrast",
+    "upscale_aspect_lock",
+)
+_VIDEO_HDR_FIELDS = (
+    "upscale_hdr_contrast",
     "upscale_hdr_saturation", "upscale_hdr_middle_gray",
     "upscale_hdr_peak_luminance", "upscale_hdr_precision",
 )
@@ -94,12 +99,15 @@ def _preview_runtime_identity() -> list[dict | None]:
     source_root = Path(__file__).resolve().parents[1]
     return [optional_file_identity(path) for path in
             (Path(__file__), Path(__file__).with_name("coloring.py"),
-             Path(__file__).with_name("denoising.py"),
              Path(__file__).with_name("cas_sharpening.py"),
-             Path(__file__).with_name("nis_sharpening.py"),
+             source_root / "core" / "ffmpeg" / "vulkan.py",
+             source_root / "core" / "ffmpeg" / "filters.py",
+             source_root / "core" / "ffmpeg" / "sharpening.py",
              source_root / "core" / "dlss_bridge.py",
              source_root / "upscale" / "image" / "processor.py",
              source_root / "upscale" / "video" / "processor.py",
+             source_root / "upscale" / "video" / "media.py",
+             source_root / "upscale" / "video" / "host_pipeline.py",
              source_root / "neural_rendering" / "image" / "batch.py",
              source_root / "neural_rendering" / "video" / "processor.py",
              source_root / "frame_interpolation" / "processor.py",
@@ -115,11 +123,7 @@ def _stage_cache_settings(settings: UISettings, mode: str, stage: str, hdr: bool
     """Only settings consumed by this card belong to its cache key."""
     fields: tuple[str, ...]
     extras: dict = {}
-    if stage == "denoising":
-        fields = ("denoise_strength", "denoise_deblock")
-        if mode == "Video":
-            fields += ("denoise_temporal",)
-    elif stage == "cas_sharpening":
+    if stage == "cas_sharpening":
         fields = ("cas_sharpness", "sharpening_method")
     elif stage == "neural_model":
         fields = _NR_FIELDS + (("shimmer_suppression", "video_gpu_uuid") if mode == "Video" else ())
@@ -138,6 +142,8 @@ def _stage_cache_settings(settings: UISettings, mode: str, stage: str, hdr: bool
     elif stage == "super_resolution":
         fields = (("ai_gpu_uuid",) + _IMAGE_VSR_FIELDS if mode == "Image" else
                   ("ai_gpu_uuid", "video_gpu_uuid") + _VIDEO_VSR_FIELDS)
+    elif stage == "rtx_video_hdr":
+        fields = ("ai_gpu_uuid", "video_gpu_uuid") + _VIDEO_HDR_FIELDS
     elif stage == "frame_generation":
         fields = ("frame_interpolation_target_fps", "frame_interpolation_engine",
                   "ai_gpu_uuid", "video_gpu_uuid")
@@ -156,23 +162,12 @@ def _stage_cache_settings(settings: UISettings, mode: str, stage: str, hdr: bool
             extras["lut"] = (file_identity(settings.lut_path) if settings.lut_path else None)
     else:
         raise ValueError(f"Unknown processing card: {stage}")
-    return {**{name: getattr(settings, name) for name in fields}, **extras}
+    return {"ffmpeg_device": settings.ffmpeg_device, **{name: getattr(settings, name) for name in fields}, **extras}
 
 
-def _video_scaling_filter(width: int, height: int, method: str) -> tuple[list[str], str]:
-    """Return FFmpeg device arguments and the exact requested scaler."""
-    if method == "Spline36":
-        return [], f"format=gbrp10le,zscale=w={width}:h={height}:filter=spline36:matrixin=gbr:matrix=gbr"
-    if method == "EWA Lanczos":
-        return ["-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk"], (
-            "format=gbrp10le,hwupload,"
-            f"libplacebo=w={width}:h={height}:upscaler=ewa_lanczos:downscaler=ewa_lanczos,"
-            "hwdownload,format=gbrp10le"
-        )
-    flags = {"Lanczos": "lanczos", "Bicubic": "bicubic", "Area": "area", "Bilinear": "bilinear"}
-    if method not in flags:
-        raise ValueError(f"Unknown video scaling filter: {method!r}.")
-    return [], f"scale={width}:{height}:flags={flags[method]}"
+def _video_scaling_filter(width: int, height: int, method: str) -> str:
+    from ..core.ffmpeg.filters import scaling_filter
+    return "ve_gpu," + scaling_filter(width, height, method)
 
 
 @dataclass(frozen=True)
@@ -210,6 +205,16 @@ def enabled_stages(settings: UISettings, mode: str) -> tuple[str, ...]:
     return tuple(stage for stage in order if stage in enabled)
 
 
+def preview_settings_key(settings: UISettings, mode: str, *, hdr: bool = False) -> str:
+    """Identify the active pipeline, ignoring controls in disabled cards."""
+    stages = []
+    for stage in enabled_stages(settings, mode):
+        stages.append((stage, _stage_cache_settings(settings, mode, stage, hdr)))
+        if stage == "rtx_video_hdr":
+            hdr = True
+    return cache_key({"mode": mode, "stages": stages})
+
+
 def estimate_pipeline(width: int, height: int, fps: float, hdr: bool,
                       settings: UISettings, mode: str) -> PipelineEstimate:
     """Preflight every enabled stage in its actual execution order."""
@@ -218,9 +223,7 @@ def estimate_pipeline(width: int, height: int, fps: float, hdr: bool,
     if mode == "Video" and fps <= 0:
         raise ValueError("Input frame rate is unavailable; video export needs a known FPS.")
     for stage in enabled_stages(settings, mode):
-        if stage == "denoising":
-            pass  # Pixel size, frame rate and HDR flags are preserved.
-        elif stage == "cas_sharpening":
+        if stage == "cas_sharpening":
             if mode == "Video" and hdr and settings.cas_sharpness:
                 raise ValueError("Sharpening requires SDR video at this position. Move it before HDR conversion.")
         elif stage == "neural_model":
@@ -247,12 +250,18 @@ def estimate_pipeline(width: int, height: int, fps: float, hdr: bool,
             else:
                 if hdr:
                     raise ValueError("RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.")
-                opts = replace(video_upscale_options(settings), engine="RTX Video Super Resolution",
-                               codec=LOSSLESS_VIDEO,
-                               container="MKV", quality="Auto (Default)")
+                opts = _video_upscale_stage_options(settings, stage)
                 opts.validate(for_render=True)
                 width, height, _ = video_upscale_size(width, height, opts)
-                hdr = opts.hdr_enabled
+        elif stage == "rtx_video_hdr":
+            if mode != "Video":
+                raise ValueError("RTX Video HDR accepts video only.")
+            if hdr:
+                raise ValueError("RTX Video HDR requires SDR video at this position.")
+            opts = _video_upscale_stage_options(settings, stage)
+            opts.validate(for_render=True)
+            width, height, _ = video_upscale_size(width, height, opts)
+            hdr = True
         elif stage == "frame_generation":
             if mode != "Video":
                 raise ValueError("DLSS Frame Generation accepts video only.")
@@ -286,7 +295,7 @@ def estimate_pipeline(width: int, height: int, fps: float, hdr: bool,
             raise ValueError("HDR output requires 10-bit HDR Mode in Export Settings.")
         if hdr and not ffmpeg.hdr_mode_supported(settings.codec):
             raise ValueError("HDR output requires a 10-bit capable codec in Export Settings.")
-        ffmpeg.validate_codec_container(settings.codec, ffmpeg.container_for_codec(settings.codec))
+        ffmpeg.resolve_container(settings.codec, settings.container)
     return PipelineEstimate(width, height, fps, hdr)
 
 
@@ -348,31 +357,21 @@ def preflight_capabilities(settings: UISettings, mode: str,
     stages = stages_override if stages_override is not None else enabled_stages(settings, mode)
     if not stages:
         return
-    needs_ai_gpu = bool(set(stages) & {"neural_model", "dlss_super_resolution", "super_resolution", "frame_generation"})
+    from ..core.ffmpeg.vulkan import filter_device
+    filter_device(settings.ffmpeg_device)
+    needs_ai_gpu = bool(set(stages) & {"neural_model", "dlss_super_resolution", "super_resolution", "rtx_video_hdr", "frame_generation"})
     if needs_ai_gpu:
         from ..core.gpu_selection import detect_gpu
 
         detect_gpu(settings.ai_gpu_uuid)
-    if mode == "Video" and "scale_method" in stages and settings.video_scaling_filter == "EWA Lanczos":
-        device_args, filter_graph = _video_scaling_filter(64, 64, "EWA Lanczos")
-        try:
-            _run_command([str(FFMPEG), "-hide_banner", "-loglevel", "error",
-                          *device_args, "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=1:duration=1",
-                          "-vf", filter_graph, "-frames:v", "1", "-f", "null", "-"],
-                         controller or JobController(), "EWA Lanczos capability check")
-        except RuntimeError as exc:
-            raise ValueError("EWA Lanczos requires FFmpeg libplacebo and an available Vulkan device.") from exc
-    if "super_resolution" in stages:
-        vsr = mode == "Image" or settings.upscale_vsr_enabled
-        hdr = mode == "Video" and settings.upscale_hdr_enabled
-        if vsr or hdr:
-            from ..upscale.video.native import probe_capabilities
+    if set(stages) & {"super_resolution", "rtx_video_hdr"}:
+        from ..upscale.video.native import probe_capabilities
 
-            caps = probe_capabilities(settings.ai_gpu_uuid, controller=controller)
-            if vsr and not caps.vsr.get("available"):
-                raise ValueError("RTX Super Resolution requires an available RTX Video Super Resolution runtime.")
-            if hdr and not caps.hdr.get("available"):
-                raise ValueError("RTX Video HDR requires an available RTX Video HDR runtime.")
+        caps = probe_capabilities(settings.ai_gpu_uuid, controller=controller)
+        if "super_resolution" in stages and not caps.vsr.get("available"):
+            raise ValueError("RTX Super Resolution requires an available RTX Video Super Resolution runtime.")
+        if "rtx_video_hdr" in stages and not caps.hdr.get("available"):
+            raise ValueError("RTX Video HDR requires an available RTX Video HDR runtime.")
     if "frame_generation" in stages:
         from ..frame_interpolation.capabilities import probe_frame_interpolation_capabilities
 
@@ -382,35 +381,9 @@ def preflight_capabilities(settings: UISettings, mode: str,
 
 
 def _run_command(command: list[str], controller: JobController, label: str,
-                 *, cwd: Path | None = None) -> None:
-    if controller.cancel.is_set():
-        raise Cancelled("Render stopped by user.")
-    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                               cwd=cwd,
-                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    controller.register(process)
-    try:
-        while True:
-            if controller.cancel.is_set():
-                raise Cancelled("Render stopped by user.")
-            try:
-                _, stderr = process.communicate(timeout=0.2)
-                break
-            except subprocess.TimeoutExpired:
-                continue
-        if process.returncode:
-            raise RuntimeError(f"{label} failed: {stderr.decode('utf-8', 'replace')[-2500:]}")
-    finally:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-        controller.unregister(process)
-        if process.stderr:
-            process.stderr.close()
+                 *, cwd: Path | None = None, progress=None, metadata: dict | None = None) -> None:
+    from ..core.ffmpeg.vulkan import run
+    run(command, controller, label, cwd=cwd, progress=progress, metadata=metadata)
 
 
 def _neural_image_options(settings: UISettings) -> ImageConversionOptions:
@@ -432,6 +405,7 @@ def _neural_image_options(settings: UISettings) -> ImageConversionOptions:
 
 
 def _neural_video_options(settings: UISettings, hdr: bool) -> ConversionOptions:
+    cache_codec, cache_container, _ = cache_video_format(settings.cache_codec)
     return ConversionOptions(
         ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid,
         nr_style=settings.nr_style, nr_intensity=settings.nr_intensity,
@@ -445,15 +419,23 @@ def _neural_video_options(settings: UISettings, hdr: bool) -> ConversionOptions:
         shimmer_suppression=settings.shimmer_suppression,
         mask_feather=settings.mask_feather, nr_mask=settings.nr_mask,
         automatic_mask=settings.automatic_mask, upscaling_factor=1.0,
-        scale_method="Standard", codec=LOSSLESS_VIDEO, container="MKV",
+        scale_method="Standard", codec=cache_codec, container=cache_container,
         quality="Auto (Default)", preserve_hdr=hdr,
     )
 
 
+def _video_upscale_stage_options(settings: UISettings, stage: str):
+    # Each card owns its operation. Legacy combined-card switches must not
+    # enable HDR inside VSR or cause the standalone HDR card to resize frames.
+    cache_codec, cache_container, _ = cache_video_format(settings.cache_codec)
+    return replace(video_upscale_options(settings),
+                   engine="DLSS" if stage == "dlss_super_resolution" else "RTX Video Super Resolution",
+                   vsr_enabled=stage != "rtx_video_hdr", hdr_enabled=stage == "rtx_video_hdr",
+                   codec=cache_codec, container=cache_container, quality="Auto (Default)")
+
+
 def _image_stage(source: Path, stage: str, settings: UISettings,
                  directory: Path, controller: JobController, progress) -> Path:
-    if stage == "denoising":
-        return denoise_image(source, settings, directory, controller, progress, _run_command)
     if stage == "cas_sharpening":
         return sharpen_image(source, settings, directory, controller, progress)
     if stage == "neural_model":
@@ -470,11 +452,13 @@ def _image_stage(source: Path, stage: str, settings: UISettings,
         target_width, target_height = resolve_output_size(width, height, settings.upscaling_factor)
         output = directory / "scaled.tiff"
         _encode_image(output, resize_fit(decoded.rgba, target_width, target_height,
-                                         interpolation=settings.image_scaling_filter),
+                                         interpolation=settings.image_scaling_filter, controller=controller),
                       ImageConversionOptions(output_format="TIFF", preserve_metadata=False),
                       {}, generate_preview=False, controller=controller,
                       has_transparency=decoded.alpha is not None)
         return output
+    if stage not in {"dlss_super_resolution", "super_resolution"}:
+        raise ValueError(f"Unknown image processing card: {stage}")
     opts = replace(image_upscale_options(settings),
                    engine="DLSS" if stage == "dlss_super_resolution" else "RTX Video Super Resolution",
                    output_format="TIFF", quality=100)
@@ -490,7 +474,7 @@ def _coloring_image_stage(current: Path, input_image: Path, settings: UISettings
         lut = load_cube_lut(settings.lut_path) if settings.lut_path else identity_cube_lut()
         if has_lut_adjustments(settings):
             lut = compose_cube_lut(lut, settings, settings.lut_resolution)
-        matched = apply_cube_lut(rendered.rgba, lut)
+        matched = apply_cube_lut(rendered.rgba, lut, controller=controller)
         message = "Applying LUT"
     else:
         reference = (input_image if settings.color_match_source == "Input Image"
@@ -523,28 +507,21 @@ def _coloring_video_stage(source: Path, settings: UISettings, directory: Path,
         save_cube_lut(staged_lut, settings.lut_path or None, settings, controller=controller)
     load_cube_lut(staged_lut)
     metadata = ffmpeg.probe_video(source, count_mode="metadata", controller=controller)
-    color_args: list[str] = []
-    for key, flag in (("color_primaries", "-color_primaries"),
-                      ("color_transfer", "-color_trc")):
-        value = metadata.get(key)
-        if value and value != "unknown":
-            color_args.extend((flag, str(value)))
-    output = directory / "coloring.mkv"
-    progress(0.1, "Applying LUT to video")
+    output = directory / ("coloring" + cache_video_format(settings.cache_codec)[2])
+    progress(0.0, "Applying LUT to video")
     _run_command([str(FFMPEG), "-hide_banner", "-loglevel", "error", "-y",
                   "-i", str(source), "-map", "0:v:0", "-map_metadata", "0", "-an",
-                  "-vf", "format=gbrp10le,lut3d=file=reference.cube:interp=trilinear,format=gbrp10le",
-                  "-c:v", "ffv1", "-level", "3", "-pix_fmt", "gbrp10le",
-                  "-fps_mode", "passthrough", *color_args, "-color_range", "pc",
-                  str(output)], controller, "Video LUT", cwd=directory)
+                  "-vf", "ve_gpu,libplacebo=lut=reference.cube:lut_type=native:deband=0:dithering=-1:format=gbrp10le",
+                  *cache_ffmpeg_args(settings.cache_codec, metadata),
+                  "-fps_mode", "passthrough",
+                  str(output)], controller, "Applying LUT to video", cwd=directory,
+                 progress=progress, metadata=metadata)
     progress(1.0, "LUT complete")
     return output
 
 
 def _video_stage(source: Path, stage: str, settings: UISettings, hdr: bool,
                  directory: Path, controller: JobController, progress) -> Path:
-    if stage == "denoising":
-        return denoise_video(source, settings, directory, controller, progress, _run_command)
     if stage == "cas_sharpening":
         return sharpen_video(source, settings, directory, controller, progress)
     if stage == "neural_model":
@@ -554,27 +531,25 @@ def _video_stage(source: Path, stage: str, settings: UISettings, hdr: bool,
         metadata = ffmpeg.probe_video(source, count_mode="metadata", controller=controller)
         width, height = resolve_output_size(int(metadata["width"]), int(metadata["height"]),
                                             settings.upscaling_factor)
-        output = directory / "scaled.mkv"
-        device_args, filter_graph = _video_scaling_filter(width, height, settings.video_scaling_filter)
+        output = directory / ("scaled" + cache_video_format(settings.cache_codec)[2])
+        filter_graph = _video_scaling_filter(width, height, settings.video_scaling_filter)
         _run_command([str(FFMPEG), "-hide_banner", "-loglevel", "error", "-y",
-                      *device_args, "-i", str(source),
-                      "-map", "0:v:0", "-map_metadata", "0", "-vf", filter_graph, "-c:v", "ffv1",
-                      "-level", "3", "-pix_fmt", "gbrp10le", str(output)],
-                     controller, f"{settings.video_scaling_filter} scaling")
+                      "-i", str(source),
+                      "-map", "0:v:0", "-map_metadata", "0", "-vf", filter_graph,
+                      *cache_ffmpeg_args(settings.cache_codec, metadata), str(output)],
+                     controller, f"{settings.video_scaling_filter} scaling",
+                     progress=progress, metadata=metadata)
         return output
-    elif stage in {"dlss_super_resolution", "super_resolution"}:
-        opts = video_upscale_options(settings)
-        opts = replace(opts, engine="DLSS" if stage == "dlss_super_resolution"
-                       else "RTX Video Super Resolution",
-                       hdr_enabled=False if stage == "dlss_super_resolution" else opts.hdr_enabled)
-        opts = replace(opts, codec=LOSSLESS_VIDEO, container="MKV", quality="Auto (Default)")
+    elif stage in {"dlss_super_resolution", "super_resolution", "rtx_video_hdr"}:
+        opts = _video_upscale_stage_options(settings, stage)
         result = upscale_video(source, opts, progress, output_dir=directory, controller=controller)
     elif stage == "frame_generation":
+        cache_codec, cache_container, _ = cache_video_format(settings.cache_codec)
         opts = FrameInterpolationOptions(
             ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid,
             target_fps=settings.frame_interpolation_target_fps,
             engine=settings.frame_interpolation_engine,
-            codec=LOSSLESS_VIDEO, container="MKV", quality="Auto (Default)",
+            codec=cache_codec, container=cache_container, quality="Auto (Default)",
             hdr_mode=hdr,
         )
         result = interpolate_video(source, opts, progress, output_dir=directory,
@@ -619,20 +594,51 @@ def _export_image(current: Path, destination: Path,
         output.cleanup()
 
 
+def _publish_video_preview(current: Path, destination: Path, controller: JobController) -> Path:
+    """Keep the completed lossless clip available without another encode.
+
+    A hard link is enough on the same volume. Cross-volume or optional-cache
+    fallback copies remain cancellable and are published atomically.
+    """
+    destination = destination.with_suffix(current.suffix)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    output = OutputFile(destination)
+    try:
+        if controller.cancel.is_set():
+            raise Cancelled("Preview cancelled.")
+        output.temporary.unlink()
+        try:
+            os.link(current, output.temporary)
+        except OSError:
+            with current.open("rb") as source, output.temporary.open("wb") as target:
+                while data := source.read(1024 * 1024):
+                    if controller.cancel.is_set():
+                        raise Cancelled("Preview cancelled.")
+                    target.write(data)
+        if controller.cancel.is_set():
+            raise Cancelled("Preview cancelled.")
+        output.publish()
+    finally:
+        output.cleanup()
+    return destination
+
+
 def _export_video(source: Path, current: Path, destination: Path,
                   settings: UISettings, controller: JobController,
-                  *, preview: bool = False, pipeline_hdr: bool = False) -> None:
-    metadata = ffmpeg.probe_video(current, count_mode="metadata", controller=controller)
+                  *, pipeline_hdr: bool = False, progress=None,
+                  video_filter: str | None = None, output_metadata: dict | None = None,
+                  working_directory: Path | None = None, verify_output: bool = False) -> None:
+    metadata = output_metadata or ffmpeg.probe_video(current, count_mode="metadata", controller=controller)
     width, height = int(metadata["width"]), int(metadata["height"])
-    codec = "H.264" if preview else settings.codec
-    quality = "Best" if preview else settings.quality
-    container = "MP4" if preview else ffmpeg.container_for_codec(codec)
+    codec = settings.codec
+    quality = settings.quality
+    container = ffmpeg.resolve_container(codec, settings.container)
     current_hdr = bool(metadata.get("hdr")) or pipeline_hdr
-    hdr = current_hdr and not preview
+    hdr = current_hdr
     source_metadata = ffmpeg.probe_video(source, count_mode="metadata", controller=controller)
     encode_metadata = dict(metadata)
     # FFV1 RGB intermediates report matrix=gbr. Delivery codecs need the
-    # original YUV matrix, or BT.2020 for HDR created by Super Resolution.
+    # original YUV matrix, or BT.2020 for HDR created by RTX Video HDR.
     if metadata.get("color_space") == "gbr" and codec != LOSSLESS_VIDEO:
         encode_metadata["color_space"] = "bt2020nc" if hdr else (
             source_metadata.get("color_space")
@@ -644,39 +650,39 @@ def _export_video(source: Path, current: Path, destination: Path,
         encode_metadata["color_primaries"] = "bt2020"
         encode_metadata["color_transfer"] = "smpte2084"
         encode_metadata["color_space"] = "bt2020nc"
-    elif preview and current_hdr:
-        encode_metadata.update(color_space="bt709", color_primaries="bt709",
-                               color_transfer="bt709", color_range="tv")
-    tone_map = None
-    if preview and current_hdr:
-        tone_map = (
-            "zscale=matrixin=gbr:primariesin=bt2020:transferin=smpte2084:rangein=full:"
-            "transfer=linear:npl=100,format=gbrpf32le,zscale=primaries=bt709,"
-            "tonemap=mobius:desat=2:peak=10,zscale=transfer=bt709:matrix=bt709:"
-            "range=limited,format=yuv420p"
-        )
-    gpu = ffmpeg.resolve_video_gpu(detect_gpus(), settings.video_gpu_uuid,
+    gpu = ffmpeg.resolve_video_gpu((), settings.video_gpu_uuid,
                                    codec, width, height)
     codec_args, _, _ = _codec_command(codec, quality, width, height,
                                      float(metadata["fps"]),
                                      None if gpu is None else int(gpu["cuda_ordinal"]),
                                      hdr_mode=hdr, hdr_metadata=encode_metadata,
-                                     speed_profile="preview" if preview else "default")
+                                     speed_profile="default")
     audio = plan_audio_streams(source, container, controller)
     output = OutputFile(destination)
     try:
         command = [str(FFMPEG), "-hide_banner", "-loglevel", "error", "-y",
+                   *(["-xerror"] if verify_output else []),
                    "-i", str(current), "-i", str(source),
                    "-map", "0:v:0", "-map", "1:a?", "-map_metadata", "1",
-                   "-map_chapters", "1", *codec_args,
-                   *(["-vf", tone_map, "-color_primaries", "bt709", "-color_trc", "bt709",
-                      "-colorspace", "bt709", "-color_range", "tv"] if tone_map else []),
+                   "-map_chapters", "1", *(["-vf", video_filter] if video_filter else []), *codec_args,
                    *audio.encoder_args(), "-fps_mode", "passthrough",
                    "-t", f"{max(float(metadata.get('duration') or 0), 1 / float(metadata['fps'])):.9f}",
                    str(output.temporary)]
-        _run_command(command, controller, "Video export")
+        _run_command(command, controller, "Video export", progress=progress, metadata=metadata,
+                     cwd=working_directory)
         if controller.cancel.is_set():
             raise Cancelled("Render stopped by user.")
+        if verify_output:
+            saved = ffmpeg.probe_video(output.temporary, count_mode="packets", controller=controller)
+            if ((int(saved["width"]), int(saved["height"])) != (width, height)
+                    or int(saved["frames"]) < 1
+                    or (int(metadata.get("frames") or 0) > 0
+                        and int(saved["frames"]) != int(metadata["frames"]))):
+                raise RuntimeError("Video export frame count or dimensions do not match the processing pipeline.")
+            if hdr and (not saved.get("hdr") or int(saved.get("depth") or 0) < 10):
+                raise RuntimeError("Video export lost HDR signaling or precision.")
+            if controller.cancel.is_set():
+                raise Cancelled("Render stopped by user.")
         output.publish()
     finally:
         output.cleanup()
@@ -687,6 +693,7 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
                 capabilities_checked: bool = False,
                 preview_cache: PreviewStageCache | None = None,
                 source_cache_key: str | None = None) -> str:
+    controller.ffmpeg_device = settings.ffmpeg_device
     preflight_source(source, settings, mode)
     if not capabilities_checked and preview_cache is None:
         preflight_capabilities(settings, mode, controller)
@@ -695,7 +702,14 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
                                                    "source": file_identity(source)})) if preview_cache else ""
     JOBS.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="visual-workflow-", dir=JOBS) as temp:
+        if mode == "Video" and not preview and settings.cache_memory_mode == "rolling":
+            from .rolling_workflow import render_rolling_video
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            return render_rolling_video(source, settings, destination, controller,
+                                        Path(temp), stages, progress)
         current = source
+        # Smart previews remain lossless and share their existing FFV1 cache keys.
+        stage_settings = replace(settings, cache_codec="FFV1") if preview else settings
         hdr = False
         if mode == "Video":
             hdr = bool(ffmpeg.probe_video(source, count_mode="metadata", controller=controller).get("hdr"))
@@ -712,10 +726,10 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
                     current = cached
                     if progress:
                         progress((index + 1) / (len(stages) + 1),
-                                 f"{STAGE_LABELS[stage]}: using Smart cache")
+                                 f"Stage {index + 1} of {len(stages) + 1} · {STAGE_LABELS[stage]}: using Smart cache")
                     upstream_key = stage_key
-                    if stage == "super_resolution" and mode == "Video":
-                        hdr = bool(settings.upscale_hdr_enabled)
+                    if stage == "rtx_video_hdr":
+                        hdr = True
                     continue
             directory = Path(temp) / f"{index:02d}-{stage}"
             directory.mkdir()
@@ -725,33 +739,42 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
             def report(value, message, i=index, name=stage):
                 if progress:
                     progress((i + max(0.0, min(1.0, float(value)))) / (len(stages) + 1),
-                             f"{STAGE_LABELS[name]}: {message}")
+                             f"Stage {i + 1} of {len(stages) + 1} · {STAGE_LABELS[name]}: {message}")
+            report(0.0, "Preparing")
             if stage == "coloring":
                 current = (_coloring_image_stage(current, source, settings, directory, controller, report)
                            if mode == "Image" else
-                           _coloring_video_stage(current, settings, directory, controller, report))
+                           _coloring_video_stage(current, stage_settings, directory, controller, report))
             elif mode == "Image":
                 current = _image_stage(current, stage, settings, directory, controller, report)
             else:
-                current = _video_stage(current, stage, settings, hdr, directory, controller, report)
+                current = _video_stage(current, stage, stage_settings, hdr, directory, controller, report)
             if controller.cancel.is_set():
                 raise Cancelled("Render stopped by user.")
             if preview_cache:
                 current = preview_cache.publish(stage_key, directory, current,
                                                 previous=stage_input)
                 upstream_key = stage_key
-            if stage == "super_resolution" and mode == "Video":
-                hdr = bool(settings.upscale_hdr_enabled)
+            if stage == "rtx_video_hdr":
+                hdr = True
         if progress:
-            progress(len(stages) / (len(stages) + 1), "Exporting result")
+            progress(len(stages) / (len(stages) + 1),
+                     "Preparing cached preview" if preview and mode == "Video" else
+                     f"Stage {len(stages) + 1} of {len(stages) + 1} · Exporting result")
         destination.parent.mkdir(parents=True, exist_ok=True)
         if mode == "Image":
             _export_image(current, destination, settings, controller)
+        elif preview:
+            destination = _publish_video_preview(current, destination, controller)
         else:
+            def report_export(value, message):
+                if progress:
+                    progress((len(stages) + max(0.0, min(.99, float(value)))) / (len(stages) + 1),
+                             f"Stage {len(stages) + 1} of {len(stages) + 1} · Exporting result: {message}")
             _export_video(source, current, destination, settings, controller,
-                          preview=preview, pipeline_hdr=hdr)
+                          pipeline_hdr=hdr, progress=report_export)
         if progress:
-            progress(1.0, "Export complete")
+            progress(1.0, "Preview ready" if preview else "Export complete")
     return str(destination)
 
 
@@ -777,7 +800,8 @@ def render_pipeline_batch(input_paths, settings: UISettings, mode: str,
             reporter.advance(index, 0.0, "Preparing pipeline")
             folder = prepare_output_dir(path.parent if same_as_input else output_dir, default=OUTPUTS)
             extension = (IMAGE_EXTENSIONS[settings.image_format] if mode == "Image" else
-                         {"MP4": ".mp4", "MKV": ".mkv", "MOV": ".mov"}[ffmpeg.container_for_codec(settings.codec)])
+                         {"MP4": ".mp4", "MKV": ".mkv", "MOV": ".mov"}[
+                             ffmpeg.resolve_container(settings.codec, settings.container)])
             rename_mode = settings.image_rename_mode if mode == "Image" else settings.video_rename_mode
             suffix = settings.image_custom_suffix if mode == "Image" else settings.video_custom_suffix
             output = unique_output_path(folder / output_filename(
@@ -810,13 +834,23 @@ def render_pipeline_preview(source: str, settings: UISettings, mode: str, *,
                             output_dir: Path, controller=None, progress=None,
                             start_seconds: float = 0.0,
                             clip_seconds: float | None = None,
-                            cache_dir: Path = PREVIEW_CACHE) -> tuple[str, str]:
+                            cache_dir: Path = PREVIEW_CACHE) -> tuple[str | np.ndarray, str]:
     controller = controller or JobController()
     source_path = Path(source).resolve()
+    if controller.cancel.is_set():
+        raise Cancelled("Preview cancelled.")
+    if not source_path.is_file():
+        raise FileNotFoundError(source_path)
+    if not enabled_stages(settings, mode):
+        # The native player already seeks/plays the unprocessed video. Do not
+        # probe, convert to FFV1, or decode another copy just to show it again.
+        media = decode_image(source_path).rgba if mode == "Image" else str(source_path)
+        return media, "Source preview (all processing cards are off)."
+    if mode == "Video":
+        # Preview storage and playback are independent of delivery settings.
+        settings = replace(settings, codec=LOSSLESS_VIDEO, container="MKV",
+                           quality="Auto (Default)", hdr_mode=True)
     preflight_source(source_path, settings, mode)
-    if mode == "Image" and not enabled_stages(settings, mode):
-        decoded = decode_image(source_path)
-        return decoded.rgba, "Source preview (all processing cards are off)."
     stage_cache = PreviewStageCache(cache_dir)
     root_key = cache_key({"kind": "source", "mode": mode,
                           "source": file_identity(source_path),
@@ -831,6 +865,7 @@ def render_pipeline_preview(source: str, settings: UISettings, mode: str, *,
         prune_preview_cache(root=stage_cache.root, protected_keys=stage_cache.used_keys,
                             min_idle_seconds=0)
         return path, "Pipeline image preview complete."
+    JOBS.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="visual-preview-source-", dir=JOBS) as temp:
         clip_key = cache_key({"kind": "source-clip", "source": root_key,
                               "start_seconds": float(start_seconds),
@@ -846,38 +881,22 @@ def render_pipeline_preview(source: str, settings: UISettings, mode: str, *,
             clip = stage_cache.publish(clip_key, clip_dir, clip)
         elif progress:
             progress(0.0, "Using cached source clip")
-        output = unique_output_path(output_dir / f"pipeline-preview-{time.time_ns()}.mp4")
-        render_item(clip, settings, mode, output, controller, progress, preview=True,
-                    preview_cache=stage_cache,
-                    source_cache_key=clip_key)
+        output = unique_output_path(output_dir / f"pipeline-preview-{time.time_ns()}.mkv")
+        output = render_item(clip, settings, mode, output, controller, progress, preview=True,
+                             preview_cache=stage_cache,
+                             source_cache_key=clip_key)
     prune_preview_cache(root=stage_cache.root, protected_keys=stage_cache.used_keys,
                         min_idle_seconds=0)
-    return str(output), "Pipeline video preview complete."
+    if clip_seconds is None:
+        return decode_preview_frame(output, controller=controller), "Pipeline frame preview complete."
+    return str(output), "Pipeline video preview complete (lossless cached clip)."
 
 
 def _extract_lossless_preview_clip(source: Path, directory: Path,
                                    controller: JobController, start_seconds: float,
                                    clip_seconds: float | None) -> Path:
     """Frame-accurate clip cut without changing pixels before the first card."""
-    metadata = ffmpeg.probe_video(source, count_mode="metadata", controller=controller)
-    start = max(0.0, float(start_seconds or 0.0) - 0.002)
-    fast_seek = max(0.0, start - 2.0)
-    accurate_seek = max(0.0, start - fast_seek)
-    output = directory / "source-clip.mkv"
-    color_args: list[str] = []
-    for key, flag in (("color_primaries", "-color_primaries"),
-                      ("color_transfer", "-color_trc"),
-                      ("color_space", "-colorspace")):
-        value = metadata.get(key)
-        if value and value != "unknown":
-            color_args.extend((flag, str(value)))
-    command = [str(FFMPEG), "-hide_banner", "-loglevel", "error", "-y",
-               "-ss", f"{fast_seek:.6f}", "-i", str(source),
-               "-ss", f"{accurate_seek:.6f}",
-               *(["-frames:v", "1"] if clip_seconds is None else
-                 ["-t", f"{float(clip_seconds):.6f}"]),
-               "-map", "0:v:0", "-map_metadata", "0", "-an",
-               "-c:v", "ffv1", "-level", "3", "-pix_fmt", "gbrp10le",
-               *color_args, str(output)]
-    _run_command(command, controller, "Preview clip extraction")
-    return output
+    return Path(extract_preview_subclip(
+        source, dest_dir=directory, controller=controller,
+        start_seconds=start_seconds, length_seconds=clip_seconds,
+        single_frame=clip_seconds is None))

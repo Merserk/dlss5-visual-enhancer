@@ -79,10 +79,10 @@ Row {
     // -- menu title buttons -------------------------------------------
     Repeater {
         model: [
-            { label: "File", menu: fileMenu },
-            { label: "View", menu: viewMenu },
-            { label: "Process", menu: processMenu },
-            { label: "Help", menu: helpMenu }
+            { label: qsTranslate("App", "File"), menu: fileMenu },
+            { label: qsTranslate("App", "View"), menu: viewMenu },
+            { label: qsTranslate("App", "Process"), menu: processMenu },
+            { label: qsTranslate("App", "Help"), menu: helpMenu }
         ]
         Item {
             required property var modelData
@@ -118,18 +118,18 @@ Row {
         delegate: menuDelegate
         onClosed: root.onMenuClosed(fileMenu)
         QQC2.MenuItem {
-            text: "Open Outputs Folder"
+            text: qsTranslate("App", "Open Outputs Folder")
             enabled: root.appBridge !== null
             onTriggered: { if (root.appBridge) root.appBridge.openFolder("") }
         }
         QQC2.MenuItem {
-            text: "Open Logs Folder"
+            text: qsTranslate("App", "Open Logs Folder")
             enabled: root.appBridge && root.appBridge.currentLogPath !== ""
             onTriggered: { if (root.appBridge) root.appBridge.openFolder(root.appBridge.currentLogPath) }
         }
         Loader { sourceComponent: menuSeparator }
         QQC2.MenuItem {
-            text: "Exit"
+            text: qsTranslate("App", "Exit")
             onTriggered: root.exitRequested()
         }
     }
@@ -141,54 +141,54 @@ Row {
         delegate: menuDelegate
         onClosed: root.onMenuClosed(viewMenu)
         QQC2.MenuItem {
-            text: "Neural Rendering"
+            text: qsTranslate("App", "Neural Rendering")
             checkable: true
             checked: root.appBridge && root.appBridge.activeTab === "neural-rendering"
             onTriggered: { if (root.appBridge) root.appBridge.activeTab = "neural-rendering" }
         }
         QQC2.MenuItem {
-            text: "Upscale"
+            text: qsTranslate("App", "Upscale")
             checkable: true
             checked: root.appBridge && root.appBridge.activeTab === "upscale"
             onTriggered: { if (root.appBridge) root.appBridge.activeTab = "upscale" }
         }
         QQC2.MenuItem {
-            text: "Frame Interpolation"
+            text: qsTranslate("App", "Frame Interpolation")
             checkable: true
             checked: root.appBridge && root.appBridge.activeTab === "frame-interpolation"
             onTriggered: { if (root.appBridge) root.appBridge.activeTab = "frame-interpolation" }
         }
         QQC2.MenuItem {
-            text: "Live"
+            text: qsTranslate("App", "Live")
             checkable: true
             checked: root.appBridge && root.appBridge.activeTab === "live"
             onTriggered: { if (root.appBridge) root.appBridge.activeTab = "live" }
         }
         QQC2.MenuItem {
-            text: "Settings"
+            text: qsTranslate("App", "Settings")
             checkable: true
             checked: root.appBridge && root.appBridge.activeTab === "settings"
             onTriggered: { if (root.appBridge) root.appBridge.activeTab = "settings" }
         }
         QQC2.MenuItem {
-            text: "Help"
+            text: qsTranslate("App", "Help")
             checkable: true
             checked: root.appBridge && root.appBridge.activeTab === "help"
             onTriggered: { if (root.appBridge) root.appBridge.activeTab = "help" }
         }
         Loader { sourceComponent: menuSeparator }
         QQC2.MenuItem {
-            text: "Focus Preview"
+            text: qsTranslate("App", "Focus Preview")
             checkable: true
             checked: root.appBridge ? root.appBridge.focusPreview : false
             onTriggered: { if (root.appBridge) root.appBridge.focusPreview = !root.appBridge.focusPreview }
         }
         QQC2.MenuItem {
-            text: "Fullscreen"
+            text: qsTranslate("App", "Fullscreen")
             onTriggered: root.toggleFullscreenRequested()
         }
         QQC2.MenuItem {
-            text: "Console"
+            text: qsTranslate("App", "Console")
             checkable: true
             checked: root.consoleOpen
             onTriggered: root.toggleConsoleRequested()
@@ -202,23 +202,23 @@ Row {
         delegate: menuDelegate
         onClosed: root.onMenuClosed(processMenu)
         QQC2.MenuItem {
-            text: "Start / Render"
+            text: qsTranslate("App", "Start / Render")
             enabled: root.appBridge ? ((root.appBridge.activeTab === "neural-rendering" || root.appBridge.activeTab === "upscale" || root.appBridge.activeTab === "frame-interpolation") && root.appBridge.operationState === "Idle" && root.appBridge.runtimeState === "Ready" && !root.appBridge.isLiveRunning) : false
             onTriggered: { if (root.appBridge) root.appBridge.requestActiveBatchExport() }
         }
         QQC2.MenuItem {
-            text: "Preview"
+            text: qsTranslate("App", "Preview")
             enabled: root.appBridge ? root.appBridge.canPreview : false
             onTriggered: { if (root.appBridge) root.appBridge.renderPreview() }
         }
         QQC2.MenuItem {
-            text: "Stop"
+            text: qsTranslate("App", "Stop")
             enabled: root.appBridge ? root.appBridge.canStop : false
             onTriggered: { if (root.appBridge) root.appBridge.stopActiveBatch() }
         }
         Loader { sourceComponent: menuSeparator }
         QQC2.MenuItem {
-            text: "Stop Live Session"
+            text: qsTranslate("App", "Stop Live Session")
             enabled: root.appBridge ? root.appBridge.isLiveRunning : false
             onTriggered: { if (root.appBridge) root.appBridge.stopLive() }
         }
@@ -231,11 +231,11 @@ Row {
         delegate: menuDelegate
         onClosed: root.onMenuClosed(helpMenu)
         QQC2.MenuItem {
-            text: "Help"
+            text: qsTranslate("App", "Help")
             onTriggered: { if (root.appBridge) root.appBridge.activeTab = "help" }
         }
         QQC2.MenuItem {
-            text: "Open Logs Folder"
+            text: qsTranslate("App", "Open Logs Folder")
             enabled: root.appBridge && root.appBridge.currentLogPath !== ""
             onTriggered: { if (root.appBridge) root.appBridge.openFolder(root.appBridge.currentLogPath) }
         }

@@ -5,10 +5,8 @@ from pathlib import Path
 from typing import Callable, Any
 
 from ...core.jobs import Cancelled
-from ...core.ffmpeg.preview import (
-    is_browser_playable, make_browser_preview, normalize_preview_encoding,
-    resolve_final_preview, resolve_preview_codec, wants_compat_preview,
-)
+from ...core.ffmpeg import probe_video
+from ...core.ffmpeg.preview import LOSSLESS_PREVIEW_CODEC, decode_preview_frame
 from ...settings.models import coerce_hdr_mode
 from .models import ConversionOptions
 from .processor import convert_video
@@ -32,17 +30,16 @@ def process_video_preview(
     *,
     preview_seconds: float | None = None,
     preview_frames: int | None = None,
-    preview_encoding: str = "Auto",
     progress: ProgressCallback | Any | None = None,
     output_dir=None,
     controller=None,
     ephemeral_preview: bool = False,
     start_seconds: float | None = None,
     frame_index: int | None = None,
-) -> tuple[str | None, str]:
+) -> tuple[object | None, str]:
     """Qt-native Neural Rendering preview used by the desktop UI.
 
-    Returns a plain ``(media_path, status)`` tuple with no UI-framework objects.
+    Returns cached video or full-resolution RGBA pixels with a status string.
     """
     if not input_path:
         raise ValueError("Choose a video first.")
@@ -59,7 +56,7 @@ def process_video_preview(
         frame_no = 1
     effective_source = str(source)
     temp_clip: str | None = None
-    if start > 0.05 and (preview_frames is not None or preview_seconds is not None):
+    if start > 0 and (preview_frames is not None or preview_seconds is not None):
         from ...core.ffmpeg.preview import extract_preview_subclip
         _emit_progress(progress, 0.02, "Seeking to timeline frame…")
         temp_clip = extract_preview_subclip(
@@ -71,32 +68,24 @@ def process_video_preview(
         effective_source = temp_clip
 
     is_preview = preview_seconds is not None or preview_frames is not None
-    preview_encoding_mode = normalize_preview_encoding(preview_encoding)
     if is_preview:
-        effective_codec, effective_container = resolve_preview_codec(
-            options.codec, options.container, preview_encoding_mode
-        )
-        compat_preview = wants_compat_preview(
-            options.codec, options.container, preview_encoding_mode
-        )
+        effective_codec, effective_container = LOSSLESS_PREVIEW_CODEC, "MKV"
     else:
         effective_codec, effective_container = options.codec, options.container
-        compat_preview = False
-
-    effective_hdr = coerce_hdr_mode(effective_codec, options.preserve_hdr) and (
-        not is_preview or not compat_preview
-    )
-    effective = replace(
-        options,
-        codec=effective_codec,
-        container=effective_container,
-        preserve_hdr=effective_hdr,
-        preview_seconds=preview_seconds,
-        preview_frames=preview_frames,
-        preview_compat=compat_preview,
-    )
 
     try:
+        effective_hdr = coerce_hdr_mode(effective_codec, options.preserve_hdr)
+        if is_preview:
+            effective_hdr = effective_hdr or bool(probe_video(effective_source, count_mode="metadata", controller=controller).get("hdr"))
+        effective = replace(
+            options,
+            codec=effective_codec,
+            container=effective_container,
+            preserve_hdr=effective_hdr,
+            quality="Auto (Default)" if is_preview else options.quality,
+            preview_seconds=preview_seconds,
+            preview_frames=preview_frames,
+        )
         result = convert_video(
             effective_source,
             effective,
@@ -113,7 +102,7 @@ def process_video_preview(
             except OSError:
                 pass
 
-    def finish(media_path: str | None, status: str) -> tuple[str | None, str]:
+    def finish(media_path: object | None, status: str) -> tuple[object | None, str]:
         if ephemeral_preview:
             try:
                 if Path(result.report_path).name.endswith(".report.json"):
@@ -121,7 +110,8 @@ def process_video_preview(
             except OSError:
                 pass
             try:
-                if media_path and Path(media_path).resolve() != Path(result.output_path).resolve():
+                if media_path is not None and (not isinstance(media_path, (str, Path))
+                                              or Path(media_path).resolve() != Path(result.output_path).resolve()):
                     Path(result.output_path).unlink(missing_ok=True)
             except OSError:
                 pass
@@ -130,30 +120,16 @@ def process_video_preview(
     source_name = source.name
     if is_preview:
         output_preview = result.output_path
-        derived_note = ""
-        if preview_encoding_mode == "Auto" and not compat_preview:
-            try:
-                playable = is_browser_playable(result.output_path)
-            except Exception:
-                playable = False
-            if not playable:
-                try:
-                    output_preview = make_browser_preview(
-                        result.output_path,
-                        dest_dir=output_dir,
-                        controller=controller,
-                    )
-                    derived_note = " (compatibility preview transcoded to H.264)"
-                except Exception:
-                    output_preview = result.output_path
         if preview_frames is not None:
+            if preview_frames == 1:
+                output_preview = decode_preview_frame(result.output_path, controller=controller)
             stamp = f" f{frame_no} @ {start:.2f}s" if start > 0.05 else ""
             return finish(
                 output_preview,
                 f"One-frame preview complete{stamp} for {source_name} on {result.gpu} "
                 f"in {result.elapsed_seconds:.1f}s. Neural dimensions "
                 f"{result.render_width}×{result.render_height}; {result.resize_method}, "
-                f"{result.memory_path}. Feature 18 confirmed.{derived_note}",
+                f"{result.memory_path}.",
             )
         clip_seconds = preview_seconds if preview_seconds is not None else PREVIEW_SECONDS
         start_note = f" from {start:.2f}s" if start > 0.05 else ""
@@ -163,20 +139,13 @@ def process_video_preview(
             f"{clip_seconds:g}-second clip processed on {result.gpu} in "
             f"{result.elapsed_seconds:.1f}s. Neural dimensions "
             f"{result.render_width}×{result.render_height}; {result.resize_method}, "
-            f"{result.memory_path}. All frames returned feature-18 success.{derived_note}",
+            f"{result.memory_path}.",
         )
 
-    output_preview, used_derivative = resolve_final_preview(
-        result.output_path, preview_encoding_mode, bounded_proxy=True
-    )
     status = (
         f"Complete: {result.frames} frames processed on {result.gpu} in "
         f"{result.elapsed_seconds:.1f}s. All {result.nr_count_evidence} frames returned "
         f"feature-18 success. Neural dimensions {result.render_width}×{result.render_height}; "
         f"{result.resize_method}, {result.memory_path}."
     )
-    if used_derivative:
-        status += " A short H.264 compatibility proxy was created; the original output is unchanged."
-    elif output_preview is None:
-        status += f" {effective_container} output was created successfully, but inline preview is unavailable."
-    return finish(output_preview, status)
+    return finish(result.output_path, status)

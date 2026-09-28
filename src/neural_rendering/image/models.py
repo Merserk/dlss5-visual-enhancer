@@ -48,7 +48,7 @@ class ImageConversionOptions:
 class ImageConversionResult:
     input_path: str
     output_path: str
-    report_path: str
+    report_path: str  # Shared session log; field name is kept for existing callers.
     elapsed_seconds: float
     gpu: str
     input_width: int
@@ -78,5 +78,5 @@ class ImageBatchResult:
     successes: list[ImageConversionResult]
     failures: list[ImageConversionFailure]
     cancelled: bool
-    manifest_path: str
+    manifest_path: str  # Shared session log; field name is kept for existing callers.
     zip_path: str | None

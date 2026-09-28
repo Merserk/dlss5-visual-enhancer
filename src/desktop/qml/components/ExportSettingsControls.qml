@@ -15,7 +15,7 @@ Column {
         spacing: 12
         AppComboBox {
             width: parent.width
-            label: "Output Format"
+            label: qsTranslate("App", "Output Format")
             model: appBridge ? appBridge.imageFormatChoices : []
             currentValue: appBridge ? appBridge.imageFormat : "PNG"
             onActivated: v => {
@@ -26,7 +26,7 @@ Column {
         AppComboBox {
             objectName: "imageBitDepthSelector"
             width: parent.width
-            label: "Bit Depth"
+            label: qsTranslate("App", "Bit Depth")
             model: appBridge && ["PNG", "TIFF"].indexOf(appBridge.imageFormat) >= 0
                    ? [{label: "8 Bit", value: 8}, {label: "16 Bit", value: 16}]
                    : [{label: "8 Bit", value: 8}]
@@ -39,7 +39,7 @@ Column {
         AppSlider {
             visible: appBridge && ["JPEG", "WebP", "AVIF"].indexOf(appBridge.imageFormat) >= 0
             width: parent.width
-            label: "Image Quality"
+            label: qsTranslate("App", "Image Quality")
             from: 1
             to: 100
             stepSize: 1
@@ -59,7 +59,7 @@ Column {
         spacing: 12
         AppComboBox {
             width: parent.width
-            label: "Video Codec"
+            label: qsTranslate("App", "Video Codec")
             model: appBridge ? appBridge.codecChoices : []
             currentValue: appBridge ? appBridge.videoCodec : "H.264 (NVIDIA NVENC)"
             onActivated: v => {
@@ -68,15 +68,20 @@ Column {
             }
         }
         AppComboBox {
+            objectName: "videoContainerSelector"
             width: parent.width
-            label: "Container (automatic)"
+            label: qsTranslate("App", "Container")
             model: appBridge ? appBridge.containerChoices : []
             currentValue: appBridge ? appBridge.videoContainer : "MP4"
-            enabled: false
+            enabled: !!appBridge
+            onActivated: v => {
+                if (appBridge)
+                    appBridge.videoContainer = v;
+            }
         }
         AppComboBox {
             width: parent.width
-            label: "Encoding Quality"
+            label: qsTranslate("App", "Encoding Quality")
             visible: !appBridge || appBridge.fixedQualityCodecs.indexOf(appBridge.videoCodec) < 0
             model: appBridge ? appBridge.encodingQualityChoices : []
             currentValue: appBridge ? appBridge.videoQuality : "Auto (Default)"
@@ -87,12 +92,12 @@ Column {
         }
         Text {
             visible: appBridge && appBridge.fixedQualityCodecs.indexOf(appBridge.videoCodec) >= 0
-            text: "Encoding Quality: Fixed by codec"
+            text: qsTranslate("App", "Encoding Quality: Fixed by codec")
             color: Theme.textSecondary
             font.pixelSize: Theme.fontSizeSmall
         }
         AppCheckBox {
-            label: "Preserve / Export 10-bit HDR"
+            label: qsTranslate("App", "Preserve / Export 10-bit HDR")
             checked: appBridge ? appBridge.videoHdrMode : false
             enabled: appBridge ? appBridge.videoHdrSupported : false
             onToggled: v => {

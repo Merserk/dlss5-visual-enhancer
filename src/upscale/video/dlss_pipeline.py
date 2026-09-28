@@ -11,6 +11,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import av
+from ...core.ffmpeg.frames import open_video_decoder, VideoOutput
 import cv2
 import numpy as np
 from av.codec.hwaccel import HWAccel
@@ -93,13 +94,13 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
             decode_device = HWAccel(
                 "cuda", device=str(ordinal), allow_software_fallback=True,
                 options={"primary_ctx": "1"}, is_hw_owned=True)
-            input_container = av.open(str(source), hwaccel=decode_device)
+            input_container = open_video_decoder(source, controller, pixel_format="rgba64le" if source_high_depth else "rgba")
             stream = input_container.streams.video[0]
             stream.thread_type = "AUTO"
             stream_tb = stream.time_base or Fraction(1, max(1, round(float(metadata["rate"]))))
             writer = ffmpeg.RawVideoPacketMuxer(
                 encoder.stdin, width=ow, height=oh, rate=metadata["rate"],
-                time_base=stream_tb, pix_fmt="rgba64le" if output_depth > 8 else "rgba")
+                time_base=stream_tb, pix_fmt="gbrp10le" if hdr_session else "rgba64le" if output_depth > 8 else "rgba")
             guides = TemporalGuideGenerator(width, height, cut_threshold=0.10)
             first_pts = None
             last_pts = None
@@ -126,7 +127,8 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                                              180: cv2.ROTATE_180,
                                              270: cv2.ROTATE_90_COUNTERCLOCKWISE}[rotation])
                 if rgba.shape[:2] != (height, width):
-                    rgba = cv2.resize(rgba, (width, height), interpolation=cv2.INTER_LANCZOS4)
+                    from ...core.ffmpeg.filters import resize_fit
+                    rgba = resize_fit(rgba, width, height, controller=controller)
                 rgba = np.ascontiguousarray(rgba)
                 timings["decode_seconds"] += time.perf_counter() - decode_tick
                 guide = guides.process(rgba)
@@ -147,7 +149,8 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                         hdr_input[..., 3] = 255
                     hdr_data = hdr_session.process_frame(hdr_input)
                     hdr_frame = result_frame(hdr_data, ow, oh, 2)
-                    processed = np.ascontiguousarray(hdr_frame.to_ndarray(format="rgba64le"))
+                    from ...core.ffmpeg.frames import packed_frame
+                    processed = packed_frame(hdr_frame)
                     timings["hdr_seconds"] += time.perf_counter() - hdr_tick
                 else:
                     levels = 65535 if output_depth > 8 else 255
@@ -162,7 +165,8 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                 delivered += 1
                 last_pts = pts
                 if delivered % 4 == 0:
-                    update(min(.86, .04 + .82 * delivered / max(1, estimated)), "DLSS video processing")
+                    update(min(.86, .04 + .82 * delivered / max(1, estimated)),
+                           f"DLSS video processing: {delivered:,} / {estimated:,} frames")
             if not delivered:
                 raise ValueError("The source contains no decodable video frames.")
             writer.close(); writer = None

@@ -216,57 +216,6 @@ def _set_color_properties(context: Any, hdr: bool) -> None:
     context.color_range = 1  # MPEG/limited range
 
 
-class _SoftwareNormalizer:
-    """In-process fallback matching the prior color/rotation/SAR boundary."""
-
-    def __init__(self, frame: Any, metadata: dict[str, Any], width: int, height: int, ten_bit: bool) -> None:
-        stream = metadata["stream"]
-        sd = int(stream["height"]) <= 576
-        fallback = "bt470bg" if int(stream["height"]) == 576 else "smpte170m" if sd else "bt709"
-        matrix = str(stream.get("color_space") or fallback)
-        primaries = str(stream.get("color_primaries") or fallback)
-        transfer = str(stream.get("color_transfer") or "bt709")
-        color_range = "pc" if _range_code(metadata) else "tv"
-        precision = "yuv444p10le" if ten_bit else "yuv444p"
-        final_format = "gbrp10le" if ten_bit else "rgba"
-        graph = av.filter.Graph()
-        source = graph.add_buffer(template=frame)
-        if av.VideoFormat(str(stream.get("pix_fmt") or "yuv420p")).is_rgb:
-            # Lossless FFV1 intermediates in the ordered workflow are RGB.
-            # FFmpeg's colorspace filter does not accept ispace=gbr. Preserve
-            # the RGB pixels and depth directly at this stage boundary.
-            colors = graph.add("format", "gbrp10le" if ten_bit else "gbrp")
-        else:
-            colors = graph.add(
-                "colorspace",
-                f"ispace={matrix}:iprimaries={primaries}:itrc={transfer}:irange={color_range}:"
-                f"all=bt709:trc=gamma22:range=pc:format={precision}",
-            )
-        source.link_to(colors)
-        node = colors
-        rotation = int(metadata["rotation"])
-        if rotation == 90:
-            rotated = graph.add("transpose", "cclock")
-            node.link_to(rotated); node = rotated
-        elif rotation == 270:
-            rotated = graph.add("transpose", "clock")
-            node.link_to(rotated); node = rotated
-        elif rotation == 180:
-            horizontal, vertical = graph.add("hflip"), graph.add("vflip")
-            node.link_to(horizontal); horizontal.link_to(vertical); node = vertical
-        scaled = graph.add("scale", f"{width}:{height}:flags=lanczos")
-        square = graph.add("setsar", "1")
-        formatted = graph.add("format", final_format)
-        sink = graph.add("buffersink")
-        node.link_to(scaled); scaled.link_to(square); square.link_to(formatted); formatted.link_to(sink)
-        graph.configure()
-        self.graph, self.source, self.sink = graph, source, sink
-
-    def convert(self, frame: Any):
-        self.source.push(frame)
-        return packed_bytes(self.sink.pull())
-
-
 def _put_bounded(target: queue.Queue, item: Any, stop: threading.Event,
                  controller: Any, failures: list[BaseException]) -> bool:
     while not stop.is_set():
@@ -506,7 +455,6 @@ def convert_video_cuda_nvenc(
             last_pts: int | None = None
             stopped_early = False
             timestamp_fallbacks = 0
-            software_normalizer: _SoftwareNormalizer | None = None
             estimated = int(metadata["frames"] or max(1, math.ceil(metadata["duration"] * float(metadata["rate"]))))
             if options.preview_frames is not None:
                 estimated = min(estimated, int(options.preview_frames))
@@ -546,16 +494,7 @@ def convert_video_cuda_nvenc(
                 else:
                     if options.engine == "DLSS":
                         raise RuntimeError("DLSS CUDA decoding changed to software mid-stream.")
-                    decode_backends.add("software")
-                    tick = time.perf_counter()
-                    if software_normalizer is None:
-                        software_normalizer = _SoftwareNormalizer(frame, metadata, width, height, input_format == 2)
-                    packed = software_normalizer.convert(frame)
-                    timings["software_prepare_seconds"] += time.perf_counter() - tick
-                    processed, detail = session.process_host_to_cuda_frame(
-                        packed, output_p010=output_p010, pts=pts,
-                        time_base=stream_tb, duration=duration,
-                    )
+                    raise DLSSNeedsHostFallback("Vulkan host decoding is required for this input.")
                 if transfer_pool is not None:
                     transferred, transfer_detail = transfer_pool.transfer(processed)
                     del processed
@@ -584,7 +523,7 @@ def convert_video_cuda_nvenc(
                 if now - last_update > 0.2:
                     update(
                         min(0.87, 0.05 + 0.82 * delivered / max(1, estimated)),
-                        "Upscaling video",
+                        f"Upscaling video: {delivered:,} / {estimated:,} frames",
                     )
                     last_update = now
             if not delivered:

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
+from ..portable import ROOT, TEMP, UI_SETTINGS_PATH
 
 
-ROOT = Path(__file__).resolve().parents[2]
-TEMP = ROOT / "temp"
 APP_TEMP = TEMP / "app"
 PREVIEW_CACHE = APP_TEMP / "cache"
 RUNTIME = ROOT / "bin" / "runtime"

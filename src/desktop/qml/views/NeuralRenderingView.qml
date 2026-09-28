@@ -38,22 +38,22 @@ Item {
     }
 
     function stageTitle(id) {
-        if (id === "denoising") return "Denoising"
-        if (id === "neural_model") return "DLSS Neural Rendering"
-        if (id === "scale_method") return "Scaling"
-        if (id === "dlss_super_resolution") return "DLSS Super Resolution"
-        if (id === "super_resolution") return "RTX Super Resolution"
-        if (id === "coloring") return "Coloring"
-        if (id === "cas_sharpening") return "Sharpening"
-        return "DLSS Frame Generation"
+        if (id === "neural_model") return qsTranslate("App", "DLSS Neural Rendering")
+        if (id === "scale_method") return qsTranslate("App", "Scaling")
+        if (id === "dlss_super_resolution") return qsTranslate("App", "DLSS Super Resolution")
+        if (id === "super_resolution") return qsTranslate("App", "RTX Super Resolution")
+        if (id === "rtx_video_hdr") return qsTranslate("App", "RTX Video HDR")
+        if (id === "coloring") return qsTranslate("App", "Coloring")
+        if (id === "cas_sharpening") return qsTranslate("App", "Sharpening")
+        return qsTranslate("App", "DLSS Frame Generation")
     }
 
     Component { id: neuralControls; NeuralModelControls { appBridge: root.appBridge } }
     Component { id: scaleControls; ScaleMethodControls { appBridge: root.appBridge } }
     Component { id: dlssControls; DlssSuperResolutionControls { appBridge: root.appBridge } }
     Component { id: superControls; SuperResolutionControls { appBridge: root.appBridge } }
-    Component { id: coloringControls; ColoringControls { appBridge: root.appBridge } }
-    Component { id: denoisingControls; DenoisingControls { appBridge: root.appBridge } }
+    Component { id: hdrControls; RtxVideoHdrControls { appBridge: root.appBridge } }
+    Component { id: coloringControls; ColoringControls { appBridge: root.appBridge; playheadMs: viewport.playheadMs } }
     Component { id: sharpeningControls; SharpeningControls { appBridge: root.appBridge } }
     Component { id: frameControls; FrameGenerationControls { appBridge: root.appBridge } }
 
@@ -81,8 +81,9 @@ Item {
                 anchors.right: parent.right
                 appBridge: root.appBridge
                 queueModel: root.activeQueue
+                imageQueue: root.isImage
                 hidden: appBridge ? appBridge.focusPreview : false
-                expandedHeight: appBridge ? appBridge.queueHeight : 190
+                expandedHeight: appBridge ? appBridge.queueHeight : 330
             }
         }
 
@@ -107,7 +108,7 @@ Item {
                 onPositionChanged: (mouse) => {
                     if (!pressed || !appBridge) return
                     var pt = inspectorResizeHandle.mapToItem(root, mouse.x, mouse.y)
-                    appBridge.inspectorWidth = Math.max(300, Math.min(560, root.width - pt.x))
+                    appBridge.inspectorWidth = Math.max(300, Math.min(560, root.LayoutMirroring.enabled ? pt.x : root.width - pt.x))
                 }
             }
 
@@ -201,10 +202,10 @@ Item {
                                 Loader {
                                     width: parent.width
                                     sourceComponent: stageId === "neural_model" ? neuralControls
-                                                   : stageId === "denoising" ? denoisingControls
                                                    : stageId === "scale_method" ? scaleControls
                                                    : stageId === "dlss_super_resolution" ? dlssControls
                                                    : stageId === "super_resolution" ? superControls
+                                                   : stageId === "rtx_video_hdr" ? hdrControls
                                                    : stageId === "coloring" ? coloringControls
                                                    : stageId === "cas_sharpening" ? sharpeningControls
                                                    : frameControls
@@ -214,7 +215,7 @@ Item {
 
                         AppCard {
                             width: parent.width
-                            title: "Export Settings"
+                            title: qsTranslate("App", "Export Settings")
                             ExportSettingsControls {
                                 width: parent.width
                                 appBridge: root.appBridge
@@ -242,7 +243,7 @@ Item {
                             spacing: 8
 
                             AppButton {
-                                text: "Preview"
+                                text: qsTranslate("App", "Preview")
                                 iconName: "preview"
                                 width: Math.max(100, parent.width - (root.isImage ? 84 : 156))
                                 buttonHeight: 30
@@ -265,20 +266,20 @@ Item {
                             AppIconButton {
                                 iconName: "reset"
                                 buttonSize: 30
-                                tooltipText: "Reset neural rendering settings"
+                                tooltipText: qsTranslate("App", "Reset neural rendering settings")
                                 onClicked: { if (appBridge) appBridge.resetTabSettings("neural-rendering") }
                             }
 
                             AppIconButton {
                                 iconName: "outputs_folder"
                                 buttonSize: 30
-                                tooltipText: "Open outputs folder"
+                                tooltipText: qsTranslate("App", "Open outputs folder")
                                 onClicked: { if (appBridge) appBridge.openFolder("") }
                             }
                         }
 
                         AppButton {
-                            text: appBridge && appBridge.canStop ? "Stop" : (root.isImage ? "Render Image(s)" : "Render Video(s)")
+                            text: appBridge && appBridge.canStop ? qsTranslate("App", "Stop") : (root.isImage ? qsTranslate("App", "Render Image(s)") : qsTranslate("App", "Render Video(s)"))
                             iconName: appBridge && appBridge.canStop ? "stop" : "start_render"
                             variant: appBridge && appBridge.canStop ? "danger" : "primary"
                             width: parent.width
