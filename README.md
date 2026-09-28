@@ -113,6 +113,15 @@ Image decoding applies EXIF orientation, handles supported color profiles, and r
 - **Vulkan filtering:** video scaling and other GPU filter operations require a working Vulkan device and driver. AMD, Intel, or NVIDIA Vulkan devices can be used for this path; CPU decoding/encoding mode still uses a Vulkan device for GPU filters.
 - **Video decoding/encoding:** Automatic mode uses Vulkan hardware codecs where supported and falls back to software codecs when necessary. CPU mode uses software decoding/encoding; hardware support depends on the selected device, codec, driver, and bundled FFmpeg capabilities.
 
+### Laptop GPUs
+
+Notebook RTX GPUs (for example the GeForce RTX 5050 Laptop GPU) are supported. Visual Enhancer detects them automatically, tolerates the extra start-up time while an Optimus dGPU wakes up and loads the neural model, keeps Windows from throttling or sleeping during renders, and reports the GPU profile in Diagnostics. For best results:
+
+- Keep the charger connected; laptop GPUs run at much lower power limits on battery.
+- Enable **Hardware-accelerated GPU scheduling** (required for DLSS Frame Generation).
+- In **Windows Settings → System → Display → Graphics**, set Visual Enhancer to **High performance**.
+- On 8 GB GPUs, prefer 1 NR pass, Source or 75% Scale for 4K sources, and Live at 1080p or lower.
+
 ## Settings
 
 The following processing controls are available through the **Neural Rendering** workspace's Image and Video stage cards. Export options are in **Export Settings** and the Export dialog; language, processing devices, cache, preview, and preset controls are in **Settings**. Image and Video retain independent stage arrangements, while individual processing parameters can be shared between their corresponding cards.
