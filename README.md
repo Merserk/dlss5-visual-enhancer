@@ -289,7 +289,7 @@ Saved GPU and decoding/encoding device selections are validated when the applica
 
 ## Command line
 
-**`VE_CLI.exe`** runs the same image and video processing engines as the desktop application without opening a window. Keep it in the application folder beside `cli.py`, `src`, and `bin`; no separate Python installation is required. Run it from PowerShell, Command Prompt, or another program. See [CLI.md](CLI.md) for the complete command-line reference.
+**`VE_CLI.exe`** runs the same image and video processing engines as the desktop application without opening a window. Keep it in the application folder beside `cli.py`, `src`, and `bin`; no separate Python installation is required. Run it from PowerShell, Command Prompt, or another program.
 
 ### Commands
 
