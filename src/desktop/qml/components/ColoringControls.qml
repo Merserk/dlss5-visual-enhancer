@@ -188,25 +188,60 @@ Column {
                 color: Theme.textPrimary
             }
 
-            Repeater {
-                model: [
-                    {key: "lut_exposure", label: qsTranslate("App", "Exposure"), from: -3, to: 3, step: 0.05, precision: 2, unit: "EV"},
-                    {key: "lut_contrast", label: qsTranslate("App", "Contrast"), from: -100, to: 100, step: 1, precision: 0, unit: "%"},
-                    {key: "lut_highlights", label: qsTranslate("App", "Highlights"), from: -100, to: 100, step: 1, precision: 0, unit: "%"},
-                    {key: "lut_shadows", label: qsTranslate("App", "Shadows"), from: -100, to: 100, step: 1, precision: 0, unit: "%"},
-                    {key: "lut_whites", label: qsTranslate("App", "Whites"), from: -100, to: 100, step: 1, precision: 0, unit: "%"},
-                    {key: "lut_blacks", label: qsTranslate("App", "Blacks"), from: -100, to: 100, step: 1, precision: 0, unit: "%"},
-                    {key: "lut_midtones", label: qsTranslate("App", "Midtones"), from: -100, to: 100, step: 1, precision: 0, unit: "%"}
-                ]
-                delegate: AppSlider {
-                    required property var modelData
-                    width: root.width
-                    label: modelData.label
-                    from: modelData.from; to: modelData.to; stepSize: modelData.step
-                    precision: modelData.precision; unit: modelData.unit; defaultValue: 0
-                    value: appBridge ? appBridge.lutAdjustmentValues[modelData.key] : 0
-                    onValueModified: v => { if (appBridge) appBridge.setLutAdjustment(modelData.key, v) }
-                }
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Exposure")
+                from: -3; to: 3; stepSize: 0.05; precision: 2; unit: "EV"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_exposure : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_exposure", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Contrast")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_contrast : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_contrast", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Highlights")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_highlights : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_highlights", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Shadows")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_shadows : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_shadows", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Whites")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_whites : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_whites", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Blacks")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_blacks : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_blacks", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Midtones")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_midtones : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_midtones", v) }
             }
 
             Text {
@@ -217,23 +252,44 @@ Column {
                 color: Theme.textPrimary
             }
 
-            Repeater {
-                model: [
-                    {key: "lut_temperature", label: qsTranslate("App", "Temperature"), from: -100, to: 100, unit: ""},
-                    {key: "lut_tint", label: qsTranslate("App", "Tint"), from: -100, to: 100, unit: ""},
-                    {key: "lut_hue", label: qsTranslate("App", "Hue Shift"), from: -180, to: 180, unit: "°"},
-                    {key: "lut_vibrance", label: qsTranslate("App", "Vibrance"), from: -100, to: 100, unit: "%"},
-                    {key: "lut_saturation", label: qsTranslate("App", "Saturation"), from: -100, to: 100, unit: "%"}
-                ]
-                delegate: AppSlider {
-                    required property var modelData
-                    width: root.width
-                    label: modelData.label
-                    from: modelData.from; to: modelData.to; stepSize: 1
-                    precision: 0; unit: modelData.unit; defaultValue: 0
-                    value: appBridge ? appBridge.lutAdjustmentValues[modelData.key] : 0
-                    onValueModified: v => { if (appBridge) appBridge.setLutAdjustment(modelData.key, v) }
-                }
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Temperature")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: ""; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_temperature : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_temperature", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Tint")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: ""; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_tint : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_tint", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Hue Shift")
+                from: -180; to: 180; stepSize: 1; precision: 0; unit: "°"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_hue : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_hue", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Vibrance")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_vibrance : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_vibrance", v) }
+            }
+
+            AppSlider {
+                width: parent.width
+                label: qsTranslate("App", "Saturation")
+                from: -100; to: 100; stepSize: 1; precision: 0; unit: "%"; defaultValue: 0
+                value: root.appBridge ? root.appBridge.lutAdjustmentValues.lut_saturation : 0
+                onValueModified: v => { if (root.appBridge) root.appBridge.setLutAdjustment("lut_saturation", v) }
             }
         }
 
