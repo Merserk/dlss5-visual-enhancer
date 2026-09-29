@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import subprocess
 import os
+import math
 import shutil
 import tempfile
+import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -20,7 +23,8 @@ from ..core.disk_paths import OutputFile, prepare_output_dir
 from ..core.dlss_modes import dlss_output_size
 from ..core.ffmpeg.audio import plan_audio_streams
 from ..core.ffmpeg.encoder import _codec_command
-from ..core.ffmpeg.preview import decode_preview_frame, extract_preview_subclip
+from ..core.ffmpeg.preview import (decode_preview_frame, extract_preview_subclip,
+                                   tone_map_hdr_preview_frame)
 from ..core.gpu_detection import detect_gpus
 from ..core.jobs import Cancelled, JobController
 from ..core.naming import output_filename, unique_output_path
@@ -52,6 +56,39 @@ from .preview_cache import PreviewStageCache, cache_key, file_identity, optional
 
 
 LOSSLESS_VIDEO = "FFV1 Lossless RGB 10-bit"
+_FRAME_PREVIEW_CACHE_LIMIT = 128 * 1024 * 1024
+_frame_preview_cache: OrderedDict[str, np.ndarray] = OrderedDict()
+_frame_preview_cache_bytes = 0
+_frame_preview_cache_lock = threading.RLock()
+
+
+def _cached_frame_preview(key: str) -> np.ndarray | None:
+    with _frame_preview_cache_lock:
+        pixels = _frame_preview_cache.get(key)
+        if pixels is None:
+            return None
+        _frame_preview_cache.move_to_end(key)
+    return pixels.copy()
+
+
+def _remember_frame_preview(key: str, pixels: np.ndarray) -> None:
+    global _frame_preview_cache_bytes
+
+    if pixels.nbytes > _FRAME_PREVIEW_CACHE_LIMIT:
+        return
+    retained = pixels.copy()
+    with _frame_preview_cache_lock:
+        previous = _frame_preview_cache.pop(key, None)
+        if previous is not None:
+            _frame_preview_cache_bytes -= previous.nbytes
+        while (_frame_preview_cache and
+               _frame_preview_cache_bytes + retained.nbytes > _FRAME_PREVIEW_CACHE_LIMIT):
+            _, evicted = _frame_preview_cache.popitem(last=False)
+            _frame_preview_cache_bytes -= evicted.nbytes
+        _frame_preview_cache[key] = retained
+        _frame_preview_cache_bytes += retained.nbytes
+
+
 STAGE_LABELS = {
     "neural_model": "DLSS Neural Rendering",
     "scale_method": "Scaling",
@@ -98,18 +135,31 @@ def _preview_runtime_identity() -> list[dict | None]:
     # by the previous engine, including when the app is updated in place.
     source_root = Path(__file__).resolve().parents[1]
     return [optional_file_identity(path) for path in
-            (Path(__file__), Path(__file__).with_name("coloring.py"),
+            (Path(__file__), Path(__file__).with_name("rolling_workflow.py"),
+             Path(__file__).with_name("coloring.py"),
              Path(__file__).with_name("cas_sharpening.py"),
+             source_root / "core" / "ffmpeg" / "preview.py",
+             source_root / "core" / "ffmpeg" / "frames.py",
+             source_root / "core" / "ffmpeg" / "encoder.py",
+             source_root / "core" / "ffmpeg" / "mux.py",
              source_root / "core" / "ffmpeg" / "vulkan.py",
              source_root / "core" / "ffmpeg" / "filters.py",
              source_root / "core" / "ffmpeg" / "sharpening.py",
              source_root / "core" / "dlss_bridge.py",
+             source_root / "core" / "neural_bridge.py",
+             source_root / "core" / "runtime.py",
              source_root / "upscale" / "image" / "processor.py",
              source_root / "upscale" / "video" / "processor.py",
+             source_root / "upscale" / "video" / "preview.py",
+             source_root / "upscale" / "video" / "dlss_pipeline.py",
+             source_root / "upscale" / "video" / "cuda_pipeline.py",
+             source_root / "upscale" / "video" / "native.py",
              source_root / "upscale" / "video" / "media.py",
              source_root / "upscale" / "video" / "host_pipeline.py",
              source_root / "neural_rendering" / "image" / "batch.py",
              source_root / "neural_rendering" / "video" / "processor.py",
+             source_root / "neural_rendering" / "video" / "cuda_pipeline.py",
+             source_root / "neural_rendering" / "video" / "fast_preview.py",
              source_root / "frame_interpolation" / "processor.py",
              FFMPEG, DLSSSR_BRIDGE, DLSSSR_RUNTIME, DLSSNR_BRIDGE,
              DLSSNR_CALLER_SHIM, NEURAL_RUNTIME,
@@ -203,6 +253,32 @@ def enabled_stages(settings: UISettings, mode: str) -> tuple[str, ...]:
     enabled = settings.image_enabled_stages if mode == "Image" else settings.video_enabled_stages
     validate_stage_layout(order, enabled, video=mode == "Video")
     return tuple(stage for stage in order if stage in enabled)
+
+
+def _preferred_native_codec(settings: UISettings, estimate: PipelineEstimate,
+                             stages: tuple[str, ...]) -> UISettings:
+    """Keep a native NVIDIA pipeline on CUDA when the encoder is automatic."""
+    from ..core.gpu_selection import prefer_cuda_video
+
+    if (not prefer_cuda_video(settings.ffmpeg_device, settings.ai_gpu_uuid,
+                              settings.video_gpu_uuid) or
+            settings.codec not in {"H.264", "H.265", "AV1"} or
+            not set(stages) & {"neural_model", "dlss_super_resolution",
+                               "super_resolution", "rtx_video_hdr", "frame_generation"}):
+        return settings
+    try:
+        from ..core.gpu_selection import detect_gpu
+
+        gpu = detect_gpu(settings.ai_gpu_uuid)
+        uuid = str(gpu["uuid"])
+        if settings.video_gpu_uuid not in {"auto", uuid}:
+            return settings
+        codec = settings.codec + " (NVIDIA NVENC)"
+        ffmpeg.resolve_video_gpu((gpu,), uuid, codec, estimate.width, estimate.height)
+    except (OSError, RuntimeError, ValueError):
+        return settings
+    app_log.info("video-render", f"automatic NVIDIA NVENC selected for {settings.codec}")
+    return replace(settings, codec=codec, video_gpu_uuid=uuid)
 
 
 def preview_settings_key(settings: UISettings, mode: str, *, hdr: bool = False) -> str:
@@ -299,7 +375,8 @@ def estimate_pipeline(width: int, height: int, fps: float, hdr: bool,
     return PipelineEstimate(width, height, fps, hdr)
 
 
-def preflight_source(source: Path, settings: UISettings, mode: str) -> PipelineEstimate:
+def preflight_source(source: Path, settings: UISettings, mode: str,
+                     *, metadata: dict | None = None) -> PipelineEstimate:
     if not source.is_file():
         raise FileNotFoundError(source)
     if "coloring" in enabled_stages(settings, mode) and (mode == "Video" or settings.coloring_mode == "LUT"):
@@ -329,8 +406,8 @@ def preflight_source(source: Path, settings: UISettings, mode: str) -> PipelineE
         return estimate_pipeline(width, height, 0.0, False, settings, mode)
     native_fg = ("frame_generation" in enabled_stages(settings, mode)
                  and settings.frame_interpolation_engine == "Native DLSSG")
-    metadata = ffmpeg.probe_video(source, count_mode="metadata",
-                                  inspect_timestamps=native_fg)
+    metadata = metadata or ffmpeg.probe_video(source, count_mode="metadata",
+                                              inspect_timestamps=native_fg)
     result = estimate_pipeline(int(metadata["width"]), int(metadata["height"]),
                                float(metadata["fps"]), bool(metadata.get("hdr")), settings, mode)
     if "(NVIDIA NVENC)" in settings.codec:
@@ -352,13 +429,15 @@ def preflight_source(source: Path, settings: UISettings, mode: str) -> PipelineE
 
 def preflight_capabilities(settings: UISettings, mode: str,
                            controller: JobController | None = None,
-                           stages_override: tuple[str, ...] | None = None) -> None:
+                           stages_override: tuple[str, ...] | None = None,
+                           *, require_filter: bool = True) -> None:
     """Reject unavailable processing hardware before writing any stage output."""
     stages = stages_override if stages_override is not None else enabled_stages(settings, mode)
     if not stages:
         return
-    from ..core.ffmpeg.vulkan import filter_device
-    filter_device(settings.ffmpeg_device)
+    if require_filter:
+        from ..core.ffmpeg.vulkan import filter_device
+        filter_device(settings.ffmpeg_device)
     needs_ai_gpu = bool(set(stages) & {"neural_model", "dlss_super_resolution", "super_resolution", "rtx_video_hdr", "frame_generation"})
     if needs_ai_gpu:
         from ..core.gpu_selection import detect_gpu
@@ -405,9 +484,13 @@ def _neural_image_options(settings: UISettings) -> ImageConversionOptions:
 
 
 def _neural_video_options(settings: UISettings, hdr: bool) -> ConversionOptions:
+    from ..core.gpu_selection import prefer_cuda_video
+
     cache_codec, cache_container, _ = cache_video_format(settings.cache_codec)
     return ConversionOptions(
         ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid,
+        prefer_nvenc=prefer_cuda_video(settings.ffmpeg_device, settings.ai_gpu_uuid,
+                                      settings.video_gpu_uuid),
         nr_style=settings.nr_style, nr_intensity=settings.nr_intensity,
         nr_passes=settings.nr_passes, local_tone_strength=settings.local_tone_strength,
         local_structure_strength=settings.local_structure_strength,
@@ -521,11 +604,17 @@ def _coloring_video_stage(source: Path, settings: UISettings, directory: Path,
 
 
 def _video_stage(source: Path, stage: str, settings: UISettings, hdr: bool,
-                 directory: Path, controller: JobController, progress) -> Path:
+                 directory: Path, controller: JobController, progress,
+                 *, delivery: bool = False) -> Path:
     if stage == "cas_sharpening":
         return sharpen_video(source, settings, directory, controller, progress)
     if stage == "neural_model":
-        result = convert_video(source, _neural_video_options(settings, hdr), progress,
+        options = _neural_video_options(settings, hdr)
+        if delivery:
+            options = replace(options, codec=settings.codec,
+                              container=ffmpeg.resolve_container(settings.codec, settings.container),
+                              quality=settings.quality)
+        result = convert_video(source, options, progress,
                                output_dir=directory, controller=controller)
     elif stage == "scale_method":
         metadata = ffmpeg.probe_video(source, count_mode="metadata", controller=controller)
@@ -542,14 +631,22 @@ def _video_stage(source: Path, stage: str, settings: UISettings, hdr: bool,
         return output
     elif stage in {"dlss_super_resolution", "super_resolution", "rtx_video_hdr"}:
         opts = _video_upscale_stage_options(settings, stage)
+        if delivery:
+            opts = replace(opts, codec=settings.codec,
+                           container=ffmpeg.resolve_container(settings.codec, settings.container),
+                           quality=settings.quality)
         result = upscale_video(source, opts, progress, output_dir=directory, controller=controller)
     elif stage == "frame_generation":
-        cache_codec, cache_container, _ = cache_video_format(settings.cache_codec)
+        cache_codec, cache_container, _ = (cache_video_format(settings.cache_codec)
+                                           if not delivery else
+                                           (settings.codec,
+                                            ffmpeg.resolve_container(settings.codec, settings.container), ""))
         opts = FrameInterpolationOptions(
             ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid,
             target_fps=settings.frame_interpolation_target_fps,
             engine=settings.frame_interpolation_engine,
-            codec=cache_codec, container=cache_container, quality="Auto (Default)",
+            codec=cache_codec, container=cache_container,
+            quality=settings.quality if delivery else "Auto (Default)",
             hdr_mode=hdr,
         )
         result = interpolate_video(source, opts, progress, output_dir=directory,
@@ -557,6 +654,48 @@ def _video_stage(source: Path, stage: str, settings: UISettings, hdr: bool,
     else:
         raise ValueError(f"Unknown video processing card: {stage}")
     return Path(result.output_path)
+
+
+def _render_single_video_stage(source: Path, stage: str, settings: UISettings,
+                               hdr: bool, destination: Path, directory: Path,
+                               controller: JobController, progress) -> str:
+    """Deliver a native stage with the requested codec in one processing pass."""
+    container = ffmpeg.resolve_container(settings.codec, settings.container)
+
+    def report(value, message):
+        if progress:
+            progress(min(.98, max(0.0, float(value)) * .98),
+                     f"Stage 1 of 1 · {STAGE_LABELS[stage]}: {message}")
+
+    if stage == "neural_model":
+        options = replace(_neural_video_options(settings, hdr),
+                          codec=settings.codec, container=container,
+                          quality=settings.quality)
+        result = convert_video(source, options, report, output_dir=directory,
+                               controller=controller)
+    elif stage in {"dlss_super_resolution", "super_resolution", "rtx_video_hdr"}:
+        options = replace(_video_upscale_stage_options(settings, stage),
+                          codec=settings.codec, container=container,
+                          quality=settings.quality)
+        result = upscale_video(source, options, report, output_dir=directory,
+                               controller=controller)
+    elif stage == "frame_generation":
+        options = FrameInterpolationOptions(
+            ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid,
+            target_fps=settings.frame_interpolation_target_fps,
+            engine=settings.frame_interpolation_engine,
+            codec=settings.codec, container=container, quality=settings.quality,
+            hdr_mode=hdr,
+        )
+        result = interpolate_video(source, options, report, output_dir=directory,
+                                   controller=controller)
+    else:
+        raise ValueError(f"Unknown native video stage: {stage}.")
+
+    _publish_video(Path(result.output_path), destination, controller)
+    if progress:
+        progress(1.0, "Export complete")
+    return str(destination)
 
 
 def _image_at_bit_depth(rgba: np.ndarray, settings: UISettings) -> np.ndarray:
@@ -594,18 +733,22 @@ def _export_image(current: Path, destination: Path,
         output.cleanup()
 
 
-def _publish_video_preview(current: Path, destination: Path, controller: JobController) -> Path:
-    """Keep the completed lossless clip available without another encode.
+def _publish_video(current: Path, destination: Path, controller: JobController,
+                   *, preview: bool = False) -> Path:
+    """Publish a completed video without another encode.
 
     A hard link is enough on the same volume. Cross-volume or optional-cache
     fallback copies remain cancellable and are published atomically.
     """
-    destination = destination.with_suffix(current.suffix)
+    if preview:
+        destination = destination.with_suffix(current.suffix)
+    elif destination.suffix.casefold() != current.suffix.casefold():
+        raise ValueError("The processed video container does not match the export destination.")
     destination.parent.mkdir(parents=True, exist_ok=True)
     output = OutputFile(destination)
     try:
         if controller.cancel.is_set():
-            raise Cancelled("Preview cancelled.")
+            raise Cancelled("Video processing cancelled.")
         output.temporary.unlink()
         try:
             os.link(current, output.temporary)
@@ -613,10 +756,10 @@ def _publish_video_preview(current: Path, destination: Path, controller: JobCont
             with current.open("rb") as source, output.temporary.open("wb") as target:
                 while data := source.read(1024 * 1024):
                     if controller.cancel.is_set():
-                        raise Cancelled("Preview cancelled.")
+                        raise Cancelled("Video processing cancelled.")
                     target.write(data)
         if controller.cancel.is_set():
-            raise Cancelled("Preview cancelled.")
+            raise Cancelled("Video processing cancelled.")
         output.publish()
     finally:
         output.cleanup()
@@ -650,7 +793,7 @@ def _export_video(source: Path, current: Path, destination: Path,
         encode_metadata["color_primaries"] = "bt2020"
         encode_metadata["color_transfer"] = "smpte2084"
         encode_metadata["color_space"] = "bt2020nc"
-    gpu = ffmpeg.resolve_video_gpu((), settings.video_gpu_uuid,
+    gpu = ffmpeg.resolve_video_gpu(detect_gpus(), settings.video_gpu_uuid,
                                    codec, width, height)
     codec_args, _, _ = _codec_command(codec, quality, width, height,
                                      float(metadata["fps"]),
@@ -692,27 +835,39 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
                 controller: JobController, progress=None, *, preview: bool = False,
                 capabilities_checked: bool = False,
                 preview_cache: PreviewStageCache | None = None,
-                source_cache_key: str | None = None) -> str:
+                source_cache_key: str | None = None,
+                preflight_estimate: PipelineEstimate | None = None) -> str:
     controller.ffmpeg_device = settings.ffmpeg_device
-    preflight_source(source, settings, mode)
-    if not capabilities_checked and preview_cache is None:
-        preflight_capabilities(settings, mode, controller)
+    estimate = preflight_estimate or preflight_source(source, settings, mode)
     stages = enabled_stages(settings, mode)
+    direct_native = (mode == "Video" and not preview and len(stages) == 1
+                     and stages[0] in {"neural_model", "dlss_super_resolution",
+                                       "super_resolution", "rtx_video_hdr", "frame_generation"})
+    if not capabilities_checked and preview_cache is None:
+        preflight_capabilities(settings, mode, controller,
+                               require_filter=not direct_native)
+    if mode == "Video" and not preview:
+        settings = _preferred_native_codec(settings, estimate, stages)
     upstream_key = (source_cache_key or cache_key({"kind": "source", "mode": mode,
                                                    "source": file_identity(source)})) if preview_cache else ""
     JOBS.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="visual-workflow-", dir=JOBS) as temp:
+        if direct_native:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            return _render_single_video_stage(source, stages[0], settings, estimate.hdr,
+                                              destination, Path(temp), controller, progress)
         if mode == "Video" and not preview and settings.cache_memory_mode == "rolling":
             from .rolling_workflow import render_rolling_video
             destination.parent.mkdir(parents=True, exist_ok=True)
             return render_rolling_video(source, settings, destination, controller,
                                         Path(temp), stages, progress)
         current = source
+        final_native = (mode == "Video" and not preview and bool(stages)
+                        and stages[-1] in {"neural_model", "dlss_super_resolution",
+                                           "super_resolution", "rtx_video_hdr", "frame_generation"})
         # Smart previews remain lossless and share their existing FFV1 cache keys.
         stage_settings = replace(settings, cache_codec="FFV1") if preview else settings
-        hdr = False
-        if mode == "Video":
-            hdr = bool(ffmpeg.probe_video(source, count_mode="metadata", controller=controller).get("hdr"))
+        hdr = estimate.hdr if mode == "Video" else False
         for index, stage in enumerate(stages):
             if controller.cancel.is_set():
                 raise Cancelled("Render stopped by user.")
@@ -748,7 +903,9 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
             elif mode == "Image":
                 current = _image_stage(current, stage, settings, directory, controller, report)
             else:
-                current = _video_stage(current, stage, stage_settings, hdr, directory, controller, report)
+                current = _video_stage(current, stage, stage_settings, hdr, directory,
+                                       controller, report,
+                                       delivery=final_native and index == len(stages) - 1)
             if controller.cancel.is_set():
                 raise Cancelled("Render stopped by user.")
             if preview_cache:
@@ -765,7 +922,18 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
         if mode == "Image":
             _export_image(current, destination, settings, controller)
         elif preview:
-            destination = _publish_video_preview(current, destination, controller)
+            destination = _publish_video(current, destination, controller, preview=True)
+        elif final_native:
+            output = OutputFile(destination)
+            try:
+                ffmpeg.final_mux(current, source, output.temporary,
+                                 ffmpeg.resolve_container(settings.codec, settings.container),
+                                 controller)
+                if controller.cancel.is_set():
+                    raise Cancelled("Render stopped by user.")
+                output.publish()
+            finally:
+                output.cleanup()
         else:
             def report_export(value, message):
                 if progress:
@@ -785,9 +953,13 @@ def render_pipeline_batch(input_paths, settings: UISettings, mode: str,
     if not paths:
         raise ValueError("Add a file before rendering.")
     controller = controller or JobController()
-    for path in paths:
-        preflight_source(path, settings, mode)
-    preflight_capabilities(settings, mode, controller)
+    estimates = [preflight_source(path, settings, mode) for path in paths]
+    stages = enabled_stages(settings, mode)
+    direct_native = (mode == "Video" and len(stages) == 1
+                     and stages[0] in {"neural_model", "dlss_super_resolution",
+                                       "super_resolution", "rtx_video_hdr", "frame_generation"})
+    preflight_capabilities(settings, mode, controller,
+                           require_filter=not direct_native)
     reporter = BatchProgress(paths, on_item_update, progress)
     successes: list[PipelineSuccess] = []
     failures: list[PipelineFailure] = []
@@ -810,7 +982,8 @@ def render_pipeline_batch(input_paths, settings: UISettings, mode: str,
             try:
                 rendered = render_item(path, settings, mode, output, controller,
                                        lambda value, message, i=index: reporter.advance(i, value, message),
-                                       capabilities_checked=True)
+                                       capabilities_checked=True,
+                                       preflight_estimate=estimates[index])
             except Exception as exc:
                 cancelled = isinstance(exc, Cancelled) or controller.cancel.is_set()
                 failures.append(PipelineFailure(str(path), str(exc), cancelled))
@@ -836,16 +1009,177 @@ def render_pipeline_preview(source: str, settings: UISettings, mode: str, *,
                             clip_seconds: float | None = None,
                             cache_dir: Path = PREVIEW_CACHE) -> tuple[str | np.ndarray, str]:
     controller = controller or JobController()
+    controller.ffmpeg_device = settings.ffmpeg_device
     source_path = Path(source).resolve()
     if controller.cancel.is_set():
         raise Cancelled("Preview cancelled.")
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
-    if not enabled_stages(settings, mode):
+    stages = enabled_stages(settings, mode)
+    if not stages:
         # The native player already seeks/plays the unprocessed video. Do not
         # probe, convert to FFV1, or decode another copy just to show it again.
         media = decode_image(source_path).rgba if mode == "Image" else str(source_path)
         return media, "Source preview (all processing cards are off)."
+    if mode == "Video" and clip_seconds is None:
+        frame_key = None
+        if "frame_generation" not in stages:
+            frame_key = cache_key({
+                "kind": "parked-frame", "source": file_identity(source_path),
+                "settings": preview_settings_key(settings, mode, hdr=False),
+                "start_seconds": round(float(start_seconds), 6),
+                "runtime": _preview_runtime_identity(),
+            })
+            cached = _cached_frame_preview(frame_key)
+            if cached is not None:
+                if controller.cancel.is_set():
+                    raise Cancelled("Preview cancelled.")
+                return cached, "Pipeline frame preview complete."
+        metadata = ffmpeg.probe_video(source_path, count_mode="metadata", controller=controller)
+        hdr_preview = bool(metadata.get("hdr") or "rtx_video_hdr" in stages)
+        pq_input = (not metadata.get("hdr") or
+                    metadata.get("color_transfer") == "smpte2084")
+        fast_hdr = hdr_preview and pq_input and stages in {
+            ("neural_model",), ("rtx_video_hdr",),
+        }
+        if (not int(metadata.get("rotation") or 0) and frame_key is not None
+                and (not hdr_preview or fast_hdr)):
+            preview_settings = (replace(settings, codec=LOSSLESS_VIDEO, container="MKV",
+                                        quality="Auto (Default)", hdr_mode=True)
+                                if hdr_preview else settings)
+            preflight_source(source_path, preview_settings, mode, metadata=metadata)
+            preflight_capabilities(
+                settings, mode, controller,
+                require_filter=hdr_preview or not set(stages).issubset({
+                    "neural_model", "dlss_super_resolution", "super_resolution",
+                    "rtx_video_hdr",
+                }),
+            )
+            from .rolling_workflow import render_preview_frame
+            pixels = render_preview_frame(source_path, replace(settings, cache_codec="FFV1"),
+                                          controller, start_seconds, stages, metadata)
+            if hdr_preview:
+                pixels = tone_map_hdr_preview_frame(pixels, controller=controller)
+            if controller.cancel.is_set():
+                raise Cancelled("Preview cancelled.")
+            _remember_frame_preview(frame_key, pixels)
+            return pixels, "Pipeline frame preview complete."
+    if (mode == "Video" and clip_seconds is not None and clip_seconds > 0
+            and stages == ("neural_model",)):
+        from ..neural_rendering.video.fast_preview import (
+            FastClipUnavailable, render_lossless_cuda_preview_clip)
+
+        options = _neural_video_options(replace(settings, cache_codec="FFV1"), False)
+        if options.prefer_nvenc:
+            metadata = ffmpeg.probe_video(source_path, count_mode="metadata",
+                                          controller=controller)
+            color_fields = ("color_space", "color_primaries", "color_transfer")
+            compatible_color = all(metadata.get(field) == "bt709"
+                                   for field in color_fields)
+            if (metadata.get("cfr") and not metadata.get("hdr")
+                    and not int(metadata.get("rotation") or 0)
+                    and int(metadata.get("depth") or 8) <= 8
+                    and compatible_color):
+                preview_settings = replace(settings, codec=LOSSLESS_VIDEO,
+                                           container="MKV", quality="Auto (Default)",
+                                           hdr_mode=True)
+                preflight_source(source_path, preview_settings, mode, metadata=metadata)
+                frame_count = max(1, math.ceil(float(clip_seconds) *
+                                               float(metadata["fps"]) - 1e-6))
+                stage_cache = PreviewStageCache(cache_dir)
+                clip_key = cache_key({
+                    "kind": "neural-cuda-lossless-clip",
+                    "source": file_identity(source_path),
+                    "settings": preview_settings_key(settings, mode, hdr=False),
+                    "start_seconds": round(float(start_seconds), 6),
+                    "clip_seconds": round(float(clip_seconds), 6),
+                    "frames": frame_count,
+                    "runtime": _preview_runtime_identity(),
+                })
+                cached = stage_cache.lookup(clip_key)
+                if cached is not None:
+                    if controller.cancel.is_set():
+                        raise Cancelled("Preview cancelled.")
+                    return str(cached.resolve()), "Pipeline video preview complete."
+                preflight_capabilities(settings, mode, controller,
+                                       require_filter=False)
+                JOBS.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(
+                        prefix="visual-cuda-preview-", dir=JOBS) as temp:
+                    directory = Path(temp) / "clip"
+                    directory.mkdir()
+                    try:
+                        result = render_lossless_cuda_preview_clip(
+                            source_path, options, metadata,
+                            start_seconds=start_seconds, frame_count=frame_count,
+                            output_dir=directory, controller=controller,
+                            progress=progress)
+                    except FastClipUnavailable:
+                        pass
+                    else:
+                        published = stage_cache.publish(clip_key, directory, result)
+                        if published.resolve() == result.resolve():
+                            output_dir = prepare_output_dir(output_dir)
+                            durable = unique_output_path(
+                                output_dir / f"pipeline-preview-{time.time_ns()}.mkv")
+                            shutil.move(str(result), str(durable))
+                            published = durable
+                        prune_preview_cache(root=stage_cache.root,
+                                            protected_keys=stage_cache.used_keys,
+                                            min_idle_seconds=0)
+                        return str(published.resolve()), "Pipeline video preview complete."
+    if (mode == "Video" and clip_seconds is not None and clip_seconds > 0
+            and stages in {("dlss_super_resolution",), ("super_resolution",)}):
+        metadata = ffmpeg.probe_video(source_path, count_mode="metadata",
+                                      controller=controller)
+        if (metadata.get("cfr") and not metadata.get("hdr")
+                and not int(metadata.get("rotation") or 0)
+                and int(metadata.get("depth") or 8) <= 8
+                and all(metadata.get(field) == "bt709" for field in
+                        ("color_space", "color_primaries", "color_transfer"))):
+            from ..upscale.video.preview import preview_upscale_native
+
+            preview_settings = replace(settings, codec=LOSSLESS_VIDEO,
+                                       container="MKV", quality="Auto (Default)",
+                                       hdr_mode=True)
+            preflight_source(source_path, preview_settings, mode, metadata=metadata)
+            stage_cache = PreviewStageCache(cache_dir)
+            clip_key = cache_key({
+                "kind": "upscale-direct-seek-lossless-clip",
+                "stage": stages[0],
+                "source": file_identity(source_path),
+                "settings": preview_settings_key(settings, mode, hdr=False),
+                "start_seconds": round(float(start_seconds), 6),
+                "clip_seconds": round(float(clip_seconds), 6),
+                "runtime": _preview_runtime_identity(),
+            })
+            cached = stage_cache.lookup(clip_key)
+            if cached is not None:
+                if controller.cancel.is_set():
+                    raise Cancelled("Preview cancelled.")
+                return str(cached.resolve()), "Pipeline video preview complete."
+            preflight_capabilities(settings, mode, controller, require_filter=False)
+            JOBS.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(
+                    prefix="visual-upscale-preview-", dir=JOBS) as temp:
+                directory = Path(temp) / "clip"
+                directory.mkdir()
+                result, _ = preview_upscale_native(
+                    str(source_path), _video_upscale_stage_options(settings, stages[0]),
+                    one_frame=False, progress=progress, controller=controller,
+                    output_dir=directory, start_seconds=start_seconds,
+                    preview_seconds=clip_seconds)
+                published = stage_cache.publish(clip_key, directory, Path(result))
+                if published.resolve() == Path(result).resolve():
+                    output_dir = prepare_output_dir(output_dir)
+                    durable = unique_output_path(
+                        output_dir / f"pipeline-preview-{time.time_ns()}.mkv")
+                    shutil.move(str(result), str(durable))
+                    published = durable
+                prune_preview_cache(root=stage_cache.root,
+                                    protected_keys=stage_cache.used_keys,
+                                    min_idle_seconds=0)
+                return str(published.resolve()), "Pipeline video preview complete."
     if mode == "Video":
         # Preview storage and playback are independent of delivery settings.
         settings = replace(settings, codec=LOSSLESS_VIDEO, container="MKV",

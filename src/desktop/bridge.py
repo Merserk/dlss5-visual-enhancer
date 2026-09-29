@@ -4144,10 +4144,14 @@ class AppBridge(QObject):
                          generate_previews=True, create_zip=False, same_as_input=same_as_input)
 
     def _nr_video_batch_worker(self, paths: list[str], settings: UISettings,
-                               output_dir: Path | None, same_as_input: bool) -> JobWorker:
+                                output_dir: Path | None, same_as_input: bool) -> JobWorker:
+        from ..core.gpu_selection import prefer_cuda_video
+
         opts = ConversionOptions(
             ai_gpu_uuid=settings.ai_gpu_uuid,
             video_gpu_uuid=settings.video_gpu_uuid,
+            prefer_nvenc=prefer_cuda_video(settings.ffmpeg_device,
+                                          settings.ai_gpu_uuid, settings.video_gpu_uuid),
             nr_style=settings.nr_style,
             nr_intensity=settings.nr_intensity,
             nr_passes=settings.nr_passes,

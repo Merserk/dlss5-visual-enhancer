@@ -275,6 +275,7 @@ def convert_video_inprocess_host(
     output_dir: str | os.PathLike[str] | None,
     metadata: dict[str, Any] | None = None,
     capabilities: UpscaleCapabilities | None = None,
+    preview_start_seconds: float = 0.0,
 ) -> UpscaleResult:
     """Run CPU/ProRes encoding without raw frame or NUT subprocess pipes."""
     started = time.perf_counter()
@@ -352,7 +353,10 @@ def convert_video_inprocess_host(
                 options={"primary_ctx": "1"}, is_hw_owned=True)
             from .media import decode_filter
             normalization, _ = decode_filter(metadata)
-            decoded_container = open_video_decoder(source, controller, pixel_format="gbrp10le" if input_format == 2 else "rgba", video_filter=normalization)
+            decoded_container = open_video_decoder(
+                source, controller,
+                pixel_format="gbrp10le" if input_format == 2 else "rgba",
+                video_filter=normalization, start_seconds=preview_start_seconds)
             input_stream = decoded_container.streams.video[0]
             input_stream.thread_type = "AUTO"
             decoder_iterator = iter(decoded_container.decode(input_stream))
@@ -574,7 +578,8 @@ def convert_video_inprocess_host(
             ffmpeg.final_mux(
                 temp_video, source, destination_file.temporary, options.container, controller,
                 preserve_supported_subtitles=True, source_time_origin=metadata["origin"],
-                audio_diagnostics=audio_diagnostics)
+                audio_diagnostics=audio_diagnostics,
+                video_only=preview_start_seconds > 0)
             timings["final_mux_seconds"] = time.perf_counter() - mux_tick
             update(0.96, "Verifying output frames, resolution, chroma, and HDR signaling")
             verified = ffmpeg.probe_video(destination_file.temporary, count_mode="packets",

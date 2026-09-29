@@ -30,7 +30,7 @@ from .native import FORMAT_RGBA8, FORMAT_R10, RTXVideoSession, probe_capabilitie
 
 
 def convert_video_dlss(source, options, *, controller, progress=None, output_dir=None,
-                       metadata=None, video_gpu=None):
+                       metadata=None, video_gpu=None, preview_start_seconds=0.0):
     started = time.perf_counter()
     metadata = metadata or inspect_video(source, controller, reject_hdr=True)
     width, height = int(metadata["width"]), int(metadata["height"])
@@ -94,7 +94,10 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
             decode_device = HWAccel(
                 "cuda", device=str(ordinal), allow_software_fallback=True,
                 options={"primary_ctx": "1"}, is_hw_owned=True)
-            input_container = open_video_decoder(source, controller, pixel_format="rgba64le" if source_high_depth else "rgba")
+            input_container = open_video_decoder(
+                source, controller,
+                pixel_format="rgba64le" if source_high_depth else "rgba",
+                start_seconds=preview_start_seconds)
             stream = input_container.streams.video[0]
             stream.thread_type = "AUTO"
             stream_tb = stream.time_base or Fraction(1, max(1, round(float(metadata["rate"]))))
@@ -197,6 +200,7 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
             ffmpeg.final_mux(temp_video, source, output_file.temporary, options.container,
                              controller, preserve_supported_subtitles=True,
                              source_time_origin=metadata["origin"], audio_diagnostics=audio_info,
+                             video_only=preview_start_seconds > 0,
                              video_color_metadata={
                                  "color_space": "bt2020nc" if options.hdr_enabled else "bt709",
                                  "color_primaries": "bt2020" if options.hdr_enabled else "bt709",

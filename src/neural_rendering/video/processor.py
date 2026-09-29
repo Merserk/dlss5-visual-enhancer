@@ -40,6 +40,32 @@ def uses_nvenc_frame_boundary(codec: str) -> bool:
     """Keep decoded and encoded frames on CUDA when NVENC is selected."""
     return ffmpeg._is_nvenc_codec(codec)
 
+
+def _preferred_neural_codec(source: Path, options: ConversionOptions,
+                            prepared_runtime, controller) -> ConversionOptions:
+    if not options.prefer_nvenc or options.codec not in {"H.264", "H.265", "AV1"}:
+        return options
+    try:
+        metadata = ffmpeg.probe_video(source, count_mode="metadata", controller=controller)
+        gpu = resolve_runtime_ai_gpu(prepared_runtime.gpus,
+                                     prepared_runtime.runtime_bundle, options.ai_gpu_uuid)
+        uuid = str(gpu["uuid"])
+        if options.video_gpu_uuid not in {"auto", uuid}:
+            return options
+        if options.scale_method == "DLSS":
+            from ...core.dlss_modes import dlss_output_size
+            width, height = dlss_output_size(int(metadata["width"]), int(metadata["height"]),
+                                              options.dlss_mode, even=True)
+        else:
+            width, height = resolve_output_size(int(metadata["width"]), int(metadata["height"]),
+                                                 options.upscaling_factor)
+        codec = options.codec + " (NVIDIA NVENC)"
+        ffmpeg.resolve_video_gpu((gpu,), uuid, codec, width, height)
+    except (OSError, RuntimeError, ValueError):
+        return options
+    app_log.info("video-render", f"automatic NVIDIA NVENC selected for {options.codec}")
+    return replace(options, codec=codec, video_gpu_uuid=uuid)
+
 def _validate_preview_options(
     options: ConversionOptions,
 ) -> tuple[float | None, int | None]:
@@ -86,7 +112,6 @@ def convert_video(
     if options.scale_method not in {"Standard", "DLSS"}:
         raise ValueError("Unknown Neural Rendering scale method.")
     validate_dlss(options.dlss_mode, options.dlss_preset)
-    cuda_path = uses_nvenc_frame_boundary(options.codec)
     hdr_requested = bool(options.preserve_hdr)
     if hdr_requested and not ffmpeg.hdr_mode_supported(options.codec):
         raise ValueError(
@@ -101,6 +126,8 @@ def convert_video(
 
     with job_context as controller:
         assert controller is not None
+        options = _preferred_neural_codec(source, options, prepared_runtime, controller)
+        cuda_path = uses_nvenc_frame_boundary(options.codec)
         if cuda_path:
             from .cuda_pipeline import convert_video_cuda_nvenc
 

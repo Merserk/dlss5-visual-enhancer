@@ -10,6 +10,122 @@ from ..paths import FFMPEG
 LOSSLESS_PREVIEW_CODEC = "FFV1 Lossless RGB 10-bit"
 
 
+def decode_timeline_frame(source: str | Path, metadata: dict, *,
+                          start_seconds: float = 0.0, controller=None):
+    """Seek to one timeline frame and return its RGBA samples in memory."""
+    import numpy as np
+    from ..jobs import Cancelled, current_job_controller
+
+    controller = controller or current_job_controller()
+    if controller is not None and controller.cancel.is_set():
+        raise Cancelled("Preview cancelled.")
+    width, height = int(metadata["width"]), int(metadata["height"])
+    high_depth = int(metadata.get("depth") or 8) > 8
+    pixel_format = "rgba64le" if high_depth else "rgba"
+    start = max(0.0, float(start_seconds))
+    aligned = max(0.0, start - 0.002)
+    fast = max(0.0, aligned - 2.0)
+    accurate = max(0.0, aligned - fast)
+    command = [str(FFMPEG), "-hide_banner", "-loglevel", "error", "-xerror",
+               "-noautorotate", "-ss", f"{fast:.6f}", "-i", str(source),
+               "-ss", f"{accurate:.6f}", "-map", "0:v:0", "-frames:v", "1",
+               "-an", "-sn", "-dn", "-fps_mode", "passthrough",
+               "-f", "rawvideo", "-pix_fmt", pixel_format, "pipe:1"]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if controller is not None:
+        controller.register(process)
+    try:
+        while True:
+            if controller is not None and controller.cancel.is_set():
+                raise Cancelled("Preview cancelled.")
+            try:
+                pixels, error = process.communicate(timeout=.2)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        if process.returncode:
+            raise RuntimeError("Timeline frame decoding failed: " + error.decode("utf-8", "replace")[-2000:])
+        dtype = "<u2" if high_depth else np.uint8
+        if len(pixels) != width * height * 4 * (2 if high_depth else 1):
+            raise RuntimeError("Timeline frame decoding returned unexpected dimensions.")
+        return np.frombuffer(pixels, dtype=dtype).reshape(height, width, 4).copy()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate()
+        if controller is not None:
+            controller.unregister(process)
+        process.stdout.close()
+        process.stderr.close()
+
+
+def tone_map_hdr_preview_frame(pixels, *, controller=None):
+    """Show one processed PQ frame through the established HDR display mapping."""
+    import tempfile
+
+    import numpy as np
+
+    from ..jobs import Cancelled, current_job_controller
+    from ..paths import JOBS
+
+    controller = controller or current_job_controller()
+    if (pixels.ndim != 3 or pixels.shape[2] != 4 or pixels.dtype != np.uint16):
+        raise ValueError("HDR preview requires a 16-bit RGBA frame.")
+    if controller is not None and controller.cancel.is_set():
+        raise Cancelled("Preview cancelled.")
+    height, width = pixels.shape[:2]
+    JOBS.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="visual-hdr-frame-", dir=JOBS) as temp:
+        output = Path(temp) / "frame.mkv"
+        command = [
+            str(FFMPEG), "-hide_banner", "-loglevel", "error", "-y",
+            "-f", "rawvideo", "-pixel_format", "rgba64le",
+            "-video_size", f"{width}x{height}", "-framerate", "25", "-i", "pipe:0",
+            "-frames:v", "1", "-vf",
+            "format=gbrp10le,setparams=colorspace=gbr:range=full:"
+            "color_primaries=bt2020:color_trc=smpte2084",
+            "-c:v", "ffv1", "-level", "3", "-slicecrc", "1",
+            "-pix_fmt", "gbrp10le", "-colorspace", "0", "-color_range", "pc",
+            "-color_primaries", "bt2020", "-color_trc", "smpte2084",
+            str(output),
+        ]
+        process = subprocess.Popen(
+            command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if controller is not None:
+            controller.register(process)
+        try:
+            payload = np.ascontiguousarray(pixels).tobytes()
+            try:
+                _, error = process.communicate(input=payload, timeout=.2)
+            except subprocess.TimeoutExpired:
+                while True:
+                    if controller is not None and controller.cancel.is_set():
+                        raise Cancelled("Preview cancelled.")
+                    try:
+                        _, error = process.communicate(timeout=.2)
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+            if controller is not None and controller.cancel.is_set():
+                raise Cancelled("Preview cancelled.")
+            if process.returncode:
+                raise RuntimeError("HDR preview encoding failed: " +
+                                   error.decode("utf-8", "replace")[-2000:])
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+            if controller is not None:
+                controller.unregister(process)
+            process.stdin.close()
+            process.stderr.close()
+        return decode_preview_frame(output, controller=controller)
+
+
 def extract_preview_subclip(
     source: str | Path,
     dest_dir: str | Path | None = None,
@@ -87,7 +203,8 @@ def extract_preview_subclip(
     ]
     process = None
     try:
-        command = prepare_command(command)
+        command = prepare_command(
+            command, selection=getattr(controller, "ffmpeg_device", None))
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace",

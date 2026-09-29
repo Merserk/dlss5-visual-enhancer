@@ -332,11 +332,10 @@ def quote_filter_path(path: str | Path) -> str:
     return "'" + value + "'"
 
 
-_VK_ENCODERS = {"libx264": "h264_vulkan", "h264_nvenc": "h264_vulkan",
-                "libx265": "hevc_vulkan", "hevc_nvenc": "hevc_vulkan",
-                "libsvtav1": "av1_vulkan", "libaom-av1": "av1_vulkan", "av1_nvenc": "av1_vulkan",
+_VK_ENCODERS = {"libx264": "h264_vulkan",
+                "libx265": "hevc_vulkan",
+                "libsvtav1": "av1_vulkan", "libaom-av1": "av1_vulkan",
                 "ffv1": "ffv1_vulkan", "prores_ks": "prores_ks_vulkan"}
-_SOFTWARE_ENCODERS = {"h264_nvenc": "libx264", "hevc_nvenc": "libx265", "av1_nvenc": "libsvtav1"}
 
 
 def _option(command: list[str], name: str, default=None):
@@ -538,9 +537,6 @@ def prepare_command(command: list[str], *, selection: str | None = None,
                 command[-1:-1] = ["-rc_mode", "cqp", "-qp", quality]
     else:
         graph = (graph + "," if graph else "") + f"{output_format(pix_fmt)},hwdownload,format={pix_fmt}"
-        if encoder in _SOFTWARE_ENCODERS:
-            command[command.index("-c:v") + 1] = _SOFTWARE_ENCODERS[encoder]
-            command = _remove_options(command, {"-gpu", "-tune", "-rc", "-cq", "-preset"})
     if "-vf" in command:
         command[command.index("-vf") + 1] = graph
     else:

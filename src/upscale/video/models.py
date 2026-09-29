@@ -41,6 +41,7 @@ class UpscaleOptions:
     custom_suffix: str = "_Upscale"
     ai_gpu_uuid: str = "auto"
     video_gpu_uuid: str = "auto"
+    prefer_nvenc: bool = True
     preview_seconds: float | None = None
     preview_frames: int | None = None
 
@@ -48,7 +49,7 @@ class UpscaleOptions:
         if self.engine not in UPSCALE_ENGINES:
             raise ValueError(f"Unknown upscale engine: {self.engine!r}.")
         validate_dlss(self.dlss_mode, self.dlss_preset)
-        for name in ("vsr_enabled", "hdr_enabled", "aspect_lock"):
+        for name in ("vsr_enabled", "hdr_enabled", "aspect_lock", "prefer_nvenc"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be on or off.")
         for name, low, high in (
@@ -88,15 +89,20 @@ class UpscaleOptions:
 
 
 SETTING_FIELDS = tuple(f.name for f in fields(UpscaleOptions) if f.name not in {
-    "ai_gpu_uuid", "video_gpu_uuid", "preview_seconds", "preview_frames",
+    "ai_gpu_uuid", "video_gpu_uuid", "prefer_nvenc", "preview_seconds", "preview_frames",
 })
 
 
 def options_from_settings(settings) -> UpscaleOptions:
+    from ...core.gpu_selection import prefer_cuda_video
+
     values = {name: getattr(settings, "upscale_" + name) for name in SETTING_FIELDS}
     values["container"] = resolve_container(values["codec"], values["container"])
     return UpscaleOptions(**values,
-                          ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid)
+                          ai_gpu_uuid=settings.ai_gpu_uuid, video_gpu_uuid=settings.video_gpu_uuid,
+                           prefer_nvenc=prefer_cuda_video(settings.ffmpeg_device,
+                                                           settings.ai_gpu_uuid,
+                                                           settings.video_gpu_uuid))
 
 
 def output_size(width: int, height: int, options: UpscaleOptions, sar: Fraction = Fraction(1)) -> tuple[int, int, str]:

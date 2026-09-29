@@ -9,6 +9,7 @@ from ...core.runtime import NR_STYLES, UPSCALING_MODES
 class ConversionOptions:
     ai_gpu_uuid: str = "auto"
     video_gpu_uuid: str = "auto"
+    prefer_nvenc: bool = True
     nr_style: str = "Default"
     nr_intensity: float = 1.0
     nr_passes: int = 1

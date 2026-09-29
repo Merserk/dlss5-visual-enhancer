@@ -5,6 +5,7 @@ PyAV here only demuxes/muxes raw NUT packets; it never encodes compressed video.
 """
 from __future__ import annotations
 
+import math
 import subprocess
 import threading
 from fractions import Fraction
@@ -29,8 +30,14 @@ class _Reader:
 
 
 class VideoDecoder:
-    def __init__(self, source, controller, *, pixel_format: str | None = None, selection=None, video_filter="", cwd=None):
+    def __init__(self, source, controller, *, pixel_format: str | None = None,
+                 selection=None, video_filter="", cwd=None, start_seconds: float = 0.0):
         self.controller, self.container = controller, None
+        if not math.isfinite(start_seconds) or start_seconds < 0:
+            raise ValueError("Decoder start time must be positive and finite.")
+        aligned = max(0.0, start_seconds - .002)
+        fast = max(0.0, aligned - 2.0)
+        accurate = max(0.0, aligned - fast)
         info = stream_info(source)
         if pixel_format is None:
             source_format = info.get("pix_fmt", "yuv420p")
@@ -38,7 +45,10 @@ class VideoDecoder:
             # to RGB/YUV required by a consumer is an explicit GPU operation.
             pixel_format = source_format if source_format in {"yuv420p", "yuv420p10le", "yuv422p10le", "gbrp10le", "rgba", "rgba64le", "nv12", "p010le"} else "rgba64le"
         command = [str(FFMPEG), "-v", "warning", "-xerror", "-copyts", "-noautorotate",
-                   "-i", str(source), "-map", "0:v:0", "-an", "-sn", "-dn", "-c:v", "rawvideo",
+                   *(["-ss", f"{fast:.6f}"] if start_seconds > 0 else []),
+                   "-i", str(source),
+                   *(["-ss", f"{accurate:.6f}"] if start_seconds > 0 else []),
+                   "-map", "0:v:0", "-an", "-sn", "-dn", "-c:v", "rawvideo",
                    *(["-vf", video_filter] if video_filter else []),
                    "-pix_fmt", pixel_format, "-fps_mode", "passthrough", "-enc_time_base", "demux",
                    "-f", "nut", "-write_index", "0", "pipe:1"]
@@ -89,8 +99,11 @@ class VideoDecoder:
         self.close()
 
 
-def open_video_decoder(source, controller, *, pixel_format=None, selection=None, video_filter="", cwd=None):
-    return VideoDecoder(source, controller, pixel_format=pixel_format, selection=selection, video_filter=video_filter, cwd=cwd)
+def open_video_decoder(source, controller, *, pixel_format=None, selection=None,
+                       video_filter="", cwd=None, start_seconds=0.0):
+    return VideoDecoder(source, controller, pixel_format=pixel_format,
+                        selection=selection, video_filter=video_filter, cwd=cwd,
+                        start_seconds=start_seconds)
 
 
 def packed_frame(frame) -> np.ndarray:

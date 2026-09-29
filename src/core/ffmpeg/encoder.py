@@ -90,9 +90,26 @@ def resolve_video_gpu(
     width: int,
     height: int,
 ) -> dict | None:
-    """Legacy NVIDIA selector; FFmpeg/Vulkan now owns codec assignment."""
+    """Resolve an explicit NVENC choice; plain codecs use FFmpeg/Vulkan."""
     _base_codec(codec)
-    return None
+    if not _is_nvenc_codec(codec):
+        return None
+    encoder = _NVENC_ENCODERS[_normalize_codec(codec)]
+    candidates = [gpu for gpu in gpus if gpu.get("cuda_ordinal") is not None]
+    if gpu_uuid != "auto":
+        candidates = [gpu for gpu in candidates if gpu.get("uuid") == gpu_uuid]
+        if not candidates:
+            raise RuntimeError("The selected Video Processing GPU is unavailable.")
+    for gpu in candidates:
+        ordinal = int(gpu["cuda_ordinal"])
+        if _encoder_probe(encoder, width, height, ordinal):
+            selected = dict(gpu)
+            selected["nvenc_codec"] = encoder
+            return selected
+    raise RuntimeError(
+        f"{codec} cannot encode {width}×{height} on the selected NVIDIA GPU. "
+        "Choose another Video Processing GPU, codec, or output size."
+    )
 
 
 def _codec_command(
@@ -234,6 +251,20 @@ def _codec_command(
         raise RuntimeError(
             "AV1 CPU encoding is unavailable: neither libsvtav1 nor libaom-av1 can initialize. "
             "Choose H.264 or H.265."
+        )
+
+    if norm in _NVENC_ENCODERS:
+        encoder = _NVENC_ENCODERS[norm]
+        if not _encoder_probe(encoder, width, height, gpu_ordinal):
+            raise RuntimeError(f"{norm} cannot encode {width}×{height} on the selected NVIDIA GPU.")
+        if norm == "H.264 (NVIDIA NVENC)" and hdr_mode:
+            raise ValueError("HDR Mode is unavailable for H.264 (NVIDIA NVENC).")
+        pix_fmt = ("p010le" if high_depth else "yuv420p") if encoder != "h264_nvenc" else "yuv420p"
+        return (
+            ["-c:v", encoder, *gpu_args, "-preset", "p6",
+             *(["-tune", "hq"] if encoder != "av1_nvenc" else []),
+             *nvenc_quality, "-pix_fmt", pix_fmt, *hdr_color],
+            encoder, quality,
         )
 
     raise ValueError(f"Unknown video codec: {codec!r}.")

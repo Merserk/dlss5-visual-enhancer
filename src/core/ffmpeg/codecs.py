@@ -6,8 +6,14 @@ import math
 ENCODING_QUALITIES = ("Auto (Default)", "Max", "Best", "Good")
 CONTAINER_CHOICES = ("MP4", "MKV", "MOV")
 
-# Backend-neutral codec choices; FFmpeg/Vulkan settings select acceleration.
-CODEC_CHOICES = ("H.264", "H.265", "AV1", "ProRes Proxy", "ProRes HQ", "FFV1 Lossless RGB 10-bit")
+# Plain codecs use the selected FFmpeg/Vulkan backend. Explicit NVIDIA choices
+# keep decoded, processed, and encoded video in CUDA where the pipeline allows it.
+CODEC_CHOICES = (
+    "H.264", "H.264 (NVIDIA NVENC)",
+    "H.265", "H.265 (NVIDIA NVENC)",
+    "AV1", "AV1 (NVIDIA NVENC)",
+    "ProRes Proxy", "ProRes HQ", "FFV1 Lossless RGB 10-bit",
+)
 
 _CODEC_ALIASES = {
     "HEVC": "H.265",
@@ -79,7 +85,7 @@ def _normalize_codec(codec: str) -> str:
     if not isinstance(codec, str):
         return codec
     c = codec.strip()
-    return _CODEC_ALIASES.get(c, c).removesuffix(" (NVIDIA NVENC)")
+    return _CODEC_ALIASES.get(c, c)
 
 
 def _base_codec(codec: str) -> str:
@@ -167,14 +173,11 @@ def validate_codec_container(codec: str, container: str) -> None:
     if container not in CONTAINER_CHOICES:
         raise ValueError(f"Unknown output container: {container!r}.")
     norm = _normalize_codec(codec)
+    base = _base_codec(norm)
     if norm in {"ProRes Proxy", "ProRes HQ"} and container == "MP4":
         raise ValueError(f"{norm} is not supported in MP4. Choose the MOV or MKV container.")
-    if norm == "AV1" and container == "MOV":
+    if base == "AV1" and container == "MOV":
         raise ValueError("AV1 is not supported in MOV. Choose the MP4 or MKV container.")
-    if norm not in CODEC_CHOICES and norm not in _CODEC_ALIASES.values():
-        # Allow alias but error on truly unknown for early feedback; _codec_command will also validate.
-        if norm not in _BASE_CODEC_MAP:
-            raise ValueError(f"Unknown video codec: {codec!r}.")
 
 
 def containers_for_codec(codec: str) -> tuple[str, ...]:

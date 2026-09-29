@@ -9,6 +9,7 @@ from __future__ import annotations
 import itertools
 import math
 import subprocess
+import tempfile
 import threading
 import time
 from collections import deque
@@ -26,6 +27,7 @@ from ..core.ffmpeg.audio import plan_audio_streams
 from ..core.ffmpeg.encoder import _codec_command
 from ..core.ffmpeg.filters import scaling_filter
 from ..core.ffmpeg.frames import _Reader, open_video_decoder, packed_frame
+from ..core.ffmpeg.preview import decode_timeline_frame
 from ..core.ffmpeg.nut import RawVideoPacketMuxer
 from ..core.ffmpeg.sharpening import sharpening_filter
 from ..core.ffmpeg.vulkan import prepare_command
@@ -511,6 +513,49 @@ def native_stage(stage, frames, state, settings, controller, directory, *, norma
     return pipe_filter(transformed, raw, after, "ve_gpu,format=gbrp10le", controller, directory), after
 
 
+def render_preview_frame(source: Path, settings: UISettings, controller,
+                         start_seconds: float, stages, metadata: dict) -> np.ndarray:
+    """Process one parked frame in memory; the caller maps HDR for display."""
+    from ..core.paths import JOBS
+
+    state = VideoState.from_metadata(metadata)
+    pixels = decode_timeline_frame(source, metadata, start_seconds=start_seconds,
+                                   controller=controller)
+    frame = av.VideoFrame.from_ndarray(pixels, format="rgba64le" if pixels.dtype == np.uint16 else "rgba")
+    frame.pts = 0
+    frame.time_base = Fraction(1, 1) / state.rate
+    frame.duration = 1
+    frames = iter((frame,))
+    with active_job(controller), ExitStack() as resources:
+        control = _Control(controller)
+        JOBS.mkdir(parents=True, exist_ok=True)
+        directory = Path(resources.enter_context(
+            tempfile.TemporaryDirectory(prefix="visual-frame-preview-", dir=JOBS)))
+        for group in filter_groups(stages):
+            before = state
+            if isinstance(group, tuple):
+                graph, state = build_filter_group(group, state, settings, directory, control)
+                frames = pipe_filter(frames, before, state, graph, control, directory)
+            elif group == "neural_model" and len(stages) == 1:
+                frames = neural_frames(frames, state, settings, control)
+                state = state.rgb()
+            elif group == "dlss_super_resolution" and len(stages) == 1:
+                from ..core.dlss_modes import dlss_output_size
+                width, height = dlss_output_size(state.width, state.height,
+                                                   settings.upscale_dlss_mode, even=True)
+                frames = dlss_frames(frames, state, settings, control)
+                state = state.rgb(width=width, height=height)
+            else:
+                frames, state = native_stage(group, frames, state, settings,
+                                             control, directory)
+            resources.callback(frames.close)
+        rendered = list(frames)
+        if len(rendered) != 1:
+            raise RuntimeError(f"Frame preview produced {len(rendered)} frames instead of one.")
+        result = rendered[0].to_ndarray(format="rgba64le")
+        return np.ascontiguousarray(result)
+
+
 def _encode(frames, state, source, destination, settings, controller, progress, stats):
     frames = iter(frames)
     first = next(frames)
@@ -524,7 +569,9 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
         if meta["color_space"] in {None, "", "unknown", "gbr"}:
             meta["color_space"] = "bt709"
         meta["color_range"] = "tv"
-    gpu = ffmpeg.resolve_video_gpu((), settings.video_gpu_uuid, settings.codec, state.width, state.height)
+    from ..core.gpu_detection import detect_gpus
+    gpu = ffmpeg.resolve_video_gpu(detect_gpus(), settings.video_gpu_uuid,
+                                   settings.codec, state.width, state.height)
     codec_args, selected, _ = _codec_command(settings.codec, settings.quality, state.width, state.height,
                                             float(state.rate), None if gpu is None else int(gpu["cuda_ordinal"]),
                                             hdr_mode=state.hdr, hdr_metadata=meta)

@@ -85,10 +85,10 @@ Rectangle {
                             objectName: "cache-memory-mode"
                             width: parent.width
                             model: [
-                                {label: qsTranslate("App", "Stage by Stage"), value: "stage"},
-                                {label: qsTranslate("App", "Rolling Cache (5 GB)"), value: "rolling"}
+                                {label: qsTranslate("App", "Rolling Cache (5 GB)"), value: "rolling"},
+                                {label: qsTranslate("App", "Stage by Stage"), value: "stage"}
                             ]
-                            currentValue: appBridge ? appBridge.cacheMemoryMode : "stage"
+                            currentValue: appBridge ? appBridge.cacheMemoryMode : "rolling"
                             onActivated: (v) => { if (appBridge) appBridge.cacheMemoryMode = v }
                         }
                     }

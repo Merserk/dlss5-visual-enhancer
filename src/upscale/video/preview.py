@@ -4,6 +4,7 @@ import math
 from dataclasses import replace
 from pathlib import Path
 
+from ...core import ffmpeg
 from ...core.ffmpeg.preview import LOSSLESS_PREVIEW_CODEC, decode_preview_frame
 from .processor import upscale_video
 
@@ -26,6 +27,8 @@ def preview_upscale_native(
         start = max(0.0, float(start_seconds or 0.0))
     except (TypeError, ValueError):
         start = 0.0
+    if not math.isfinite(start):
+        raise ValueError("Preview position must be finite.")
     try:
         frame_no = max(1, int(frame_index or 1)) if frame_index else 1
     except (TypeError, ValueError):
@@ -35,10 +38,19 @@ def preview_upscale_native(
         raise ValueError("Preview duration must be positive and finite.")
     effective_path = str(path)
     temp_clip: str | None = None
+    direct_seek = False
+    if start > 0 and not options.hdr_enabled:
+        metadata = ffmpeg.probe_video(path, count_mode="metadata", controller=controller)
+        direct_seek = bool(
+            metadata.get("cfr") and not metadata.get("hdr")
+            and not int(metadata.get("rotation") or 0)
+            and int(metadata.get("depth") or 8) <= 8
+            and all(metadata.get(field) == "bt709" for field in
+                    ("color_space", "color_primaries", "color_transfer")))
     # Both preview modes start at the parked timeline frame. Extract only
     # when seeking: processing the original directly avoids an extra encode
     # at the beginning of the source.
-    if start > 0:
+    if start > 0 and not direct_seek:
         from ...core.ffmpeg.preview import extract_preview_subclip
         if progress:
             try:
@@ -61,7 +73,9 @@ def preview_upscale_native(
             preview_seconds=None if one_frame else length_seconds,
         )
         result = upscale_video(
-            effective_path, opts, progress=progress, controller=controller, output_dir=output_dir
+            effective_path, opts, progress=progress, controller=controller,
+            output_dir=output_dir,
+            _preview_start_seconds=start if direct_seek else 0.0,
         )
     finally:
         if temp_clip:

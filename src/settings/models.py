@@ -189,7 +189,7 @@ class UISettings:
     ai_gpu_uuid: str = "auto"
     video_gpu_uuid: str = "auto"
     ffmpeg_device: str = "auto"
-    cache_memory_mode: str = "stage"
+    cache_memory_mode: str = "rolling"
     cache_codec: str = "FFV1"
     nr_style: str = "Default"
     nr_intensity: float = 1.0

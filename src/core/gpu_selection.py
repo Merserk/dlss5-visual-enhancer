@@ -47,6 +47,25 @@ def detect_gpu(gpu_uuid: str = "auto") -> dict:
     return _detect_gpu_cached(gpu_uuid)
 
 
+def prefer_cuda_video(ffmpeg_device: str, ai_gpu_uuid: str = "auto",
+                      video_gpu_uuid: str = "auto") -> bool:
+    """Use the native CUDA video path for automatic or matching NVIDIA devices."""
+    if ffmpeg_device == "cpu":
+        return False
+    if ffmpeg_device == "auto" and video_gpu_uuid == "auto":
+        return True
+    if ffmpeg_device != "auto" and not ffmpeg_device.startswith("vulkan:"):
+        return False
+    try:
+        gpu_uuid = str(detect_gpu(ai_gpu_uuid)["uuid"])
+    except (OSError, RuntimeError, ValueError, KeyError):
+        return False
+    if video_gpu_uuid not in {"auto", gpu_uuid}:
+        return False
+    return (ffmpeg_device == "auto" or
+            ffmpeg_device[7:].lower() == gpu_uuid.removeprefix("GPU-").lower())
+
+
 def _clear_gpu_detection_cache() -> None:
     _detect_gpu_cached.cache_clear()
     clear_gpu_detection_cache()
