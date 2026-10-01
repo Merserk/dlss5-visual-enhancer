@@ -416,7 +416,7 @@ def convert_video_cuda_nvenc(
                     _progress(
                         progress,
                         0.04 + 0.84 * min(1.0, delivered / estimated_frames),
-                        "Rendering video frames",
+                        f"Rendering video frames: {delivered:,} / {estimated_frames:,} frames",
                     )
                 if not delivered:
                     raise RuntimeError("The input video contains no decodable frames.")
