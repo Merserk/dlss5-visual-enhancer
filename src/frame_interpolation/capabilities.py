@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import ctypes
 import os
-import subprocess
 from functools import lru_cache
 from pathlib import Path
 
 from ..core.gpu_selection import detect_gpu
+from ..core.authenticode import authenticode_status as _authenticode_status
 from .models import FrameInterpolationCapabilities
 from .native import BRIDGE, BRIDGE_ABI_VERSION, RUNTIME_DIR, initialize_bridge
 
@@ -25,23 +25,6 @@ def _hags_enabled() -> bool:
         return int(value) == 2
     except (OSError, ValueError):
         return False
-
-
-def _authenticode_status(path: Path) -> str:
-    if os.name != "nt":
-        return "Unavailable"
-    escaped = str(path.resolve()).replace("'", "''")
-    try:
-        process = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-             "Import-Module \"$env:WINDIR\\System32\\WindowsPowerShell\\v1.0\\Modules\\"
-             "Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1\"; "
-             f"[string](Get-AuthenticodeSignature -LiteralPath '{escaped}').Status"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except (OSError, subprocess.TimeoutExpired):
-        return "Unavailable"
-    return process.stdout.strip() if process.returncode == 0 else "Unavailable"
 
 
 def _nvof_present() -> bool:

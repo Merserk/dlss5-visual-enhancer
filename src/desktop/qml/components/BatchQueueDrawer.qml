@@ -424,7 +424,7 @@ Rectangle {
                         text: {
                             var lines = [queueRow.detail]
                             if (queueRow.running && queueRow.processingFps > 0)
-                                lines.push(queueRow.processingFps.toFixed(1) + qsTranslate("App", " input FPS"))
+                                lines.push(queueRow.processingFps.toFixed(1) + qsTranslate("App", " processing FPS"))
                             if (queueRow.running && queueRow.remainingSeconds >= 0)
                                 lines.push(qsTranslate("App", "Estimated time to finish this job, including export: %1").arg(drawer.clockTime(queueRow.remainingSeconds, true)))
                             if (queueRow.complete && queueRow.elapsedSeconds > 0)
@@ -441,7 +441,7 @@ Rectangle {
                         MetricCaption { text: "FPS" }
                     }
                     HoverHandler { id: fpsHover }
-                    QueueToolTip { visible: fpsHover.hovered; text: qsTranslate("App", "Measured input frames per second in the current stage") }
+                    QueueToolTip { visible: fpsHover.hovered; text: qsTranslate("App", "Measured frames per second during video processing") }
                 }
                 Item {
                     width: drawer.remainingWidth; height: parent.height; visible: drawer.showRemaining

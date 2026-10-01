@@ -7,6 +7,8 @@ The native engine owns its D3D12 device, NGX feature, and estimated temporal gui
 from __future__ import annotations
 
 import ctypes as C
+import atexit
+import queue
 import threading
 
 import numpy as np
@@ -15,11 +17,12 @@ from PIL import Image
 from .dlss_modes import DLSS_MODES, DLSS_PRESETS, dlss_output_size, validate_dlss
 from .gpu_selection import detect_gpu
 from .paths import DLSSSR_BRIDGE, DLSSSR_DIR, DLSSSR_RUNTIME
+from .ngx_runtime import NGX_RUNTIME_LOCK
 
 
 class _SessionDesc(C.Structure):
     _fields_ = [(name, C.c_uint32) for name in (
-        "size", "abi", "input_width", "input_height", "output_width", "output_height", "mode", "preset")]
+        "size", "abi", "input_width", "input_height", "output_width", "output_height", "mode", "preset", "still_image")]
 
 
 class _FrameDesc(C.Structure):
@@ -27,6 +30,7 @@ class _FrameDesc(C.Structure):
         ("size", C.c_uint32), ("abi", C.c_uint32), ("input_rgba16f", C.c_void_p),
         ("input_stride", C.c_uint32), ("output_rgba16f", C.c_void_p),
         ("output_stride", C.c_uint32), ("reset", C.c_uint32), ("phase", C.c_uint32),
+        ("input_format", C.c_uint32), ("output_format", C.c_uint32),
     ]
 
 
@@ -41,7 +45,7 @@ class _CudaFrameDesc(C.Structure):
     _fields_ += [("y_pointer", C.c_uint64), ("uv_pointer", C.c_uint64)]
     _fields_ += [(name, C.c_uint32) for name in (
         "y_stride", "uv_stride", "color_matrix", "color_range", "rotation",
-        "reset", "phase", "output_p010")]
+        "reset", "phase", "output_p010", "video_color", "chroma_location")]
 
 
 class _CudaSurfaceDesc(C.Structure):
@@ -55,8 +59,93 @@ _ordinal = None
 _lock = threading.RLock()
 
 
+class _NativeWorker:
+    """One ordered NGX worker; DLPack destructors enqueue nonblocking releases."""
+    def __init__(self):
+        self.calls = queue.SimpleQueue()
+        self.lock = threading.Lock()
+        self.thread = None
+        self.stopping = False
+        self.poisoned = ""
+        self.retained = []
+
+    def guard(self):
+        if self.poisoned:
+            raise RuntimeError(f"DLSS SR engine is poisoned: {self.poisoned}. Restart the application.")
+
+    def run(self):
+        while True:
+            request = self.calls.get()
+            if request is None:
+                return
+            function, references, done, result, failures = request
+            try:
+                with NGX_RUNTIME_LOCK:
+                    self.guard()
+                    result.append(function())
+            except BaseException as exc:
+                self.poisoned = f"native exception: {exc}"
+                self.retained.append(references)
+                failures.append(exc)
+            finally:
+                function = references = request = None
+                done.set()
+                done = result = failures = None
+
+    def submit(self, function, references=()):
+        self.guard()
+        done, result, failures = threading.Event(), [], []
+        with self.lock:
+            if self.stopping:
+                raise RuntimeError("DLSS SR is shutting down.")
+            if self.thread is None:
+                self.thread = threading.Thread(target=self.run, name="dlsssr-native", daemon=True)
+                self.thread.start()
+                atexit.register(self.shutdown)
+            self.calls.put((function, references, done, result, failures))
+        return done, result, failures
+
+    def call(self, function, references=(), timeout=180.0):
+        done, result, failures = self.submit(function, references)
+        if not done.wait(timeout):
+            self.retained.append((function, references))
+            self.poisoned = f"native call exceeded {timeout:g} seconds"
+        self.guard()
+        if failures:
+            raise failures[0]
+        return result[0]
+
+    def release(self, library, handle, owner):
+        if self.poisoned or self.stopping:
+            return
+        self.submit(lambda: library.dlsssr_cuda_surface_release(handle), (owner,))
+
+    def shutdown(self):
+        with self.lock:
+            if self.thread is None or self.stopping:
+                return
+            self.stopping = True
+            self.calls.put(None)
+            thread = self.thread
+        thread.join(5.0)
+        if thread.is_alive():
+            self.poisoned = "native worker did not drain during shutdown"
+
+
+_WORKER = _NativeWorker()
+
+
 def _error(buffer: C.Array) -> str:
     return buffer.value.decode("utf-8", "replace") or "DLSS native engine failed without a diagnostic."
+
+
+def _raise_native(buffer, references=()):
+    detail = _error(buffer)
+    if "poison" in detail.casefold():
+        _WORKER.poisoned = detail
+        _WORKER.retained.append(references)
+        _WORKER.guard()
+    raise RuntimeError(detail)
 
 
 def _load(ordinal: int):
@@ -88,10 +177,24 @@ def _load(ordinal: int):
         lib.dlsssr_cuda_surface_desc.argtypes = [C.c_void_p, C.POINTER(_CudaSurfaceDesc)]
         lib.dlsssr_cuda_surface_desc.restype = C.c_int
         lib.dlsssr_cuda_surface_retain.argtypes = [C.c_void_p]
+        lib.dlsssr_cuda_surface_retain.restype = None
         lib.dlsssr_cuda_surface_release.argtypes = [C.c_void_p]
+        lib.dlsssr_cuda_surface_release.restype = None
+        if hasattr(lib, "dlsssr_session_diagnostics"):
+            lib.dlsssr_session_diagnostics.argtypes = [C.c_void_p, C.POINTER(C.c_uint64), C.c_uint32]
+            lib.dlsssr_session_diagnostics.restype = C.c_int
+            lib.dlsssr_get_diagnostics.argtypes = [C.POINTER(C.c_uint64), C.c_uint32]
+            lib.dlsssr_get_diagnostics.restype = C.c_int
+            lib.dlsssr_version.argtypes = []
+            lib.dlsssr_version.restype = C.c_char_p
+            lib.dlsssr_host_formats.argtypes = []
+            lib.dlsssr_host_formats.restype = C.c_uint32
+        if hasattr(lib, "dlsssr_host_output_formats"):
+            lib.dlsssr_host_output_formats.argtypes = []
+            lib.dlsssr_host_output_formats.restype = C.c_uint32
         error = C.create_string_buffer(1024)
-        if not lib.dlsssr_init(ordinal, str(DLSSSR_DIR), error, len(error)):
-            raise RuntimeError(_error(error))
+        if not _WORKER.call(lambda: lib.dlsssr_init(ordinal, str(DLSSSR_DIR), error, len(error)), (error, lib)):
+            _raise_native(error, (error, lib))
         _library, _ordinal = lib, ordinal
         return lib
 
@@ -103,7 +206,7 @@ def initialize_bridge(ordinal: int) -> None:
 
 class DLSSSession:
     def __init__(self, width: int, height: int, mode: str, preset: str = "Default", *,
-                 gpu_uuid: str = "auto", even: bool = False):
+                 gpu_uuid: str = "auto", even: bool = False, still_image: bool = False):
         validate_dlss(mode, preset)
         self.width, self.height = width, height
         self.output_width, self.output_height = dlss_output_size(width, height, mode, even=even)
@@ -112,46 +215,82 @@ class DLSSSession:
         self.gpu_name = str(gpu.get("name", "NVIDIA GPU"))
         self.ordinal = int(gpu.get("cuda_ordinal", gpu.get("index", 0)))
         self.lib = _load(self.ordinal)
+        self.bridge_version = self.lib.dlsssr_version().decode("ascii") if hasattr(self.lib, "dlsssr_version") else "DLSS ABI 1"
         desc = _SessionDesc(C.sizeof(_SessionDesc), 1, width, height,
                             self.output_width, self.output_height,
-                            tuple(DLSS_MODES).index(mode), DLSS_PRESETS.index(preset))
+                            tuple(DLSS_MODES).index(mode), DLSS_PRESETS.index(preset), int(still_image))
         error = C.create_string_buffer(1024)
-        with _lock:
-            self.handle = self.lib.dlsssr_session_create(C.byref(desc), error, len(error))
+        self._session_lock = threading.RLock()
+        self._host_source = None
+        self.handle = _WORKER.call(lambda: self.lib.dlsssr_session_create(C.byref(desc), error, len(error)),
+                                   (self, desc, error))
         if not self.handle:
-            raise RuntimeError(_error(error))
+            _raise_native(error, (self, desc, error))
         self.frames = 0
         self.last_result = None
 
-    def process(self, rgba: np.ndarray, *, reset: bool = False, phase: int = 0) -> np.ndarray:
+    def process(self, rgba: np.ndarray, *, reset: bool = False, phase: int = 0,
+                output_dtype=np.float16) -> np.ndarray:
+        with self._session_lock:
+            return self._process(rgba, reset=reset, phase=phase, output_dtype=output_dtype)
+
+    def _process(self, rgba: np.ndarray, *, reset: bool, phase: int, output_dtype) -> np.ndarray:
         if not self.handle:
             raise RuntimeError("DLSS session is closed.")
         if rgba.shape != (self.height, self.width, 4):
             raise ValueError("DLSS input shape does not match the session.")
-        if rgba.dtype == np.uint8:
-            source = np.ascontiguousarray(rgba[..., :4].astype(np.float32) / 255, dtype=np.float16)
-        elif rgba.dtype == np.uint16:
-            source = np.ascontiguousarray(rgba[..., :4].astype(np.float32) / 65535, dtype=np.float16)
+        output_dtype = np.dtype(output_dtype)
+        if output_dtype not in (np.float16, np.uint8, np.uint16):
+            raise ValueError("DLSS output must be float16, uint8, or uint16.")
+        output_format = 0
+        if hasattr(self.lib, "dlsssr_host_output_formats"):
+            output_format = {np.dtype(np.uint8): 1, np.dtype(np.uint16): 2}.get(output_dtype, 0)
+        input_format = 0
+        if rgba.dtype in (np.uint8, np.uint16) and hasattr(self.lib, "dlsssr_host_formats"):
+            source = np.ascontiguousarray(rgba)
+            input_format = 1 if rgba.dtype == np.uint8 else 2
+        elif rgba.dtype in (np.uint8, np.uint16):
+            if self._host_source is None:
+                self._host_source = np.empty(rgba.shape, dtype=np.float16)
+            source = self._host_source
+            # Float32 division, followed by half rounding, preserves the original
+            # pixels without allocating an intermediate full-size float32 array.
+            np.divide(rgba, np.float32(255 if rgba.dtype == np.uint8 else 65535),
+                      out=source, dtype=np.float32, casting="unsafe")
         else:
             source = np.ascontiguousarray(rgba[..., :4], dtype=np.float16)
-        output = np.empty((self.output_height, self.output_width, 4), dtype=np.float16)
+        output = np.empty((self.output_height, self.output_width, 4),
+                          dtype=output_dtype if output_format else np.float16)
         frame = _FrameDesc(C.sizeof(_FrameDesc), 1, source.ctypes.data, source.strides[0],
-                           output.ctypes.data, output.strides[0], int(reset), phase)
+                           output.ctypes.data, output.strides[0], int(reset), phase, input_format, output_format)
         result = _FrameResult()
         result.size, result.abi = C.sizeof(_FrameResult), 1
         error = C.create_string_buffer(1024)
-        with _lock:
-            ok = self.lib.dlsssr_process_rgba16f(self.handle, C.byref(frame), C.byref(result), error, len(error))
+        ok = _WORKER.call(lambda: self.lib.dlsssr_process_rgba16f(
+            self.handle, C.byref(frame), C.byref(result), error, len(error)),
+            (self, source, output, frame, result, error))
         if not ok:
-            raise RuntimeError(_error(error))
+            _raise_native(error, (self, source, output, frame, result, error))
         self.frames += 1
         self.last_result = result
+        if not output_format and output_dtype != np.float16:
+            levels = 65535 if output_dtype == np.uint16 else 255
+            output = np.rint(np.clip(output.astype(np.float32), 0, 1) * levels).astype(output_dtype)
         return output
 
     def process_cuda_frame(self, frame, *, color_matrix: int = 1,
                            color_range: int = 0, rotation: int = 0,
                            reset: bool = False, phase: int = 0,
-                           output_p010: bool = False):
+                           output_p010: bool = False, video_color: bool = True,
+                           chroma_location: int = 1):
+        with self._session_lock:
+            return self._process_cuda_frame(frame, color_matrix=color_matrix, color_range=color_range,
+                                            rotation=rotation, reset=reset, phase=phase,
+                                            output_p010=output_p010, video_color=video_color,
+                                            chroma_location=chroma_location)
+
+    def _process_cuda_frame(self, frame, *, color_matrix, color_range, rotation, reset, phase,
+                            output_p010, video_color, chroma_location):
         """Evaluate NVDEC NV12/P010 and return a CUDA AVFrame for NVENC/NR."""
         if not self.handle:
             raise RuntimeError("DLSS session is closed.")
@@ -166,22 +305,22 @@ class DLSSSession:
             int(frame.planes[0].buffer_ptr), int(frame.planes[1].buffer_ptr),
             int(frame.planes[0].line_size), int(frame.planes[1].line_size),
             int(color_matrix), int(color_range), int(rotation), int(reset),
-            int(phase), int(output_p010))
+            int(phase), int(output_p010), int(video_color), int(chroma_location))
         result = _FrameResult()
         result.size, result.abi = C.sizeof(_FrameResult), 1
         handle = C.c_void_p()
         error = C.create_string_buffer(1024)
-        with _lock:
-            ok = self.lib.dlsssr_process_cuda_yuv(
-                self.handle, C.byref(source), C.byref(result), C.byref(handle), error, len(error))
+        ok = _WORKER.call(lambda: self.lib.dlsssr_process_cuda_yuv(
+            self.handle, C.byref(source), C.byref(result), C.byref(handle), error, len(error)),
+            (self, frame, source, result, handle, error))
         if not ok:
-            raise RuntimeError(_error(error))
+            _raise_native(error, (self, frame, source, result, handle, error))
         if not handle.value:
             raise RuntimeError("DLSS returned no CUDA output surface.")
         surface = _CudaSurfaceDesc()
         surface.size, surface.abi = C.sizeof(_CudaSurfaceDesc), 1
         if not self.lib.dlsssr_cuda_surface_desc(handle, C.byref(surface)):
-            self.lib.dlsssr_cuda_surface_release(handle)
+            _WORKER.release(self.lib, handle, self)
             raise RuntimeError("DLSS returned an invalid CUDA output surface.")
         from .neural_bridge import _DLPackPlane
         import av
@@ -191,7 +330,7 @@ class DLSSSession:
             self.lib.dlsssr_cuda_surface_retain(handle)
 
         def release():
-            self.lib.dlsssr_cuda_surface_release(handle)
+            _WORKER.release(self.lib, handle, self)
 
         bits = 16 if surface.pixel_format == 5 else 8
         item_size = bits // 8
@@ -221,11 +360,25 @@ class DLSSSession:
             "gpu_pre_resize": (result.render_width, result.render_height) != (self.width, self.height),
         }
 
+    def diagnostics(self):
+        if not hasattr(self.lib, "dlsssr_session_diagnostics"):
+            return {}
+        with self._session_lock:
+            if not self.handle:
+                return {}
+            values = (C.c_uint64 * 9)()
+            if not _WORKER.call(lambda: self.lib.dlsssr_session_diagnostics(self.handle, values, len(values)),
+                                (self, values)):
+                raise RuntimeError("DLSS SR session returned invalid diagnostics.")
+            return dict(zip(("host_frames", "cuda_frames", "upload_bytes", "download_bytes", "surface_allocations",
+                             "guide_descriptors", "still_image", "render_alias", "surface_slots"), values))
+
     def close(self):
-        if self.handle:
-            with _lock:
-                self.lib.dlsssr_session_release(self.handle)
-            self.handle = None
+        with self._session_lock:
+            if self.handle:
+                _WORKER.call(lambda: self.lib.dlsssr_session_release(self.handle), (self,))
+                self.handle = None
+                self._host_source = None
 
     def __enter__(self):
         return self
@@ -238,17 +391,18 @@ def process_image(rgba: np.ndarray, mode: str, preset: str = "Default", *,
                   gpu_uuid: str = "auto", controller=None):
     """Evaluate a still once; duplicate frames contain no new spatial samples."""
     height, width = rgba.shape[:2]
-    with DLSSSession(width, height, mode, preset, gpu_uuid=gpu_uuid) as session:
+    with DLSSSession(width, height, mode, preset, gpu_uuid=gpu_uuid, still_image=True) as session:
         if controller is not None and controller.cancel.is_set():
             from .jobs import Cancelled
             raise Cancelled("DLSS image processing stopped by user.")
-        result = session.process(rgba, reset=True)
         high_depth = rgba.dtype == np.uint16
         levels = 65535 if high_depth else 255
-        processed = np.rint(np.clip(result.astype(np.float32), 0, 1) * levels).astype(
-            np.uint16 if high_depth else np.uint8)
+        processed = session.process(rgba, reset=True, output_dtype=np.uint16 if high_depth else np.uint8)
         if rgba.shape[2] == 4:
-            alpha = Image.fromarray(rgba[..., 3]).resize(
+            alpha_source = rgba[..., 3]
+            if alpha_source.dtype.kind == "f":
+                alpha_source = np.rint(np.clip(alpha_source.astype(np.float32), 0, 1) * levels).astype(processed.dtype)
+            alpha = Image.fromarray(alpha_source).resize(
                 (session.output_width, session.output_height), Image.Resampling.LANCZOS)
             processed[..., 3] = np.clip(np.asarray(alpha), 0, levels).astype(processed.dtype)
         return processed, {
@@ -262,4 +416,5 @@ def process_image(rgba: np.ndarray, mode: str, preset: str = "Default", *,
                                session.last_result.render_height) != (width, height),
             "ngx_result": f"0x{session.last_result.ngx_result:08X}",
             "gpu": session.gpu_name,
+            "bridge_version": session.bridge_version,
         }

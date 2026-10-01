@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""FFmpeg Vulkan/software -> RTX Video -> pinned host -> FFmpeg codec pipeline."""
+"""NVDEC/normalized fallback -> RTX CUDA -> pinned host -> FFmpeg codec."""
 
 import ctypes
 import gc
@@ -18,8 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import av
-from ...core.ffmpeg.frames import open_video_decoder, VideoOutput
-from av.codec.hwaccel import HWAccel
+from ...core.ffmpeg.frames import VideoOutput
 
 from ...core import app_log, ffmpeg
 from ...core.disk_paths import OutputFile, prepare_output_dir
@@ -40,12 +39,13 @@ from .cuda_pipeline import (
     normalize_frame_timing,
 )
 from .cuda_transfer import CU_MEMHOSTALLOC_PORTABLE, _CudaApi
-from .media import inspect_video, packed_bytes
+from .media import inspect_video, open_rtx_decoder
 from .models import UpscaleCapabilities, UpscaleOptions, UpscaleResult, output_size
 from .native import (
     FORMAT_NV12,
     FORMAT_P010,
     FORMAT_YUV422P10,
+    FORMAT_GBRP10,
     RTXVideoSession,
     probe_capabilities,
 )
@@ -116,7 +116,7 @@ def _encoder_settings(options: UpscaleOptions, width: int, height: int,
             FORMAT_YUV422P10, {"profile": "3"}, 0, quality)
     if codec == "FFV1 Lossless RGB 10-bit":
         return _EncoderSettings(
-            "ffv1", "ffv1 (Lossless RGB 10-bit)", "gbrp10le", FORMAT_YUV422P10,
+            "ffv1", "ffv1 (Lossless RGB 10-bit)", "gbrp10le", FORMAT_GBRP10,
             {"level": "3", "slicecrc": "1"}, 0, quality)
     raise ValueError(f"The in-process host pipeline does not support codec {options.codec!r}.")
 
@@ -151,8 +151,8 @@ class _PinnedSlot:
                 rows = self.rows[index]
                 destination = int(plane.buffer_ptr)
                 destination_stride = int(plane.line_size)
-                if count == source_stride == destination_stride:
-                    ctypes.memmove(destination, source, count * rows)
+                if source_stride == destination_stride:
+                    ctypes.memmove(destination, source, source_stride * rows)
                 else:
                     for row in range(rows):
                         ctypes.memmove(destination + row * destination_stride,
@@ -188,6 +188,10 @@ class _PinnedFramePool:
             strides = (width * 2, width * 2)
             rows = (height, (height + 1) // 2)
             row_bytes = strides
+        elif native_format == FORMAT_GBRP10:
+            strides = (width * 2,) * 3
+            rows = (height,) * 3
+            row_bytes = strides
         elif native_format == FORMAT_YUV422P10:
             strides = (width * 2, ((width + 1) // 2) * 2, ((width + 1) // 2) * 2)
             rows = (height, height, height)
@@ -195,6 +199,10 @@ class _PinnedFramePool:
         else:
             self.api.check(self.api.primary_release(self.device), "cuDevicePrimaryCtxRelease")
             raise ValueError("Unsupported pinned-frame format.")
+        # Match FFmpeg's aligned frame pitch once, avoiding thousands of
+        # Python/ctypes row copies for dimensions such as 636 or 1920 pixels.
+        template = av.VideoFrame(self.width, self.height, self.pixel_format)
+        strides = tuple(int(plane.line_size) for plane in template.planes)
         self.frame_bytes = sum(stride * count for stride, count in zip(strides, rows))
         self.slots: list[_PinnedSlot] = []
         try:
@@ -205,6 +213,7 @@ class _PinnedFramePool:
                         ctypes.byref(allocation), self.frame_bytes, CU_MEMHOSTALLOC_PORTABLE),
                         "cuMemHostAlloc(encoder frame)")
                     base = int(allocation.value or 0)
+                    ctypes.memset(base, 0, self.frame_bytes)
                     pointers, offset = [], 0
                     for stride, count in zip(strides, rows):
                         pointers.append(base + offset)
@@ -243,6 +252,12 @@ class _PinnedFramePool:
 
     def close(self, *, abort: bool = False) -> None:
         if self.closed:
+            return
+        from .native import _MANAGER
+        if _MANAGER.poisoned_reason:
+            # A watchdog timeout may still be writing into this allocation.
+            # Retain it and its primary context until process restart.
+            self.closed = True
             return
         deadline = time.monotonic() + (2.0 if abort else self.timeout)
         with self.condition:
@@ -348,23 +363,13 @@ def convert_video_inprocess_host(
                 "encoded.mkv" if encoder.codec == "ffv1" else
                 "encoded.mov" if encoder.codec == "prores_ks" else "encoded.mp4"
             )
-            decode_device = HWAccel(
-                "cuda", device=str(ordinal), allow_software_fallback=True,
-                options={"primary_ctx": "1"}, is_hw_owned=True)
-            from .media import decode_filter
-            normalization, _ = decode_filter(metadata)
-            decoded_container = open_video_decoder(
-                source, controller,
-                pixel_format="gbrp10le" if input_format == 2 else "rgba",
-                video_filter=normalization, start_seconds=preview_start_seconds)
-            input_stream = decoded_container.streams.video[0]
-            input_stream.thread_type = "AUTO"
-            decoder_iterator = iter(decoded_container.decode(input_stream))
             tick = time.perf_counter()
             try:
-                first_frame = next(decoder_iterator)
+                decoded_container, first_frame, decoder_iterator, raw_timestamps = open_rtx_decoder(
+                    source, metadata, ordinal, controller, start_seconds=preview_start_seconds)
             except StopIteration as exc:
                 raise ValueError("The input contains no decodable video frames.") from exc
+            input_stream = decoded_container.streams.video[0]
             timings["decode_seconds"] += time.perf_counter() - tick
 
             encoded_container = VideoOutput(temp_video, controller)
@@ -387,7 +392,7 @@ def convert_video_inprocess_host(
                 capabilities, controller)
             pinned_pool = _PinnedFramePool(
                 ordinal, output_width, output_height, encoder.native_format,
-                {FORMAT_NV12: "nv12", FORMAT_P010: "p010le",
+                {FORMAT_NV12: "nv12", FORMAT_P010: "p010le", FORMAT_GBRP10: "gbrp10le",
                  FORMAT_YUV422P10: "yuv422p10le"}[encoder.native_format], controller)
             decode_queue: queue.Queue = queue.Queue(maxsize=4)
             encode_queue = queue.Queue(maxsize=4)
@@ -458,7 +463,7 @@ def convert_video_inprocess_host(
             encode_thread.start()
 
             default_duration = max(1, round(Fraction(1, 1) / metadata["rate"] / stream_tb))
-            origin_pts = round(Fraction(str(metadata["origin"])) / stream_tb)
+            origin_pts = round(Fraction(str(metadata["origin"])) / stream_tb) if raw_timestamps else 0
             first_time: Fraction | None = None
             preview_origin: int | None = None
             last_pts: int | None = None
@@ -510,10 +515,9 @@ def convert_video_inprocess_host(
                     else:
                         decode_backends.add("ffmpeg-vulkan")
                         prepare_tick = time.perf_counter()
-                        packed = packed_bytes(frame)
                         timings["software_prepare_seconds"] += time.perf_counter() - prepare_tick
                         detail = session.process_host_to_host_planar(
-                            packed, output_format=encoder.native_format,
+                            frame, output_format=encoder.native_format,
                             plane_pointers=slot.plane_pointers, strides=slot.strides)
                     timings["bridge_input_seconds"] += detail["input_ms"] / 1000.0
                     timings["ngx_seconds"] += detail["ngx_ms"] / 1000.0
@@ -566,7 +570,7 @@ def convert_video_inprocess_host(
             session.close()
             if session.completed_frames != delivered:
                 raise RuntimeError("RTX Video bridge completion does not match frame accounting.")
-            if not preview and (not metadata["frames"] or delivered != metadata["frames"]):
+            if not preview and metadata["frames"] and delivered != metadata["frames"]:
                 exact = ffmpeg.probe_video(source, count_mode="exact", strict_decode=True,
                                            controller=controller)
                 if int(exact["frames"]) != delivered:

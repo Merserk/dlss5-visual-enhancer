@@ -11,15 +11,13 @@ from fractions import Fraction
 from pathlib import Path
 
 import av
-from ...core.ffmpeg.frames import open_video_decoder, VideoOutput
+from ...core.ffmpeg.frames import open_video_decoder
 import cv2
 import numpy as np
-from av.codec.hwaccel import HWAccel
 
 from ...core import app_log, ffmpeg
 from ...core.disk_paths import OutputFile, prepare_output_dir
 from ...core.dlss_bridge import DLSSSession
-from ...core.gpu_selection import detect_gpu
 from ...core.jobs import Cancelled
 from ...core.naming import output_filename, unique_output_path
 from ...core.paths import JOBS
@@ -35,8 +33,6 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
     metadata = metadata or inspect_video(source, controller, reject_hdr=True)
     width, height = int(metadata["width"]), int(metadata["height"])
     ow, oh, _ = output_size(width, height, options)
-    gpu = detect_gpu(options.ai_gpu_uuid)
-    ordinal = int(gpu["cuda_ordinal"])
     source_high_depth = int(metadata["depth"]) > 8
     output_depth = ffmpeg.output_video_depth(metadata["depth"], options.codec, options.hdr_enabled)
     preview = options.preview_frames is not None or options.preview_seconds is not None
@@ -91,9 +87,6 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                     "color_range": "tv", "hdr": options.hdr_enabled,
                 }, preserve_timestamps=True, bounded_logs=True,
                 output_depth=output_depth)
-            decode_device = HWAccel(
-                "cuda", device=str(ordinal), allow_software_fallback=True,
-                options={"primary_ctx": "1"}, is_hw_owned=True)
             input_container = open_video_decoder(
                 source, controller,
                 pixel_format="rgba64le" if source_high_depth else "rgba",
@@ -105,11 +98,21 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                 encoder.stdin, width=ow, height=oh, rate=metadata["rate"],
                 time_base=stream_tb, pix_fmt="gbrp10le" if hdr_session else "rgba64le" if output_depth > 8 else "rgba")
             guides = TemporalGuideGenerator(width, height, cut_threshold=0.10)
+            processed_float = None
             first_pts = None
             last_pts = None
             default_duration = max(1, round(Fraction(1) / metadata["rate"] / stream_tb))
             estimated = int(metadata["frames"] or max(1, math.ceil(metadata["duration"] * float(metadata["rate"]))))
-            for frame in input_container.decode(stream):
+            timings["setup_seconds"] = time.perf_counter() - started
+            pipeline_tick = time.perf_counter()
+            decoded = iter(input_container.decode(stream))
+            while True:
+                decode_tick = time.perf_counter()
+                try:
+                    frame = next(decoded)
+                except StopIteration:
+                    break
+                timings["decode_seconds"] += time.perf_counter() - decode_tick
                 if frame.is_corrupt:
                     raise RuntimeError("The source decoder returned a corrupt frame.")
                 decode_tick = time.perf_counter()
@@ -137,10 +140,15 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                 guide = guides.process(rgba)
                 cuts += int(delivered > 0 and guide.reset)
                 dlss_tick = time.perf_counter()
-                result = dlss.process(rgba, reset=guide.reset, phase=delivered)
+                result = dlss.process(rgba, reset=guide.reset, phase=delivered,
+                                      output_dtype=np.float16 if hdr_session else np.uint16 if output_depth > 8 else np.uint8)
                 timings["dlss_seconds"] += time.perf_counter() - dlss_tick
-                processed_float = np.clip(result.astype(np.float32), 0, 1)
+                postprocess_tick = time.perf_counter()
                 if hdr_session is not None:
+                    if processed_float is None:
+                        processed_float = np.empty(result.shape, dtype=np.float32)
+                    # Avoid NumPy's software half-float clipping loop.
+                    np.clip(result, 0, 1, out=processed_float, dtype=np.float32)
                     hdr_tick = time.perf_counter()
                     if source_high_depth:
                         rgb10 = np.rint(processed_float[..., :3] * 1023).astype(np.uint32)
@@ -156,10 +164,8 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                     processed = packed_frame(hdr_frame)
                     timings["hdr_seconds"] += time.perf_counter() - hdr_tick
                 else:
-                    levels = 65535 if output_depth > 8 else 255
-                    processed = np.rint(processed_float * levels).astype(
-                        np.uint16 if output_depth > 8 else np.uint8)
-                    processed[..., 3] = levels
+                    processed = result
+                timings["postprocess_seconds"] = timings.get("postprocess_seconds", 0.) + time.perf_counter() - postprocess_tick
                 encode_tick = time.perf_counter()
                 duration = round(Fraction(frame.duration or default_duration) *
                                  (frame.time_base or stream_tb) / stream_tb)
@@ -172,12 +178,15 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                            f"DLSS video processing: {delivered:,} / {estimated:,} frames")
             if not delivered:
                 raise ValueError("The source contains no decodable video frames.")
+            timings["pipeline_seconds"] = time.perf_counter() - pipeline_tick
             writer.close(); writer = None
             encoder.stdin.close()
+            flush_tick = time.perf_counter()
             if encoder.wait(timeout=600) != 0:
                 encoder_thread.join(timeout=2)
                 raise RuntimeError("Video encoder failed: " + "\n".join(list(encoder_logs)[-20:]))
             encoder_thread.join(timeout=2)
+            timings["encoder_flush_seconds"] = time.perf_counter() - flush_tick
             controller.unregister(encoder)
             encoder = None
             input_container.close(); input_container = None
@@ -187,15 +196,20 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                 hdr_session.close(); hdr_session = None
             if dlss.frames != delivered:
                 raise RuntimeError("DLSS frame count does not match the source.")
-            if not preview and (not metadata["frames"] or delivered != metadata["frames"]):
+            # Strict source EOF and one evaluation/packet per frame already
+            # establish the count when the container omits nb_frames.
+            if not preview and metadata["frames"] and delivered != metadata["frames"]:
                 source_count = ffmpeg.probe_video(
                     source, count_mode="exact", strict_decode=True, controller=controller)
                 if int(source_count["frames"]) != delivered:
                     raise RuntimeError(
                         f"Source has {source_count['frames']} frames but DLSS processed {delivered}.")
             render_w, render_h = dlss.last_result.render_width, dlss.last_result.render_height
+            native_diagnostics = dlss.diagnostics()
+            bridge_version = dlss.bridge_version
             dlss.close(); dlss = None
             update(.90, "Muxing audio and metadata")
+            mux_tick = time.perf_counter()
             audio_info = {}
             ffmpeg.final_mux(temp_video, source, output_file.temporary, options.container,
                              controller, preserve_supported_subtitles=True,
@@ -206,9 +220,13 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                                  "color_primaries": "bt2020" if options.hdr_enabled else "bt709",
                                  "color_transfer": "smpte2084" if options.hdr_enabled else "bt709",
                                  "color_range": "tv"})
+            timings["final_mux_seconds"] = time.perf_counter() - mux_tick
             update(.96, "Verifying output")
-            saved = ffmpeg.probe_video(output_file.temporary, count_mode="exact",
-                                       strict_decode=True, controller=controller)
+            verification_tick = time.perf_counter()
+            saved = ffmpeg.probe_video(output_file.temporary, count_mode="packets", controller=controller)
+            if int(saved["frames"]) != delivered:
+                saved = ffmpeg.probe_video(output_file.temporary, count_mode="exact",
+                                           strict_decode=True, controller=controller)
             if (int(saved["frames"]) != delivered or
                 (int(saved["width"]), int(saved["height"])) != (ow, oh)):
                 raise RuntimeError("DLSS output has an incorrect frame count or size.")
@@ -218,6 +236,7 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                     verified["stream"].get("color_primaries") != "bt2020" or
                     verified["stream"].get("color_space") != "bt2020nc"):
                     raise RuntimeError("DLSS → RTX Video HDR output lost HDR signaling.")
+            timings["verification_seconds"] = time.perf_counter() - verification_tick
             elapsed = time.perf_counter() - started
             status = {
                 "engine": "DLSS Super Resolution", "mode": options.dlss_mode,
@@ -229,14 +248,16 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                 "rtx_video_hdr": bool(options.hdr_enabled),
                 "audio_streams": audio_info.get("streams", []),
                 "timings": timings,
+                "motion_backend": "gpu_lucas_kanade", **native_diagnostics,
+                "bridge_version": bridge_version,
             }
             output_file.publish()
             app_log.info("upscale-dlss", f"done src={source.name} out={output.name} frames={delivered} mode={options.dlss_mode} preset={options.dlss_preset} fps={delivered/max(elapsed, 1e-9):.2f}")
             update(1.0, "Complete — DLSS evaluated")
             return UpscaleResult(str(output), report_path, delivered, ow, oh,
-                                 options.hdr_enabled, elapsed, bridge_version="DLSS ABI 1",
+                                 options.hdr_enabled, elapsed, bridge_version=bridge_version,
                                  memory_path="host_rgba_d3d12_host_encoder",
-                                 decode_backend="NVDEC/software", encode_backend=selected,
+                                 decode_backend="FFmpeg Vulkan/software", encode_backend=selected,
                                  timings=timings, bridge_status=status)
     finally:
         if writer:

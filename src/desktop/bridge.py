@@ -29,6 +29,7 @@ from ..core.dlss_modes import DLSS_MODES, DLSS_PRESETS, UPSCALE_ENGINES, dlss_ou
 from ..core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, FIXED_QUALITY_CODECS, container_for_codec, containers_for_codec, hdr_mode_supported, probe_video, resolve_container
 from ..core.naming import RENAME_MODES, validate_rename
 from ..core.nr_composition import inspect_nr_mask, mask_status
+from ..core.ffmpeg.grain import GRAIN_FIELDS
 from ..settings.models import (
     DEFAULT_SETTINGS, UPSCALE_MODE_CHOICES,
     UPSCALE_PREVIEW_LENGTH_CHOICES, UISettings, IMAGE_STAGE_ORDER, VIDEO_STAGE_ORDER,
@@ -100,6 +101,8 @@ VIDEO_SUFFIXES = frozenset(
         ".mts", ".m2ts", ".wmv", ".flv",
     }
 )
+
+MEDIA_LOAD_TIMEOUT_SECONDS = 30.0
 
 # Browser "Copy image" clipboard handling for Ctrl+V. Chromium puts both an
 # https URL and bitmap pixels on the clipboard; the pixels must win (no
@@ -175,7 +178,7 @@ class AppBridge(QObject):
     AUTO_PREVIEW_FIELDS = {
         "ffmpeg_device",
         "image_stage_order", "video_stage_order", "image_enabled_stages", "video_enabled_stages",
-        "cas_sharpness", "sharpening_method",
+        "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
         "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
         "ai_gpu_uuid", "video_gpu_uuid",
         "nr_style", "nr_intensity", "nr_passes",
@@ -201,7 +204,7 @@ class AppBridge(QObject):
     } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"}
     PROCESSING_PREVIEW_FIELDS = {
         "nr-image": {
-            "cas_sharpness", "sharpening_method",
+            "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
             "image_scaling_filter", "upscaling_factor",
             "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
             "upscale_image_dlss_mode", "upscale_image_dlss_preset",
@@ -210,7 +213,7 @@ class AppBridge(QObject):
             "upscale_image_height", "upscale_image_aspect_lock",
         } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"},
         "nr-video": {
-            "cas_sharpness", "sharpening_method",
+            "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
             "video_scaling_filter", "upscaling_factor",
             "lut_path",
             "upscale_dlss_mode", "upscale_dlss_preset",
@@ -240,7 +243,7 @@ class AppBridge(QObject):
     NR_RANGE_FIELDS = {
         "ffmpeg_device",
         "video_stage_order", "video_enabled_stages",
-        "cas_sharpness", "sharpening_method",
+        "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
         "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
         "ai_gpu_uuid", "video_gpu_uuid",
         "nr_style", "nr_intensity", "nr_passes",
@@ -702,6 +705,54 @@ class AppBridge(QObject):
     @casSharpness.setter
     def casSharpness(self, value: int) -> None:
         self._save_setting(cas_sharpness=int(value))
+
+    @Property(int, notify=settingsUpdated)
+    def grainAmount(self) -> int:
+        return self._settings.grain_amount
+
+    @grainAmount.setter
+    def grainAmount(self, value: int) -> None:
+        self._save_setting(grain_amount=int(value))
+
+    @Property(float, notify=settingsUpdated)
+    def grainSize(self) -> float:
+        return self._settings.grain_size
+
+    @grainSize.setter
+    def grainSize(self, value: float) -> None:
+        self._save_setting(grain_size=round(float(value), 2))
+
+    @Property(int, notify=settingsUpdated)
+    def grainColor(self) -> int:
+        return self._settings.grain_color
+
+    @grainColor.setter
+    def grainColor(self, value: int) -> None:
+        self._save_setting(grain_color=int(value))
+
+    @Property(int, notify=settingsUpdated)
+    def grainResponse(self) -> int:
+        return self._settings.grain_response
+
+    @grainResponse.setter
+    def grainResponse(self, value: int) -> None:
+        self._save_setting(grain_response=int(value))
+
+    @Property(int, notify=settingsUpdated)
+    def grainSeed(self) -> int:
+        return self._settings.grain_seed
+
+    @grainSeed.setter
+    def grainSeed(self, value: int) -> None:
+        self._save_setting(grain_seed=int(value))
+
+    @Property(bool, notify=settingsUpdated)
+    def grainAnimated(self) -> bool:
+        return self._settings.grain_animated
+
+    @grainAnimated.setter
+    def grainAnimated(self, value: bool) -> None:
+        self._save_setting(grain_animated=bool(value))
 
     @Property(list, constant=True)
     def coloringModeChoices(self) -> list[dict[str, str]]:
@@ -1356,7 +1407,7 @@ class AppBridge(QObject):
 
     @Property(bool, notify=operationStateChanged)
     def canStop(self) -> bool:
-        return self._operation_state in {PREVIEW_RUNNING, PREVIEW_PREPARING, BATCH_RUNNING, BATCH_PREPARING, LIVE_STARTING, LIVE_RUNNING}
+        return self._operation_state in {LOADING_METADATA, PREVIEW_RUNNING, PREVIEW_PREPARING, BATCH_RUNNING, BATCH_PREPARING, LIVE_STARTING, LIVE_RUNNING}
 
     @Property(str, notify=runtimeStateChanged)
     def runtimeState(self) -> str:
@@ -3011,6 +3062,47 @@ class AppBridge(QObject):
             return translate_text(str(exc))
 
     @Property(str, notify=estimateChanged)
+    def frameGenerationEstimate(self) -> str:
+        fps = self._context().source_fps
+        if fps <= 0:
+            return translate_text("")
+        return translate_text(f"{fps:g} FPS → {self._settings.frame_interpolation_target_fps} FPS")
+
+    @Property(str, notify=estimateChanged)
+    def rtxSuperResolutionEstimate(self) -> str:
+        context = self._context()
+        width, height = context.source_width, context.source_height
+        if width <= 0 or height <= 0:
+            return translate_text("")
+        mode = self._nr_mode if self._active_tab == "neural-rendering" else self._upscale_mode
+        try:
+            if self._active_tab == "neural-rendering":
+                # Use the dimensions entering this card, before any later scaling.
+                for card in self.workflowStages:
+                    stage = card["id"]
+                    if stage == "super_resolution":
+                        break
+                    if not card["enabled"]:
+                        continue
+                    if stage == "scale_method":
+                        width, height = resolve_output_size(width, height, self._settings.upscaling_factor)
+                    elif stage == "dlss_super_resolution":
+                        dlss_mode = (self._settings.upscale_image_dlss_mode if mode == "Image"
+                                     else self._settings.upscale_dlss_mode)
+                        width, height = dlss_output_size(width, height, dlss_mode, even=mode == "Video")
+            if mode == "Image":
+                options = replace(image_upscale_options_from_settings(self._settings),
+                                  engine="RTX Video Super Resolution")
+                ow, oh = image_upscale_output_size(width, height, options)
+            else:
+                options = replace(video_upscale_options_from_settings(self._settings),
+                                  engine="RTX Video Super Resolution", vsr_enabled=True, hdr_enabled=False)
+                ow, oh, _ = video_upscale_output_size(width, height, options)
+            return translate_text(f"{width}×{height} → {ow}×{oh}")
+        except Exception as exc:
+            return translate_text(UiMessage("Output unavailable: %1", exc))
+
+    @Property(str, notify=estimateChanged)
     def outputEstimate(self) -> str:
         context = self._context()
         width, height = context.source_width, context.source_height
@@ -3095,7 +3187,7 @@ class AppBridge(QObject):
     TAB_RESET_NEURAL_FIELDS = (
         "image_stage_order", "video_stage_order",
         "image_enabled_stages", "video_enabled_stages",
-        "cas_sharpness", "sharpening_method",
+        "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
         "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
         "lut_reference_image",
         "lut_resolution", *LUT_ADJUSTMENT_RANGES,
@@ -3278,9 +3370,9 @@ class AppBridge(QObject):
         return None
 
     def _expand_inputs_by_kind(self, file_urls: list[str], controller=None,
-                               progress=None) -> dict[str, list[str]]:
+                               progress=None) -> dict[str, Any]:
         """Scan once, preserving drop order and separating images from videos."""
-        collected: dict[str, list[str]] = {"image": [], "video": []}
+        collected: dict[str, Any] = {"image": [], "video": [], "file_sizes": {}}
         seen: dict[str, set[str]] = {"image": set(), "video": set()}
         roots = list(file_urls or [])
         total_roots = max(1, len(roots))
@@ -3307,6 +3399,10 @@ class AppBridge(QObject):
                     if identity not in seen[kind]:
                         seen[kind].add(identity)
                         collected[kind].append(resolved)
+                        try:
+                            collected["file_sizes"][resolved] = item.stat().st_size
+                        except OSError:
+                            collected["file_sizes"][resolved] = 0
             except (OSError, PermissionError):
                 continue
             if progress is not None:
@@ -3346,7 +3442,7 @@ class AppBridge(QObject):
             self.overallProgressChanged.emit()
             self.statusMessageChanged.emit()
 
-        def done(valid_by_kind: dict[str, list[str]]) -> None:
+        def done(valid_by_kind: dict[str, Any]) -> None:
             if operation_id != self._operation_id or self._shutting_down:
                 return
             self._scan_worker = None
@@ -3355,7 +3451,7 @@ class AppBridge(QObject):
                 kind = "image" if key.endswith("image") else "video"
                 queue = self._queue_for_context(key)
                 before = queue.count
-                queue.add_items(valid_by_kind[kind])
+                queue.add_scanned_items(valid_by_kind[kind], valid_by_kind.get("file_sizes", {}))
                 added = queue.count - before
                 added_by_kind[kind] += added
                 if added:
@@ -3461,7 +3557,8 @@ class AppBridge(QObject):
                         thumbnail.thumbnail((256, 144), Image.Resampling.LANCZOS)
                         result = {"width": width, "height": height, "thumbnail": thumbnail}
                     else:
-                        meta = probe_video(path_str, count_mode="metadata", controller=controller)
+                        meta = probe_video(path_str, count_mode="metadata", controller=controller,
+                                           timeout=MEDIA_LOAD_TIMEOUT_SECONDS)
                         result = {"width": meta["width"], "height": meta["height"],
                                   "duration": meta.get("duration", 0), "frames": meta.get("frames", 0)}
                         if controller.cancel.is_set():
@@ -3524,12 +3621,15 @@ class AppBridge(QObject):
         try:
             if not path_str:
                 return
-            path = Path(path_str)
+            path = Path(os.path.abspath(path_str))
+            root = Path(os.path.abspath(APP_TEMP))
+            if root not in path.parents:
+                return
             if not path.is_file():
                 return
             try:
                 staged = path.resolve()
-                root = APP_TEMP.resolve()
+                root = root.resolve()
             except OSError:
                 return
             if root in staged.parents:
@@ -3728,13 +3828,17 @@ class AppBridge(QObject):
             return 0, 0
 
     def _load_input_preview_async(self, path_str: str, row: int, context_key: str) -> None:
-        path = Path(path_str)
-        if not path.is_file():
+        if not path_str:
             return
+        path = Path(path_str)
         queue = self._queue_for_context(context_key)
         context = self._contexts[context_key]
         context.selected_path = str(path)
         context.selected_row = row
+        # Release the previous decoder before probing a different source.
+        context.input_url = ""
+        context.input_is_video = False
+        context.input_info = path.name
         context.source_width = 0
         context.source_height = 0
         context.source_aspect_ratio = None
@@ -3769,6 +3873,8 @@ class AppBridge(QObject):
                 pass
 
         operation_id = self._set_operation(LOADING_METADATA, UiMessage("Loading media…"))
+        load_started = time.monotonic()
+        app_log.info("media-load", f"start {context_key}: {path.name}")
         accepts_images = context_key in {"nr-image", "upscale-image"}
 
         def task(controller=None, progress=None) -> dict[str, Any]:
@@ -3782,7 +3888,9 @@ class AppBridge(QObject):
                 return {"kind": "image", "preview": preview, "width": width, "height": height}
             if progress:
                 progress(0.15, "Probing video metadata…")
-            meta = probe_video(str(path), count_mode="metadata")
+            meta = probe_video(str(path), count_mode="metadata", controller=controller,
+                               timeout=MEDIA_LOAD_TIMEOUT_SECONDS)
+            app_log.info("media-load", f"metadata ready: {path.name}")
             width = int(meta.get("display_width") or meta.get("width") or 0)
             height = int(meta.get("display_height") or meta.get("height") or 0)
             rotation = int(meta.get("rotation") or 0)
@@ -3795,9 +3903,13 @@ class AppBridge(QObject):
                 progress(0.55, "Extracting poster frame…")
             try:
                 from ..core.ffmpeg.preview import grab_video_poster_jpeg
-                poster_jpeg = grab_video_poster_jpeg(str(path), seconds=0.0, max_width=960)
+                poster_jpeg = grab_video_poster_jpeg(str(path), seconds=0.0, max_width=960,
+                                                    controller=controller)
             except Exception as exc:
-                self._log(f"Poster extraction warning for {path.name}: {exc}")
+                if controller.cancel.is_set():
+                    from ..core.jobs import Cancelled
+                    raise Cancelled("Media loading cancelled.") from exc
+                app_log.error("media-load", f"Poster extraction warning for {path.name}: {exc}")
             return {
                 "kind": "video",
                 "width": width,
@@ -3812,13 +3924,14 @@ class AppBridge(QObject):
         self._metadata_worker = worker
 
         def progress(fraction: float, message: str) -> None:
-            if generation != self._contexts[context_key].generation:
+            if self._metadata_worker is not worker or generation != self._contexts[context_key].generation:
                 return
             self._status_message = message
             self.statusMessageChanged.emit()
 
         def done(result: dict[str, Any]) -> None:
-            if generation != self._contexts[context_key].generation or self._shutting_down:
+            if (self._metadata_worker is not worker
+                    or generation != self._contexts[context_key].generation or self._shutting_down):
                 return
             self._metadata_worker = None
             ctx = self._contexts[context_key]
@@ -3877,26 +3990,37 @@ class AppBridge(QObject):
                 self._emit_context()
                 self.settingsUpdated.emit()
             if self._finish_operation(operation_id, UiMessage("Ready.")):
+                app_log.info("media-load", f"ready in {time.monotonic() - load_started:.2f}s: {path.name}")
                 self._schedule_auto_preview(140)
 
         def failed(message: str) -> None:
-            if generation != self._contexts[context_key].generation:
+            if (self._metadata_worker is not worker
+                    or generation != self._contexts[context_key].generation or self._shutting_down):
                 return
             self._metadata_worker = None
             ctx = self._contexts[context_key]
             ctx.preview_error = message
-            ctx.input_url = QUrl.fromLocalFile(str(path)).toString()
-            ctx.input_is_video = context_key not in {"nr-image", "upscale-image"}
+            # Do not hand a failed/stalled probe to another decoder on the UI.
+            ctx.input_url = ""
+            ctx.input_is_video = False
             ctx.input_info = path.name
             if context_key == self._context_key():
                 self._emit_context()
             self._finish_operation(operation_id, UiMessage("Metadata unavailable for %1.", path.name))
+            app_log.error("media-load", f"failed after {time.monotonic() - load_started:.2f}s: {path.name}: {message}")
             self._log(f"Media metadata/preview failed for {path.name}: {message}")
+
+        def cancelled() -> None:
+            if self._metadata_worker is not worker or self._shutting_down:
+                return
+            self._metadata_worker = None
+            self._finish_operation(operation_id, UiMessage("Media loading cancelled."))
+            app_log.info("media-load", f"cancelled: {path.name}")
 
         worker.signals.progress.connect(progress)
         worker.signals.finished.connect(done)
         worker.signals.failed.connect(failed)
-        worker.signals.cancelled.connect(lambda: self._finish_operation(operation_id, UiMessage("Media loading cancelled.")))
+        worker.signals.cancelled.connect(cancelled)
         self._thread_pool.start(worker)
 
     # =========================================================================
@@ -4213,6 +4337,14 @@ class AppBridge(QObject):
 
     @Slot()
     def stopActiveBatch(self) -> None:
+        if self._operation_state == LOADING_METADATA and self._metadata_worker is not None:
+            self._metadata_worker.controller.stop()
+            queue_worker = self._queue_metadata_workers.get(self._context_key())
+            if queue_worker is not None:
+                queue_worker.controller.stop()
+            self._status_message = UiMessage("Media loading cancelled.")
+            self.statusMessageChanged.emit()
+            return
         if self._operation_state in {PREVIEW_PREPARING, PREVIEW_RUNNING} and self._active_worker is not None:
             self._operation_state = PREVIEW_CANCELLING
             self.operationStateChanged.emit()

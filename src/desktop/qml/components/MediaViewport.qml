@@ -173,24 +173,35 @@ Rectangle {
         // Keep the last frame on screen instead of clearing to black at EOS.
         loops: MediaPlayer.Infinite
         property bool primePending: false
+        function resetSourcePosition() {
+            pause()
+            position = 0
+        }
+        function primeFirstFrame() {
+            if (!primePending || source.toString() === ""
+                    || (mediaStatus !== MediaPlayer.LoadedMedia && mediaStatus !== MediaPlayer.BufferedMedia))
+                return
+            primePending = false
+            // Let the backend finish its status notification before changing
+            // decoder state.
+            play()
+            pause()
+            position = 0
+        }
         onSourceChanged: {
             viewport.playerError = ""
             viewport.peekActive = false
             viewport.peekWasPlaying = false
-            pause()
             // position assignment before media is loaded is ignored; the
             // priming handler below re-applies it once Loaded/Buffered.
-            position = 0
             primePending = source !== ""
+            Qt.callLater(inputPlayer.resetSourcePosition)
         }
         onMediaStatusChanged: (status) => {
             if ((status === MediaPlayer.LoadedMedia || status === MediaPlayer.BufferedMedia) && primePending) {
-                primePending = false
                 // Play-then-pause primes the decoder's first frame; a bare
                 // pause()/position=0 leaves VideoOutput black on Windows.
-                play()
-                pause()
-                position = 0
+                Qt.callLater(inputPlayer.primeFirstFrame)
             }
             if (status === MediaPlayer.EndOfMedia && !viewport.showingOutput) {
                 // Infinite loops already rewinds; keep position sane for UI.

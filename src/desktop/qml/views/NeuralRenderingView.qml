@@ -45,6 +45,7 @@ Item {
         if (id === "rtx_video_hdr") return qsTranslate("App", "RTX Video HDR")
         if (id === "coloring") return qsTranslate("App", "Coloring")
         if (id === "cas_sharpening") return qsTranslate("App", "Sharpening")
+        if (id === "grain") return qsTranslate("App", "Grain")
         return qsTranslate("App", "DLSS Frame Generation")
     }
 
@@ -55,6 +56,7 @@ Item {
     Component { id: hdrControls; RtxVideoHdrControls { appBridge: root.appBridge } }
     Component { id: coloringControls; ColoringControls { appBridge: root.appBridge; playheadMs: viewport.playheadMs } }
     Component { id: sharpeningControls; SharpeningControls { appBridge: root.appBridge } }
+    Component { id: grainControls; GrainControls { appBridge: root.appBridge } }
     Component { id: frameControls; FrameGenerationControls { appBridge: root.appBridge } }
 
     Row {
@@ -208,6 +210,7 @@ Item {
                                                    : stageId === "rtx_video_hdr" ? hdrControls
                                                    : stageId === "coloring" ? coloringControls
                                                    : stageId === "cas_sharpening" ? sharpeningControls
+                                                   : stageId === "grain" ? grainControls
                                                    : frameControls
                                 }
                             }

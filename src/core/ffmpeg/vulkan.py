@@ -274,7 +274,7 @@ def encoder_supported(selection: str, encoder: str, width: int, height: int, pix
 @lru_cache(maxsize=256)
 def _stream_info(source: str, mtime_ns: int, size: int) -> dict:
     result = _capture([str(FFPROBE), "-v", "error", "-select_streams", "v:0",
-                       "-show_entries", "stream=codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate,time_base", "-of", "json", source])
+                       "-show_entries", "stream=codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate,time_base,color_space,color_range,color_primaries,color_transfer", "-of", "json", source])
     return json.loads(result.stdout).get("streams", [{}])[0]
 
 
@@ -412,7 +412,9 @@ def gpu_filter_graph(graph: str) -> str:
             result.append(libplacebo(":".join(converted)))
         elif name == "transpose":
             direction = "3" if options in {"cclock", "2"} else "1"
-            result.append(libplacebo(f"rotate={direction}:w=ih:h=iw"))
+            # libplacebo swaps the output axes for a quarter turn itself.
+            # Swapping w/h here a second time resizes back to the coded size.
+            result.append(libplacebo(f"rotate={direction}"))
         elif name in {"hflip", "vflip"}:
             from .filters import shader_filter
             point = "vec2(1.0-HOOKED_pos.x,HOOKED_pos.y)" if name == "hflip" else "vec2(HOOKED_pos.x,1.0-HOOKED_pos.y)"

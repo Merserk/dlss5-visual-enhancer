@@ -30,7 +30,7 @@ from ..core.jobs import Cancelled, JobController
 from ..core.naming import output_filename, unique_output_path
 from ..core.paths import (FFMPEG, JOBS, OUTPUTS, PREVIEW_CACHE,
                           DLSSSR_BRIDGE, DLSSSR_RUNTIME, DLSSNR_BRIDGE,
-                          DLSSNR_CALLER_SHIM, DLSSG_DIR, RUNTIME,
+                          DLSSG_DIR, RUNTIME,
                           NEURAL_RUNTIME)
 from ..core.nr_composition import mask_selection
 from ..core.runtime import resolve_output_size
@@ -52,6 +52,8 @@ from ..upscale.video.processor import upscale_video
 from .coloring import (apply_cube_lut, compose_cube_lut, has_lut_adjustments,
                        identity_cube_lut, load_cube_lut, match_image_colors, save_cube_lut)
 from .cas_sharpening import sharpen_image, sharpen_video
+from .grain import grain_image, grain_video
+from ..core.ffmpeg.grain import GRAIN_FIELDS, GrainOptions
 from .preview_cache import PreviewStageCache, cache_key, file_identity, optional_file_identity
 
 
@@ -98,6 +100,7 @@ STAGE_LABELS = {
     "frame_generation": "DLSS Frame Generation",
     "coloring": "Coloring",
     "cas_sharpening": "Sharpening",
+    "grain": "Grain",
 }
 
 
@@ -138,6 +141,7 @@ def _preview_runtime_identity() -> list[dict | None]:
             (Path(__file__), Path(__file__).with_name("rolling_workflow.py"),
              Path(__file__).with_name("coloring.py"),
              Path(__file__).with_name("cas_sharpening.py"),
+             Path(__file__).with_name("grain.py"),
              source_root / "core" / "ffmpeg" / "preview.py",
              source_root / "core" / "ffmpeg" / "frames.py",
              source_root / "core" / "ffmpeg" / "encoder.py",
@@ -145,6 +149,7 @@ def _preview_runtime_identity() -> list[dict | None]:
              source_root / "core" / "ffmpeg" / "vulkan.py",
              source_root / "core" / "ffmpeg" / "filters.py",
              source_root / "core" / "ffmpeg" / "sharpening.py",
+             source_root / "core" / "ffmpeg" / "grain.py",
              source_root / "core" / "dlss_bridge.py",
              source_root / "core" / "neural_bridge.py",
              source_root / "core" / "runtime.py",
@@ -162,7 +167,7 @@ def _preview_runtime_identity() -> list[dict | None]:
              source_root / "neural_rendering" / "video" / "fast_preview.py",
              source_root / "frame_interpolation" / "processor.py",
              FFMPEG, DLSSSR_BRIDGE, DLSSSR_RUNTIME, DLSSNR_BRIDGE,
-             DLSSNR_CALLER_SHIM, NEURAL_RUNTIME,
+             NEURAL_RUNTIME,
              RUNTIME / "rtx_video" / "neuroframe_engine_upscaling.dll",
              RUNTIME / "rtx_video" / "nvngx_vsr.dll",
              RUNTIME / "rtx_video" / "nvngx_truehdr.dll",
@@ -175,6 +180,9 @@ def _stage_cache_settings(settings: UISettings, mode: str, stage: str, hdr: bool
     extras: dict = {}
     if stage == "cas_sharpening":
         fields = ("cas_sharpness", "sharpening_method")
+    elif stage == "grain":
+        fields = tuple(name for name in GRAIN_FIELDS if mode == "Video" or name != "grain_animated")
+        extras["hdr_input"] = hdr
     elif stage == "neural_model":
         fields = _NR_FIELDS + (("shimmer_suppression", "video_gpu_uuid") if mode == "Video" else ())
         fields += ("ai_gpu_uuid",)
@@ -299,7 +307,9 @@ def estimate_pipeline(width: int, height: int, fps: float, hdr: bool,
     if mode == "Video" and fps <= 0:
         raise ValueError("Input frame rate is unavailable; video export needs a known FPS.")
     for stage in enabled_stages(settings, mode):
-        if stage == "cas_sharpening":
+        if stage == "grain":
+            GrainOptions.from_settings(settings, video=mode == "Video").validate()
+        elif stage == "cas_sharpening":
             if mode == "Video" and hdr and settings.cas_sharpness:
                 raise ValueError("Sharpening requires SDR video at this position. Move it before HDR conversion.")
         elif stage == "neural_model":
@@ -519,6 +529,8 @@ def _video_upscale_stage_options(settings: UISettings, stage: str):
 
 def _image_stage(source: Path, stage: str, settings: UISettings,
                  directory: Path, controller: JobController, progress) -> Path:
+    if stage == "grain":
+        return grain_image(source, settings, directory, controller, progress)
     if stage == "cas_sharpening":
         return sharpen_image(source, settings, directory, controller, progress)
     if stage == "neural_model":
@@ -605,11 +617,23 @@ def _coloring_video_stage(source: Path, settings: UISettings, directory: Path,
 
 def _video_stage(source: Path, stage: str, settings: UISettings, hdr: bool,
                  directory: Path, controller: JobController, progress,
-                 *, delivery: bool = False) -> Path:
+                 *, delivery: bool = False, preview: bool = False) -> Path:
+    if stage == "grain":
+        return grain_video(source, settings, directory, controller, progress)
     if stage == "cas_sharpening":
         return sharpen_video(source, settings, directory, controller, progress)
     if stage == "neural_model":
         options = _neural_video_options(settings, hdr)
+        if not delivery and not preview:
+            from .rolling_workflow import render_rolling_video
+            # A cache codec must not select a slower neural evaluator. Use the
+            # same native frame stage as rolling renders, then encode exactly
+            # the requested intermediate before advancing to the next card.
+            output = directory / ("neural" + cache_video_format(settings.cache_codec)[2])
+            render_rolling_video(source, replace(settings, codec=options.codec,
+                                                 container=options.container, quality=options.quality),
+                                 output, controller, directory, (stage,), progress)
+            return output
         if delivery:
             options = replace(options, codec=settings.codec,
                               container=ffmpeg.resolve_container(settings.codec, settings.container),
@@ -808,7 +832,7 @@ def _export_video(source: Path, current: Path, destination: Path,
                    "-i", str(current), "-i", str(source),
                    "-map", "0:v:0", "-map", "1:a?", "-map_metadata", "1",
                    "-map_chapters", "1", *(["-vf", video_filter] if video_filter else []), *codec_args,
-                   *audio.encoder_args(), "-fps_mode", "passthrough",
+                   *audio.encoder_args(), "-fps_mode", "passthrough", "-enc_time_base:v", "demux",
                    "-t", f"{max(float(metadata.get('duration') or 0), 1 / float(metadata['fps'])):.9f}",
                    str(output.temporary)]
         _run_command(command, controller, "Video export", progress=progress, metadata=metadata,
@@ -905,7 +929,8 @@ def render_item(source: Path, settings: UISettings, mode: str, destination: Path
             else:
                 current = _video_stage(current, stage, stage_settings, hdr, directory,
                                        controller, report,
-                                       delivery=final_native and index == len(stages) - 1)
+                                       delivery=final_native and index == len(stages) - 1,
+                                       preview=preview)
             if controller.cancel.is_set():
                 raise Cancelled("Render stopped by user.")
             if preview_cache:

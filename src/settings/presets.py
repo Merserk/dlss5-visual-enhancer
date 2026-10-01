@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.paths import APP_TEMP
+from ..core.ffmpeg.grain import GRAIN_FIELDS
 from ..portable import decode_app_path, encode_app_path
 from ..core.ffmpeg import container_for_codec
 from .models import (
@@ -278,6 +279,24 @@ def import_settings_preset(
         changes["lut_reference_image"] = DEFAULT_SETTINGS.lut_reference_image
     if version < 27:
         changes["cache_codec"] = DEFAULT_SETTINGS.cache_codec
+    if version < 28:
+        for key in GRAIN_FIELDS:
+            changes[key] = getattr(DEFAULT_SETTINGS, key)
+        for prefix in ("image", "video"):
+            order_key, enabled_key = f"{prefix}_stage_order", f"{prefix}_enabled_stages"
+            changes[order_key], changes[enabled_key] = migrate_stage_layout(
+                changes.get(order_key, getattr(current, order_key)),
+                changes.get(enabled_key, getattr(current, enabled_key)),
+                video=prefix == "video",
+                scale_method=changes.get("nr_scale_method", DEFAULT_SETTINGS.nr_scale_method),
+                upscale_engine=changes.get("upscale_engine" if prefix == "video" else "upscale_image_engine",
+                                           DEFAULT_SETTINGS.upscale_engine),
+                upscale_vsr_enabled=changes.get("upscale_vsr_enabled", DEFAULT_SETTINGS.upscale_vsr_enabled),
+                upscale_hdr_enabled=changes.get("upscale_hdr_enabled", DEFAULT_SETTINGS.upscale_hdr_enabled),
+            )
+            # Old presets never enabled this new effect, even if the current
+            # layout includes Grain and the preset omits its stage selections.
+            changes[enabled_key] = tuple(stage for stage in changes[enabled_key] if stage != "grain")
     # NR Preset was removed entirely (non-functional). Old preset files still
     # carry it; ignore so imports from previous builds keep working.
     # (Unknown keys are already filtered above; this covers any edge case where

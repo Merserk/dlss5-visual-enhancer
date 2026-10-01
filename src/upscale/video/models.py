@@ -120,7 +120,7 @@ def output_size(width: int, height: int, options: UpscaleOptions, sar: Fraction 
         w = float(options.width)
         h = w * height / display_width if options.aspect_lock else float(options.height)
     if not math.isfinite(w) or not math.isfinite(h) or max(w, h) > TEXTURE_LIMIT:
-        raise ValueError("Requested output exceeds D3D11's 16384-pixel texture dimension. Choose a smaller size.")
+        raise ValueError("Requested output exceeds RTX Video's 16384-pixel texture limit. Choose a smaller size.")
     # All offered delivery codecs accept even dimensions. Never round below source.
     ow, oh = max(2, math.ceil(w / 2) * 2), max(2, math.ceil(h / 2) * 2)
     if options.vsr_enabled and (ow < math.ceil(display_width) or oh < height):

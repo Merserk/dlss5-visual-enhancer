@@ -19,7 +19,7 @@ import av
 import numpy as np
 from av.codec.hwaccel import HWAccel
 
-from ..core.gpu_selection import resolve_runtime_ai_gpu
+from ..core.gpu_selection import prefer_cuda_video, resolve_runtime_ai_gpu
 from ..core.jobs import BoundedLogBuffer, Cancelled, JobController, active_job, drain_bounded_text
 from ..core import app_log
 from ..core.ffmpeg import chroma_location_code, decoded_rgba
@@ -134,7 +134,8 @@ class LiveSession(threading.Thread):
 
     def _spawn(self, name: str, command: list[str], **kwargs) -> subprocess.Popen:
         from ..core.ffmpeg.vulkan import prepare_command
-        command = prepare_command(command, dimensions=tuple(map(int, self.snapshot().output_size.split("x"))) if name == "encoder" else None)
+        command = prepare_command(command, selection=self.controller.ffmpeg_device,
+                                  dimensions=tuple(map(int, self.snapshot().output_size.split("x"))) if name == "encoder" else None)
         process = subprocess.Popen(command, stderr=subprocess.PIPE,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), **kwargs)
         self.controller.register(process)
@@ -166,8 +167,10 @@ class LiveSession(threading.Thread):
                     "nvenc" if self.info.encoder == "NVIDIA NVENC" else "cpu"
                 )
                 start = time.perf_counter()
-                output, pts = native.process(index=index, rgba=item.rgba,
-                                              reset=True, pts=item.pts)
+                output, pts = native.process_frame_to_host(
+                    index=index, frame=item.rgba, reset=True, scene_score=1.0,
+                    pts=item.pts, color_matrix=1, color_range=1,
+                    output_buffer=np.empty_like(item.rgba))
                 cost = time.perf_counter() - start
                 if pts != item.pts:
                     raise RuntimeError("Replacement bridge session returned a different frame timestamp.")
@@ -683,6 +686,9 @@ class LiveSession(threading.Thread):
                     decoder.kill()
                     decoder.wait(timeout=5)
                 self.controller.unregister(decoder)
+                for pipe in (decoder.stdin, decoder.stdout, decoder.stderr):
+                    if pipe is not None and not pipe.closed:
+                        pipe.close()
             watchdog.join(timeout=1)
 
     def _playlist(self) -> tuple[int, float]:
@@ -810,8 +816,14 @@ class LiveSession(threading.Thread):
         # NVENC on the AI GPU keeps frames on device; a CPU encoder uses
         # host frame boundaries around the same CUDA/D3D12 evaluation.
         nvenc, ordinal = False, None
+        from ..core.ffmpeg.vulkan import current_selection
+
+        self.controller.ffmpeg_device = current_selection()
+        if prefer_cuda_video(self.controller.ffmpeg_device, ai_uuid, video_uuid):
+            nvenc, ordinal = self._select_encoder(
+                prepared_runtime.gpus, str(gpu["uuid"]), out_w, out_h)
         self._set(input_size=f"{in_w}x{in_h}", output_size=f"{out_w}x{out_h}",
-                  encoder="FFmpeg/Vulkan (software fallback)")
+                  encoder="NVIDIA NVENC" if nvenc else "FFmpeg/Vulkan (software fallback)")
         cuda_path = bool(nvenc and ordinal is not None)
         if cuda_path:
             self._produce_cuda(
@@ -829,7 +841,7 @@ class LiveSession(threading.Thread):
         try:
             native_args = dict(input_width=in_w, input_height=in_h, output_width=out_w, output_height=out_h,
                 frame_count=None, warmup_frames=0, factor=factor, mode=mode,
-                gpu=gpu, runtime_bundle=prepared_runtime.runtime_bundle)
+                gpu=gpu, runtime_bundle=prepared_runtime.runtime_bundle, cuda_video=True)
             native = DLSSFrameSession(**native_args, native_settings=resolve_native_settings(options),
                                       composition_mask=options.nr_mask,
                                       controller=self.controller)
@@ -869,8 +881,11 @@ class LiveSession(threading.Thread):
                         native, output, cost = self._replace_effects(native, request, native_args, item, processed)
                     else:
                         start = time.perf_counter()
-                        output, pts = native.process(index=processed, rgba=item.rgba,
-                                                     reset=item.reset, pts=item.pts)
+                        output, pts = native.process_frame_to_host(
+                            index=processed, frame=item.rgba, reset=item.reset,
+                            scene_score=1.0 if item.reset else 0.0, pts=item.pts,
+                            color_matrix=1, color_range=1,
+                            output_buffer=np.empty_like(item.rgba))
                         cost = time.perf_counter() - start
                         if pts != item.pts:
                             raise RuntimeError("Neural Rendering bridge returned a different frame timestamp.")

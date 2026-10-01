@@ -10,6 +10,7 @@ from pathlib import Path
 
 from ..core.ffmpeg import HDR_ALLOWED_CODECS, container_for_codec, containers_for_codec
 from ..core.ffmpeg.vulkan import valid_selection
+from ..core.ffmpeg.grain import GRAIN_RANGES
 from ..core.paths import CONFIG_PATH
 from ..portable import decode_app_path, encode_app_path
 from ..core.naming import RENAME_MODES, validate_rename
@@ -228,6 +229,10 @@ def load_settings(path: str | os.PathLike[str]) -> UISettings:
         image_quality=image_quality(),
         image_bit_depth=image_bit_depth,
         cas_sharpness=integer("cas_sharpness", 0, 100, DEFAULT_SETTINGS.cas_sharpness),
+        **{key: (number(key, *bounds, getattr(DEFAULT_SETTINGS, key)) if key == "grain_size"
+                 else integer(key, *bounds, getattr(DEFAULT_SETTINGS, key)))
+           for key, bounds in GRAIN_RANGES.items()},
+        grain_animated=boolean("grain_animated", DEFAULT_SETTINGS.grain_animated),
         sharpening_method=choice("sharpening_method", SHARPENING_METHODS,
                                  DEFAULT_SETTINGS.sharpening_method),
         coloring_mode=("LUT" if section.get("coloring_mode") == "Mode 2" else
@@ -437,6 +442,8 @@ def save_settings(path: str | os.PathLike[str], settings: UISettings) -> None:
         "image_enabled_stages": json.dumps(settings.image_enabled_stages),
         "video_enabled_stages": json.dumps(settings.video_enabled_stages),
         "cas_sharpness": str(settings.cas_sharpness),
+        **{key: str(getattr(settings, key)) for key in GRAIN_RANGES},
+        "grain_animated": str(settings.grain_animated),
         "sharpening_method": settings.sharpening_method,
         "coloring_mode": settings.coloring_mode,
         "color_match_source": settings.color_match_source,

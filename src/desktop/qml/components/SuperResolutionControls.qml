@@ -111,8 +111,8 @@ Column {
 
     Text {
         width: parent.width
-        visible: appBridge && appBridge.outputEstimate !== ""
-        text: appBridge ? appBridge.outputEstimate : ""
+        visible: appBridge && appBridge.rtxSuperResolutionEstimate !== ""
+        text: appBridge ? appBridge.rtxSuperResolutionEstimate : ""
         wrapMode: Text.Wrap
         font.family: Theme.monoFontFamily
         font.pixelSize: Theme.fontSizeSmall

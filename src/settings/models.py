@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from ..core.ffmpeg import CODEC_CHOICES as FFMPEG_CODEC_CHOICES, CONTAINER_CHOICES, ENCODING_QUALITIES, HDR_ALLOWED_CODECS, hdr_mode_supported, resolve_container
 from ..core.ffmpeg.vulkan import valid_selection
+from ..core.ffmpeg.grain import GrainOptions
 from ..core.cache_video import CACHE_VIDEO_CODECS
 from ..core.naming import validate_rename
 from ..core.runtime import resolve_native_settings, resolve_upscaling_mode
@@ -22,7 +23,7 @@ IMAGE_16BIT_FORMATS = ("PNG", "TIFF")
 IMAGE_BIT_DEPTH_CHOICES = (8, 16)
 CONFIG_SECTION = "Settings"
 PRESET_FORMAT = "dlss5-visual-enhancer-settings-preset"
-PRESET_SCHEMA_VERSION = 27
+PRESET_SCHEMA_VERSION = 28
 MAX_PRESET_BYTES = 1024 * 1024
 
 AUTOMATIC_MASK_CHOICES = ("Off", "On")
@@ -38,11 +39,13 @@ LEGACY_IMAGE_STAGE_ORDER = ("neural_model", "scale_method", "super_resolution")
 LEGACY_VIDEO_STAGE_ORDER = (*LEGACY_IMAGE_STAGE_ORDER, "frame_generation")
 PREVIOUS_IMAGE_STAGE_ORDER = ("neural_model", "scale_method", "dlss_super_resolution", "super_resolution")
 BEFORE_CAS_IMAGE_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "coloring")
-IMAGE_STAGE_ORDER = (*BEFORE_CAS_IMAGE_STAGE_ORDER, "cas_sharpening")
+BEFORE_GRAIN_IMAGE_STAGE_ORDER = (*BEFORE_CAS_IMAGE_STAGE_ORDER, "cas_sharpening")
+IMAGE_STAGE_ORDER = (*BEFORE_GRAIN_IMAGE_STAGE_ORDER, "grain")
 PREVIOUS_VIDEO_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "frame_generation")
 BEFORE_CAS_VIDEO_STAGE_ORDER = (*PREVIOUS_VIDEO_STAGE_ORDER, "coloring")
 BEFORE_HDR_VIDEO_STAGE_ORDER = (*BEFORE_CAS_VIDEO_STAGE_ORDER, "cas_sharpening")
-VIDEO_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "rtx_video_hdr", "frame_generation", "coloring", "cas_sharpening")
+BEFORE_GRAIN_VIDEO_STAGE_ORDER = (*PREVIOUS_IMAGE_STAGE_ORDER, "rtx_video_hdr", "frame_generation", "coloring", "cas_sharpening")
+VIDEO_STAGE_ORDER = (*BEFORE_GRAIN_VIDEO_STAGE_ORDER, "grain")
 COLORING_MODES = ("Color Match", "LUT")
 SHARPENING_METHODS = ("NVIDIA NIS", "AMD CAS")
 COLOR_MATCH_SOURCES = ("Input Image", "Selected Image")
@@ -95,11 +98,16 @@ def migrate_stage_layout(order: tuple[str, ...], enabled: tuple[str, ...], *,
                 if not upscale_vsr_enabled and upscale_hdr_enabled:
                     active.remove("super_resolution")
             new_enabled = tuple(stage for stage in new_order if stage in active)
+        if "grain" not in new_order:
+            new_order = (*new_order, "grain")
         validate_stage_layout(new_order, new_enabled, video=video)
         return new_order, new_enabled
 
     allowed = VIDEO_STAGE_ORDER if video else IMAGE_STAGE_ORDER
     if set(order) == set(allowed) and len(order) == len(allowed):
+        return finish(order, enabled)
+    before_grain = BEFORE_GRAIN_VIDEO_STAGE_ORDER if video else BEFORE_GRAIN_IMAGE_STAGE_ORDER
+    if len(order) == len(before_grain) and set(order) == set(before_grain):
         return finish(order, enabled)
     if video and len(order) == len(BEFORE_HDR_VIDEO_STAGE_ORDER) and set(order) == set(BEFORE_HDR_VIDEO_STAGE_ORDER):
         return finish(order, enabled)
@@ -167,7 +175,13 @@ class UISettings:
     sharpening_method: str = "AMD CAS"
     # Legacy key retained so existing CAS settings and presets keep their value.
     cas_sharpness: int = 50
-    coloring_mode: str = "Color Match"
+    grain_amount: int = 20
+    grain_size: float = 1.0
+    grain_color: int = 0
+    grain_response: int = 70
+    grain_seed: int = 0
+    grain_animated: bool = True
+    coloring_mode: str = "LUT"
     color_match_source: str = "Input Image"
     color_match_reference: str = ""
     lut_path: str = ""
@@ -346,6 +360,7 @@ DEFAULT_SETTINGS = UISettings()
 def _validate(settings: UISettings) -> UISettings:
     validate_stage_layout(settings.image_stage_order, settings.image_enabled_stages, video=False)
     validate_stage_layout(settings.video_stage_order, settings.video_enabled_stages, video=True)
+    GrainOptions.from_settings(settings).validate()
     value = settings.cas_sharpness
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
         raise ValueError("cas_sharpness must be an integer from 0 to 100.")

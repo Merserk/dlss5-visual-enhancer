@@ -36,7 +36,7 @@ Column {
         label: qsTranslate("App", "Method")
         model: root.isImage ? (appBridge ? appBridge.coloringModeChoices : [])
                             : [{label: qsTranslate("App", "Apply LUT"), value: "LUT"}]
-        currentValue: root.isImage ? (appBridge ? appBridge.coloringMode : "Color Match") : "LUT"
+            currentValue: root.isImage ? (appBridge ? appBridge.coloringMode : "LUT") : "LUT"
         onActivated: value => {
             if (value === "LUT") root.lutPanel = "Color Adjustment"
             if (appBridge && root.isImage) appBridge.coloringMode = value

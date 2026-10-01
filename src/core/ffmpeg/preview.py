@@ -286,10 +286,18 @@ def grab_video_poster_jpeg(
     seconds: float = 0.0,
     max_width: int = 960,
     controller=None,
+    timeout: float = 30.0,
 ) -> bytes:
-    """Extract one JPEG still at ``seconds`` for the QML poster fallback."""
-    import subprocess as _sp
+    """Extract a bounded, cancellable software-decoded still for the UI."""
+    import math
+    import time
+    from ..jobs import Cancelled, current_job_controller
 
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Poster timeout must be finite and positive.")
+    controller = controller or current_job_controller()
+    if controller is not None and controller.cancel.is_set():
+        raise Cancelled("Media loading cancelled.")
     src = Path(source)
     if not src.is_file():
         raise FileNotFoundError(src)
@@ -301,24 +309,48 @@ def grab_video_poster_jpeg(
     fast = max(0.0, aligned - 2.0)
     accurate = max(0.0, aligned - fast)
     command = [
-        str(FFMPEG), "-hide_banner", "-loglevel", "error", "-y",
+        str(FFMPEG), "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-filter_threads", "1", "-threads", "2", "-hwaccel", "none",
         "-ss", f"{fast:.6f}", "-i", str(src),
-        "-ss", f"{accurate:.6f}", "-frames:v", "1",
+        "-ss", f"{accurate:.6f}", "-map", "0:v:0", "-frames:v", "1",
+        "-an", "-sn", "-dn", "-threads", "1",
         *([ "-vf", f"scale={int(max_width)}:-2"] if max_width and max_width > 0 else []),
         "-q:v", "3", "-f", "mjpeg", "pipe:1",
     ]
-    command = prepare_command(command, selection=getattr(controller, "ffmpeg_device", None))
-    process = _sp.Popen(
-        command, stdout=_sp.PIPE, stderr=_sp.PIPE,
-        creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0),
+    # A list thumbnail must not initialize Vulkan codecs/filters or contend
+    # with Qt's video decoder and AI rendering for GPU driver resources.
+    deadline = time.monotonic() + timeout
+    process = subprocess.Popen(
+        command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    if controller is not None:
+        controller.register(process)
     try:
-        out, err = process.communicate(timeout=30)
-    except _sp.TimeoutExpired:
-        process.kill()
-        out, err = process.communicate()
-        raise RuntimeError("Poster extraction timed out.")
-    if process.returncode or not out:
-        detail = (err.decode("utf-8", "replace") if isinstance(err, bytes) else str(err or ""))[-500:]
-        raise RuntimeError(f"Poster extraction failed: {detail}")
-    return bytes(out)
+        while True:
+            if controller is not None and controller.cancel.is_set():
+                raise Cancelled("Media loading cancelled.")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"Poster extraction timed out after {timeout:g} seconds.")
+            try:
+                out, err = process.communicate(timeout=min(0.2, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        if controller is not None and controller.cancel.is_set():
+            raise Cancelled("Media loading cancelled.")
+        if process.returncode or not out:
+            detail = err.decode("utf-8", "replace")[-500:]
+            raise RuntimeError(f"Poster extraction failed: {detail}")
+        return bytes(out)
+    finally:
+        try:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+        finally:
+            if controller is not None:
+                controller.unregister(process)
+            process.stdout.close()
+            process.stderr.close()

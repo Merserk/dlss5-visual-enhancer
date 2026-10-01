@@ -165,6 +165,63 @@ def decode_filter(meta: dict) -> tuple[str, list[str]]:
     return ",".join(filters), assumptions
 
 
+def cuda_normalization_supported(meta: dict) -> bool:
+    """Use CUDA only for the pixel layouts and color transforms it implements."""
+    stream = meta["stream"]
+    return (stream.get("pix_fmt") in {"yuv420p", "yuvj420p", "nv12", "yuv420p10le", "p010le", "p010"}
+            and stream.get("color_space", "unknown") in {
+                "unknown", "unspecified", "reserved", "bt709", "bt470bg", "smpte170m", "bt2020nc"}
+            and stream.get("color_primaries", "unknown") in {
+                "unknown", "unspecified", "reserved", "bt709", "bt470bg", "smpte170m", "smpte240m", "bt2020"}
+            and stream.get("color_transfer", "unknown") in {
+                "unknown", "unspecified", "reserved", "bt709", "smpte170m", "smpte240m",
+                "bt2020-10", "bt2020-12", "bt470m", "gamma22", "bt470bg", "gamma28",
+                "iec61966-2-1", "srgb", "linear"})
+
+
+def open_rtx_decoder(source, meta, ordinal, controller, *, start_seconds=0.0):
+    """Return an owned decoder, first frame, iterator and raw-timestamp flag.
+
+    Prefer NVDEC without a host boundary. Keep the established normalized
+    decoder for unsupported CUDA layouts/curves and accurate seek previews.
+    """
+    from ...core.ffmpeg.frames import open_video_decoder
+    from av.codec.hwaccel import HWAccel
+
+    container = None
+    try:
+        if start_seconds == 0 and cuda_normalization_supported(meta):
+            device = HWAccel("cuda", device=str(ordinal), allow_software_fallback=True,
+                             options={"primary_ctx": "1"}, is_hw_owned=True)
+            try:
+                container = av.open(str(source), hwaccel=device)
+                stream = container.streams.video[0]
+                stream.thread_type = "AUTO"
+                stream.codec_context.options = {**stream.codec_context.options, "err_detect": "explode"}
+                decoder = iter(container.decode(video=0))
+                first = next(decoder)
+                if first.is_corrupt:
+                    raise RuntimeError("The video decoder returned a corrupt frame.")
+                if (first.format.name == "cuda" and
+                        first.sw_format.name in {"nv12", "p010", "p010le"}):
+                    return container, first, decoder, True
+            except av.FFmpegError as exc:
+                app_log.info("upscale", f"NVDEC unavailable; using normalized decoder: {exc}")
+            if container is not None:
+                container.close()
+                container = None
+        normalization, _ = decode_filter(meta)
+        container = open_video_decoder(
+            source, controller, pixel_format="gbrp10le" if meta["depth"] > 8 else "rgba",
+            video_filter=normalization, start_seconds=start_seconds)
+        decoder = iter(container.decode(video=0))
+        return container, next(decoder), decoder, False
+    except BaseException:
+        if container is not None:
+            container.close()
+        raise
+
+
 def output_filter(pixel_format: int, hdr: bool) -> str:
     planar = {1: "gbrp", 2: "gbrp10le", 3: "gbrpf32le"}[pixel_format]
     pin = "bt2020" if hdr and pixel_format == 2 else "bt709"

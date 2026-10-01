@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 import math
 import re
 from pathlib import Path
@@ -68,7 +69,10 @@ class BatchListModel(QAbstractListModel):
     ProcessingFpsRole = Qt.ItemDataRole.UserRole + 18
     RemainingSecondsRole = Qt.ItemDataRole.UserRole + 19
 
-    _frame_counter = re.compile(r"([\d,]+)\s*/\s*([\d,]+)\s+frames\b", re.IGNORECASE)
+    # Native stages include a total, while rolling pipelines and FFmpeg with
+    # incomplete container metadata may only report the processed frame count.
+    # Throughput needs the count and elapsed time, never a known total.
+    _frame_counter = re.compile(r"(\d[\d,]*)(?:\s*/\s*(\d[\d,]*))?\s+frames\b", re.IGNORECASE)
 
     def __init__(self, parent: Any = None) -> None:
         super().__init__(parent)
@@ -173,6 +177,31 @@ class BatchListModel(QAbstractListModel):
         self.beginInsertRows(QModelIndex(), start, start + len(new_paths) - 1)
         for i, path in enumerate(new_paths):
             self._entries.append(self._new_entry(start + i, path))
+        self.endInsertRows()
+        self.countChanged.emit()
+        if self._selected_index < 0:
+            self.select(0)
+
+    def add_scanned_items(self, paths: list[str], file_sizes: dict[str, int]) -> None:
+        """Accept canonical paths already checked by the input scan worker.
+
+        Do not stat or resolve files on the GUI thread again: offline network
+        drives, cloud hydration and file scanners can block those operations.
+        """
+        existing = {os.path.normcase(os.path.abspath(e.input_path)) for e in self._entries}
+        new_paths = []
+        for path in paths:
+            key = os.path.normcase(os.path.abspath(path))
+            if path and key not in existing:
+                existing.add(key)
+                new_paths.append(path)
+        if not new_paths:
+            return
+        start = len(self._entries)
+        self.beginInsertRows(QModelIndex(), start, start + len(new_paths) - 1)
+        for offset, path in enumerate(new_paths):
+            self._entries.append(BatchEntry(index=start + offset, input_path=path,
+                                           file_size_bytes=max(0, int(file_sizes.get(path, 0)))))
         self.endInsertRows()
         self.countChanged.emit()
         if self._selected_index < 0:
@@ -293,16 +322,21 @@ class BatchListModel(QAbstractListModel):
             entry.elapsed_seconds = max(entry.elapsed_seconds, elapsed_seconds)
         counter = self._frame_counter.search(detail) if state == "Running" else None
         if counter:
-            current, total = (int(value.replace(",", "")) for value in counter.groups())
+            current = int(counter.group(1).replace(",", ""))
+            total = int((counter.group(2) or "0").replace(",", ""))
             stage = detail[:counter.start()].rstrip(" :·–-")
             sample = entry._frame_sample
-            if sample and sample[0] == stage and current >= sample[1] and elapsed_seconds > sample[2]:
-                measured = (current - sample[1]) / (elapsed_seconds - sample[2])
+            sample_time = entry.elapsed_seconds
+            if not sample or sample[0] != stage or current < sample[1]:
+                entry.processing_fps = 0.0
+                entry._frame_sample = (stage, current, sample_time)
+            elif sample_time > sample[2]:
+                measured = (current - sample[1]) / (sample_time - sample[2])
                 entry.processing_fps = measured if entry.processing_fps <= 0 else (
                     0.35 * measured + 0.65 * entry.processing_fps)
-            else:
-                entry.processing_fps = 0.0
-            entry._frame_sample = (stage, current, elapsed_seconds)
+                entry._frame_sample = (stage, current, sample_time)
+            # Repeated/invalid timestamps cannot measure a rate. Retain the
+            # baseline so the next timed update includes all intervening frames.
             entry.processed_frames, entry.processing_total_frames = current, total
         else:
             entry._frame_sample = None

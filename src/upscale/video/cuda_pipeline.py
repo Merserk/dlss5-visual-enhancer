@@ -27,7 +27,7 @@ from ...core.gpu_selection import resolve_ai_gpu
 from ...core.jobs import Cancelled
 from ...core.naming import output_filename, unique_output_path
 from ...core.paths import JOBS
-from .media import inspect_video, packed_bytes
+from .media import inspect_video, open_rtx_decoder
 from .models import UpscaleCapabilities, UpscaleOptions, UpscaleResult, output_size
 from .native import RTXVideoSession, probe_capabilities
 from .cuda_transfer import CudaTransferPool
@@ -64,7 +64,7 @@ class _DLSSVideoAdapter:
         intermediate, detail = self.dlss.process_cuda_frame(
             frame, color_matrix=color_matrix, color_range=color_range,
             rotation=rotation, phase=self.dlss.frames,
-            output_p010=output_p010)
+            output_p010=output_p010, chroma_location=chroma_location + 1)
         self.cuts += int(detail["scene_cut"])
         if self.hdr is None:
             return intermediate, detail
@@ -76,9 +76,9 @@ class _DLSSVideoAdapter:
         intermediate.duration = getattr(frame, "duration", None)
         try:
             processed, hdr_detail = self.hdr.process_cuda_frame(
-                intermediate, color_matrix=color_matrix, color_range=color_range,
+                intermediate, color_matrix=1, color_range=0,
                 color_primaries=color_primaries, color_transfer=color_transfer,
-                chroma_location=chroma_location, output_p010=True)
+                chroma_location=0, output_p010=True)
         finally:
             del intermediate
         return processed, {
@@ -100,6 +100,9 @@ class _DLSSVideoAdapter:
             "gpu_pre_resize": (result.render_width, result.render_height) != (
                 self.dlss.width, self.dlss.height),
         }
+        status.update(self.dlss.diagnostics())
+        status["motion_backend"] = "gpu_lucas_kanade"
+        status["bridge_version"] = self.dlss.bridge_version
         if self.hdr is not None:
             status["rtx_video_hdr"] = self.hdr.structured_status(
                 decode_backend="CUDA DLSS", encode_backend=encode_backend)
@@ -332,18 +335,34 @@ def convert_video_cuda_nvenc(
             encode_device = HWAccel(
                 "cuda", device=str(encode_ordinal), options={"primary_ctx": "1"}, is_hw_owned=True,
             )
-            decoded_container = av.open(str(source), hwaccel=decode_device)
-            input_stream = decoded_container.streams.video[0]
-            input_stream.thread_type = "AUTO"
-            decoder = iter(decoded_container.decode(input_stream))
             decode_start = time.perf_counter()
             try:
-                first_frame = next(decoder)
+                if options.engine == "DLSS":
+                    decoded_container = av.open(str(source), hwaccel=decode_device)
+                    input_stream = decoded_container.streams.video[0]
+                    input_stream.thread_type = "AUTO"
+                    decoder = iter(decoded_container.decode(input_stream))
+                    first_frame = next(decoder)
+                    raw_timestamps = True
+                else:
+                    decoded_container, first_frame, decoder, raw_timestamps = open_rtx_decoder(
+                        source, metadata, ai_ordinal, controller)
+                    input_stream = decoded_container.streams.video[0]
+            except (av.error.FFmpegError, ValueError, RuntimeError) as exc:
+                if options.engine == "DLSS":
+                    raise DLSSNeedsHostFallback(f"NVDEC cannot decode this source: {exc}") from exc
+                raise
             except StopIteration as exc:
                 raise ValueError("The input contains no decodable video frames.") from exc
             timings["decode_seconds"] += time.perf_counter() - decode_start
-            if options.engine == "DLSS" and first_frame.format.name != "cuda":
-                raise DLSSNeedsHostFallback("NVDEC did not expose a CUDA frame.")
+            if options.engine == "DLSS" and (first_frame.format.name != "cuda" or
+                    getattr(getattr(first_frame, "sw_format", None), "name", "") not in {"nv12", "p010", "p010le"} or
+                    metadata["sar"] != 1 or
+                    (int(metadata["rotation"]) % 180 and
+                     (first_frame.height, first_frame.width) != (width, height)) or
+                    (not int(metadata["rotation"]) % 180 and
+                     (first_frame.width, first_frame.height) != (width, height))):
+                raise DLSSNeedsHostFallback("NVDEC did not expose matching CUDA NV12/P010 dimensions.")
 
             encoded_container = av.open(str(temp_video), mode="w")
             output_stream = encoded_container.add_stream(codec_name, rate=metadata["rate"], hwaccel=encode_device)
@@ -449,7 +468,7 @@ def convert_video_cuda_nvenc(
 
             stream_tb = input_stream.time_base or Fraction(1, max(1, round(float(metadata["rate"]))))
             default_duration = max(1, round(Fraction(1, 1) / metadata["rate"] / stream_tb))
-            origin_pts = round(Fraction(str(metadata["origin"])) / stream_tb)
+            origin_pts = round(Fraction(str(metadata["origin"])) / stream_tb) if raw_timestamps else 0
             first_time: Fraction | None = None
             preview_pts_origin: int | None = None
             last_pts: int | None = None
@@ -494,7 +513,10 @@ def convert_video_cuda_nvenc(
                 else:
                     if options.engine == "DLSS":
                         raise RuntimeError("DLSS CUDA decoding changed to software mid-stream.")
-                    raise DLSSNeedsHostFallback("Vulkan host decoding is required for this input.")
+                    decode_backends.add("ffmpeg-vulkan")
+                    prepare_start = time.perf_counter()
+                    timings["software_prepare_seconds"] += time.perf_counter() - prepare_start
+                    processed, detail = session.process_host_to_cuda_frame(frame, output_p010=output_p010)
                 if transfer_pool is not None:
                     transferred, transfer_detail = transfer_pool.transfer(processed)
                     del processed
@@ -554,7 +576,10 @@ def convert_video_cuda_nvenc(
                 raise RuntimeError("GPU bridge completion does not match frame accounting.")
             gc.collect()
 
-            if not preview and (not metadata["frames"] or delivered != metadata["frames"]):
+            # A strict decoder EOF plus one-to-one bridge/encoder accounting
+            # gives the count when containers (commonly MKV) omit nb_frames.
+            # Re-decode only to resolve a conflicting declared frame count.
+            if not preview and metadata["frames"] and delivered != metadata["frames"]:
                 exact = ffmpeg.probe_video(source, count_mode="exact", strict_decode=True, controller=controller)
                 if int(exact["frames"]) != delivered:
                     raise RuntimeError(f"Source has {exact['frames']} frames but only {delivered} were processed.")
@@ -618,11 +643,11 @@ def convert_video_cuda_nvenc(
                 "upscale-cuda", f"done src={source.name} out={output.name} frames={delivered} "
                 f"elapsed={elapsed:.2f}s fps={delivered / max(elapsed, 1e-9):.1f} memory={session_status['memory_path']}",
             )
-            update(1.0, "Complete — CUDA-resident RTX Video confirmed")
+            update(1.0, "Complete — DLSS evaluated" if options.engine == "DLSS" else "Complete — CUDA-resident RTX Video confirmed")
             return UpscaleResult(
                 str(output), report_path, delivered, output_width, output_height,
                 options.hdr_enabled, elapsed,
-                bridge_version=("DLSS ABI 1" if options.engine == "DLSS" else str(capabilities.bridge_version)),
+                bridge_version=(session_status["bridge_version"] if options.engine == "DLSS" else str(capabilities.bridge_version)),
                 memory_path=str(session_status["memory_path"]),
                 decode_backend=str(session_status["decode_backend"]),
                 encode_backend=codec_name, timings=timings, bridge_status=session_status,

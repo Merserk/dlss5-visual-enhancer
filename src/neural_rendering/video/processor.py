@@ -362,9 +362,8 @@ def convert_video(
             )
             encoder_setup_thread.start()
             preopened_decoder = None
-            # Final-residual stabilization needs the original RGBA frame after
-            # composition. Decode stays on the host for this non-NVENC path;
-            # feature 18 and optical flow still execute on the selected GPU.
+            # A host output/cache codec still uses the native GPU video
+            # evaluator, including motion and final-residual stabilization.
             session_started = time.perf_counter()
             session = DLSSFrameSession(
                 input_width=output_width if dlss_session else input_width,
@@ -380,6 +379,7 @@ def convert_video(
                 gpu=gpu,
                 runtime_bundle=runtime_bundle,
                 controller=controller,
+                cuda_video=True,
             )
             timings["native_setup_seconds"] = time.perf_counter() - session_started
             encoder_setup_thread.join()
@@ -671,11 +671,15 @@ def convert_video(
                                 dlss_frame.astype(np.float32), 0, 1) * levels
                             ).astype(np.uint16 if high_depth else np.uint8)
                             prepared[..., 3] = levels
-                        processed, out_pts = session.process(
+                        processed, out_pts = session.process_frame_to_host(
                             index=index,
-                            rgba=prepared,
+                            frame=prepared,
                             reset=guide.reset,
+                            scene_score=guide.scene_score,
                             pts=pts,
+                            color_matrix=color_matrix,
+                            color_range=color_range,
+                            chroma_location=chroma_location,
                             output_buffer=output_buffer,
                         )
                 except BaseException:

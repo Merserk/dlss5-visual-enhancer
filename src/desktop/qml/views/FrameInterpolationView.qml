@@ -109,7 +109,7 @@ Item {
 
                                 Text {
                                     width: parent.width
-                                    text: appBridge ? appBridge.outputEstimate : ""
+                                    text: appBridge ? appBridge.frameGenerationEstimate : ""
                                     wrapMode: Text.Wrap
                                     font.family: Theme.monoFontFamily
                                     font.pixelSize: Theme.fontSizeSmall

@@ -32,7 +32,6 @@ from .neural_bridge import (
 from .nr_composition import mask_report, mask_selection, prepare_nr_mask
 from .paths import (
     DLSSNR_BRIDGE,
-    DLSSNR_CALLER_SHIM,
     DLSSNR_DIR,
     DLSSG_DIR,
     FFMPEG,
@@ -133,21 +132,14 @@ def resolve_native_settings(options: Any) -> dict[str, int | float | bool]:
         raise ValueError("Mask Feather must be an integer from 0 to 128.")
     if not 0 <= int(mask_feather) <= 128:
         raise ValueError("Mask Feather must be between 0 and 128 pixels.")
-    codec_name = str(getattr(options, "codec", ""))
     nr_passes = getattr(options, "nr_passes", 1)
     if isinstance(nr_passes, bool) or not isinstance(nr_passes, int):
         raise ValueError("NR Passes must be an integer from 1 to 4.")
     if not 1 <= nr_passes <= 4:
         raise ValueError("NR Passes must be between 1 and 4.")
 
-    # NVOF remains available for adapter/driver validation. On the tested
-    # RTX 4060 Ti / 617.14 it was slower and had a higher warped-residual
-    # error than the bundled Lucas-Kanade path, so it is not a default.
-    # Frame-boundary NVENC also retains its native NVOF stall guard.
-    prefer_nvof = bool(
-        codec_name and "NVENC" not in codec_name.upper()
-        and os.environ.get("DLSS5NR_EXPERIMENTAL_NVOF") == "1"
-    )
+    # NR uses one GPU Lucas-Kanade backend for every boundary. Keep the old
+    # ABI field for compatibility; NVOFA belongs to Frame Interpolation.
     return {
         "profile": 0,
         "style": style,
@@ -162,7 +154,7 @@ def resolve_native_settings(options: Any) -> dict[str, int | float | bool]:
         "face_skin_protection": validated["Face/Skin Protection"],
         "grain_preservation": validated["Grain Preservation"],
         "shimmer_suppression": validated["Shimmer Suppression"],
-        "prefer_nvof": prefer_nvof,
+        "prefer_nvof": False,
         "mask_feather": int(mask_feather),
         "gpu_mode": True,
     }
@@ -181,7 +173,7 @@ def inspect_runtime_bundle(
             "abi_version": BRIDGE_ABI_VERSION,
             "release": "D3D12/NGX CUDA bridge",
         },
-        "caller_shim": {"path": str(DLSSNR_CALLER_SHIM.resolve())},
+        "caller": {"integrated": True, "path": str(bridge.resolve())},
         "neural_runtime": {
             "path": str(neural.resolve()),
             "version": "driver-compatible",
@@ -250,7 +242,7 @@ def rotate_frame(frame: np.ndarray, rotation: int, *, controller=None) -> np.nda
 
 
 def validate_runtime_files() -> None:
-    required = [FFMPEG, FFPROBE, DLSSNR_BRIDGE, DLSSNR_CALLER_SHIM, NEURAL_RUNTIME]
+    required = [FFMPEG, FFPROBE, DLSSNR_BRIDGE, NEURAL_RUNTIME]
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(
@@ -486,11 +478,7 @@ class DLSSFrameSession:
             # assembled after close.
             temporal["motion_backend"] = temporal.get("motion_backend") if (
                 temporal.get("motion_frames", 0)
-            ) else (
-                "nvidia_nvofa"
-                if bool(self.native_settings.get("prefer_nvof", False))
-                else "gpu_lucas_kanade"
-            )
+            ) else "gpu_lucas_kanade"
             temporal["motion_frames"] = max(
                 int(temporal.get("motion_frames", 0)), self.diagnostics.frames
             )
@@ -736,7 +724,7 @@ class DLSSFrameSession:
             frame, threshold=0.24, color_matrix=color_matrix, color_range=color_range
         )
 
-    def process_cuda_frame_to_host(
+    def process_frame_to_host(
         self,
         *,
         index: int,
@@ -750,6 +738,7 @@ class DLSSFrameSession:
         chroma_location: int = 1,
         output_buffer: np.ndarray | None = None,
     ) -> tuple[np.ndarray, int]:
+        """Use the native video evaluator for CUDA frames or software RGBA."""
         if self.controller.cancel.is_set():
             raise Cancelled("Render stopped by user.")
         if self.closed:
@@ -767,7 +756,7 @@ class DLSSFrameSession:
             or not output.flags.c_contiguous
         ):
             raise ValueError("CUDA-to-host output buffer has the wrong shape or layout.")
-        result, elapsed = BRIDGE_MANAGER.process_cuda_to_host_video_frame(
+        result, elapsed = BRIDGE_MANAGER.process_video_to_host_frame(
             frame,
             output,
             settings=self.native_settings,
@@ -781,7 +770,7 @@ class DLSSFrameSession:
             chroma_location=chroma_location,
         )
         self.process_timings["evaluation_wait_seconds"] += elapsed
-        self.diagnostics.decode_backend = "nvdec"
+        self.diagnostics.decode_backend = "software" if isinstance(frame, np.ndarray) else "nvdec"
         self.diagnostics.working_format = "float32-rgb"
         self.diagnostics.output_format = result["output_format"]
         self.diagnostics.pixel_format = result["input_format"]
@@ -808,6 +797,8 @@ class DLSSFrameSession:
         if len(self._logs) > 500:
             del self._logs[: len(self._logs) - 500]
         return output, int(result["timestamp"])
+
+    process_cuda_frame_to_host = process_frame_to_host
 
     def process_video_frame(
         self,
@@ -1051,7 +1042,7 @@ def prepare_runtime() -> PreparedRuntime:
         runtime_bundle = inspect_runtime_bundle()
         gpu = resolve_runtime_ai_gpu(gpus, runtime_bundle)
         inventory = _encoder_inventory()
-        required_paths = (DLSSNR_BRIDGE, DLSSNR_CALLER_SHIM, NEURAL_RUNTIME, FFMPEG, FFPROBE)
+        required_paths = (DLSSNR_BRIDGE, NEURAL_RUNTIME, FFMPEG, FFPROBE)
         optional_paths = (
             DLSSG_DIR / "neuroframe_engine_frame_interpolation.dll",
             DLSSG_DIR / "nvngx_dlssg.dll",

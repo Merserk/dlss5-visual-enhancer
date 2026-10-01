@@ -17,7 +17,6 @@ import av
 from ..core.ffmpeg.frames import open_video_decoder, VideoOutput
 import numpy as np
 from av.codec.hwaccel import HWAccel
-from av.video.reformatter import Colorspace
 
 from ..core import app_log, ffmpeg
 from ..core.disk_paths import OutputFile, prepare_output_dir
@@ -25,7 +24,7 @@ from ..core.gpu_selection import resolve_runtime_ai_gpu
 from ..core.jobs import Cancelled, active_job
 from ..core.naming import output_filename, unique_output_path, validate_rename
 from ..core.paths import JOBS, OUTPUTS
-from ..core.runtime import prepare_runtime, rotate_frame
+from ..core.runtime import prepare_runtime
 from ..upscale.video.cuda_transfer import CudaTransferPool
 from .capabilities import probe_frame_interpolation_capabilities
 from .models import FrameInterpolationOptions, FrameInterpolationResult
@@ -85,11 +84,16 @@ def _encoder(options: FrameInterpolationOptions, codec: str, width: int, height:
         name = _NVENC[normalized]
         values = {"preset": "p6", "rc": "vbr", "gpu": str(ordinal),
                   "rc-lookahead": "0", "surfaces": "8", "delay": "3"}
+        if name == "h264_nvenc":
+            # Match the CLI route: CUDA-owned PyAV frames otherwise default
+            # to Main and lose High profile's 8x8 transform on fine detail.
+            values["profile"] = "high"
         if name != "av1_nvenc":
             values["tune"] = "hq"
         if quality["mode"] == "constant-quality":
             values["cq"] = "0"
-            bitrate = 0
+            # Mirror the CLI's implicit 2 Mbps VBR target explicitly.
+            bitrate = 2_000_000 if cuda_input else 0
         return _Encoder(name, name, "cuda" if cuda_input else ("p010le" if hdr else "nv12"),
                         cuda_input, values, bitrate)
     common = {"crf": "0"} if quality["mode"] == "constant-quality" else {}
@@ -210,6 +214,37 @@ def _validate_decoded_frame(frame: Any) -> Any:
     if bool(getattr(frame, "is_corrupt", False)):
         raise RuntimeError("The video decoder returned a corrupt frame.")
     return frame
+
+
+def _open_frame_decoder(source: Path, controller, *, decode_device, hdr: bool,
+                        rotation_filter: str):
+    if decode_device is not None:
+        decoded = None
+        try:
+            decoded = av.open(str(source), hwaccel=decode_device)
+            stream = decoded.streams.video[0]
+            stream.thread_type = "AUTO"
+            frames = iter(decoded.decode(stream))
+            first = _validate_decoded_frame(next(frames))
+            sw_format = str(getattr(getattr(first, "sw_format", None), "name", ""))
+            if first.format.name != "cuda" or sw_format not in {"nv12", "p010", "p010le"}:
+                raise ValueError("NVDEC did not return a supported CUDA NV12/P010 surface.")
+            return decoded, frames, first, "PyAV CUDA/NVDEC"
+        except (av.error.FFmpegError, ValueError, RuntimeError, StopIteration) as exc:
+            if decoded is not None:
+                decoded.close()
+            app_log.info("frame-interp", f"NVDEC unavailable; using the host frame boundary: {exc}")
+    decoded = open_video_decoder(source, controller, pixel_format="p010le" if hdr else "rgba",
+                                 video_filter=rotation_filter)
+    stream = decoded.streams.video[0]
+    stream.thread_type = "AUTO"
+    frames = iter(decoded.decode(stream))
+    try:
+        first = _validate_decoded_frame(next(frames))
+    except BaseException:
+        decoded.close()
+        raise
+    return decoded, frames, first, "FFmpeg Vulkan/software fallback"
 
 
 class DLSSGStage:
@@ -408,22 +443,19 @@ def interpolate_video(
             # codec uses the in-process host-staging ABI.
             want_cuda = automatic_cuda_path(selected_codec, metadata["rotation"])
             decode_device = HWAccel(
-                "cuda", device=str(ai_ordinal), allow_software_fallback=True,
+                "cuda", device=str(ai_ordinal), allow_software_fallback=False,
                 options={"primary_ctx": "1"}, is_hw_owned=True) if want_cuda else None
             rotation_filter = {90: "transpose=clock", 180: "hflip,vflip", 270: "transpose=cclock"}.get(int(metadata["rotation"]), "")
-            decoded_container = open_video_decoder(source, controller, pixel_format="p010le" if effective_hdr else "rgba", video_filter=rotation_filter)
-            metadata["rotation"] = 0
-            input_stream = decoded_container.streams.video[0]
-            input_stream.thread_type = "AUTO"
-            decoder = iter(decoded_container.decode(input_stream))
             tick = time.perf_counter()
             try:
-                first_frame = _validate_decoded_frame(next(decoder))
+                decoded_container, decoder, first_frame, decode_backend = _open_frame_decoder(
+                    source, controller, decode_device=decode_device, hdr=effective_hdr,
+                    rotation_filter=rotation_filter)
             except StopIteration as exc:
                 raise ValueError("The input contains no decodable video frames.") from exc
             timings["decode_seconds"] += time.perf_counter() - tick
+            metadata["rotation"] = 0
             cuda_route = bool(want_cuda and first_frame.format.name == "cuda")
-            decode_backend = "FFmpeg Vulkan/software fallback"
             output_p010 = bool(effective_hdr)
             encoder = _encoder(options, selected_codec, int(metadata["width"]),
                                int(metadata["height"]), options.target_rate,
@@ -441,7 +473,8 @@ def interpolate_video(
             try:
                 temp_video = Path(job.name) / ("encoded.mov" if options.container == "MOV" else
                                                "encoded.mkv" if options.container == "MKV" else "encoded.mp4")
-                encoded_container = VideoOutput(temp_video, controller)
+                encoded_container = (av.open(str(temp_video), mode="w") if cuda_route
+                                     else VideoOutput(temp_video, controller))
                 encode_device = HWAccel(
                     "cuda", device=str(encode_ordinal), options={"primary_ctx": "1"},
                     is_hw_owned=True) if cuda_route else None
@@ -473,7 +506,8 @@ def interpolate_video(
                 for _ in range(session_count):
                     sessions.append(DirectDLSSGSession(
                         int(metadata["width"]), int(metadata["height"]), generated_count,
-                        controller, ai_ordinal, hdr=effective_hdr))
+                        controller, ai_ordinal, hdr=effective_hdr, video_color=True,
+                        chroma_location=metadata.get("chroma_location", "left")))
                 timings["session_initialization_seconds"] = time.perf_counter() - initialization_start
                 colors = {"color_matrix": _matrix_code(metadata, hdr=effective_hdr),
                           "color_range": _range_code(metadata),
@@ -487,12 +521,6 @@ def interpolate_video(
                     for index, session in enumerate(sessions)]
                 if cuda_route and encode_ordinal != ai_ordinal:
                     transfer_pool = CudaTransferPool(ai_ordinal, encode_ordinal, controller)
-
-                rgb_colorspace = {
-                    0: Colorspace.ITU601, 1: Colorspace.ITU709,
-                    2: Colorspace.BT2020, 3: Colorspace.FCC,
-                    4: Colorspace.SMPTE240M,
-                }[colors["color_matrix"]]
 
                 decode_queue: queue.Queue = queue.Queue(maxsize=4)
                 encode_queue: queue.Queue = queue.Queue(maxsize=4)
@@ -557,22 +585,17 @@ def interpolate_video(
                     if isinstance(frame, DLSSGCudaSurface):
                         convert_start = time.perf_counter()
                         if encoder.name == "prores_ks" or not cuda_route:
-                            pixels = frame.to_host_rgb()
                             if effective_hdr:
-                                # DLSSG returns normalized, transfer-encoded half float RGB.
-                                # Keep the 10-bit precision until the final 4:2:2 conversion.
-                                depth = 10
-                                maximum = (1 << depth) - 1
-                                rgb = np.rint(np.clip(pixels[..., :3].astype(np.float32),
-                                                      0.0, 1.0) * maximum).astype(np.uint16)
-                                gbr = np.ascontiguousarray(rgb[..., [1, 2, 0]])
-                                frame = av.VideoFrame.from_ndarray(gbr, format=f"gbrp{depth}le")
+                                # Pack transfer-encoded HDR RGB to physical G,B,R planes
+                                # on CUDA, retaining exact round-to-even 10-bit precision.
+                                frame = frame.to_host_gbrp10_frame()
                             else:
+                                pixels = frame.to_host_rgb()
                                 frame = av.VideoFrame.from_ndarray(pixels, format="rgba")
                         else:
                             yuv = frame.to_yuv_surface(
                                 color_matrix=colors["color_matrix"],
-                                color_range=colors["color_range"], p010=output_p010)
+                                color_range=colors["color_range"], p010=output_p010, video_color=True)
                             frame = yuv.to_av_frame()
                         timings["final_color_conversion_seconds"] = (
                             timings.get("final_color_conversion_seconds", 0.0) +
@@ -653,7 +676,7 @@ def interpolate_video(
                 if encoded_frames[0] != output_count:
                     raise RuntimeError(f"Encoder accepted {encoded_frames[0]} frames; expected {output_count}.")
                 timings["pipeline_seconds"] = time.perf_counter() - pipeline_start
-                actual_encoder = encoded_container.actual_encoder
+                actual_encoder = (encoder.name if cuda_route else encoded_container.actual_encoder)
                 encoded_container.close(); encoded_container = None
                 decoded_container.close(); decoded_container = None
                 gc.collect()

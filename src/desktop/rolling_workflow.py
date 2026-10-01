@@ -30,6 +30,7 @@ from ..core.ffmpeg.frames import _Reader, open_video_decoder, packed_frame
 from ..core.ffmpeg.preview import decode_timeline_frame
 from ..core.ffmpeg.nut import RawVideoPacketMuxer
 from ..core.ffmpeg.sharpening import sharpening_filter
+from ..core.ffmpeg.grain import GrainOptions, grain_filter
 from ..core.ffmpeg.vulkan import prepare_command
 from ..core.jobs import BoundedLogBuffer, Cancelled, active_job, drain_bounded_text
 from ..core.paths import FFMPEG
@@ -40,7 +41,7 @@ from ..settings.models import UISettings
 from .coloring import has_lut_adjustments, load_cube_lut, save_cube_lut
 
 
-FILTER_STAGES = {"coloring", "scale_method", "cas_sharpening"}
+FILTER_STAGES = {"coloring", "scale_method", "cas_sharpening", "grain"}
 
 
 class _Cancellation:
@@ -123,6 +124,11 @@ def build_filter_group(stages, state, settings, directory, controller):
                 transfer = {"iec61966-2-1": "srgb", "linear": "linear"}.get(
                     state.metadata.get("color_transfer"), "bt709")
                 filters.append(sharpening_filter(settings.sharpening_method, settings.cas_sharpness, transfer))
+            state = state.rgb()
+        elif stage == "grain":
+            graph = grain_filter(GrainOptions.from_settings(settings), hdr=state.hdr)
+            if graph:
+                filters.append(graph)
             state = state.rgb()
         # Preserve the same 10-bit boundary as the original FFV1 workflow,
         # without writing and decoding a checkpoint at every card.
@@ -256,18 +262,41 @@ def pipe_filter(frames, before, after, graph, controller, directory, *, pixel_fo
             container.close()
 
 
-def source_frames(source, state, controller, stats, *, pixel_format=None, video_filter=None, directory=None):
+def source_frames(source, state, controller, stats, *, pixel_format=None, video_filter=None, directory=None,
+                  cuda_device=None, rtx_metadata=None):
     rotation = int(state.metadata.get("rotation") or 0)
     graph = {90: "transpose=clock", 180: "hflip,vflip", 270: "transpose=cclock"}.get(rotation, "")
     if video_filter is not None:
         graph = video_filter
     origin = last = None
     count = 0
-    with open_video_decoder(source, controller, pixel_format=pixel_format, video_filter=graph, cwd=directory) as decoder:
-        for frame in decoder.decode(video=0):
+    decoded_frames = None
+    if rtx_metadata is not None and cuda_device is not None:
+        from ..upscale.video.media import open_rtx_decoder
+        decoder, first, remaining, _ = open_rtx_decoder(source, rtx_metadata, cuda_device, controller)
+        decoded_frames = itertools.chain((first,), remaining)
+    elif cuda_device is None:
+        decoder = open_video_decoder(source, controller, pixel_format=pixel_format, video_filter=graph, cwd=directory)
+    else:
+        from av.codec.hwaccel import HWAccel
+        # Open FFmpeg's CUDA primary context before the neural session, as in
+        # the standalone NVDEC path. Rotation is handled by the native bridge.
+        device = HWAccel("cuda", device=str(cuda_device), allow_software_fallback=True,
+                         options={"primary_ctx": "1"}, is_hw_owned=True)
+        decoder = av.open(str(source), hwaccel=device)
+        decoder.streams.video[0].thread_type = "AUTO"
+    with decoder:
+        for frame in decoded_frames if decoded_frames is not None else decoder.decode(video=0):
             controller.check()
             if frame.is_corrupt:
                 raise RuntimeError("Source decoder returned a corrupt frame.")
+            if rtx_metadata is None and cuda_device is not None and frame.format.name != "cuda" and rotation:
+                # PyAV's software fallback does not autorotate like the CLI
+                # decoder. Keep the same oriented dimensions in both cases.
+                from ..core.runtime import rotate_frame
+                pixels = rotate_frame(ffmpeg.decoded_rgba(frame, state.depth), rotation)
+                frame = _timing(av.VideoFrame.from_ndarray(
+                    pixels, format="rgba64le" if pixels.dtype == np.uint16 else "rgba"), frame)
             tb = frame.time_base or state.metadata["time_base"]
             stamp = Fraction(frame.pts) * tb if frame.pts is not None else Fraction(count, 1) / state.rate
             if origin is None:
@@ -293,7 +322,10 @@ def neural_frames(frames, state, settings, controller):
     from ..core.gpu_selection import resolve_runtime_ai_gpu
     from ..core.runtime import DLSSFrameSession, prepare_runtime, resize_fit, resolve_native_settings, resolve_upscaling_mode
     from ..neural_rendering.video.guides import TemporalGuideGenerator
+    from ..neural_rendering.video.cuda_pipeline import _matrix_code, _range_code
     from .workflow import _neural_video_options
+    frames = iter(frames)
+    first = next(frames)
     prepared = prepare_runtime()
     gpu = resolve_runtime_ai_gpu(prepared.gpus, prepared.runtime_bundle, settings.ai_gpu_uuid)
     opts = _neural_video_options(settings, state.hdr)
@@ -302,18 +334,36 @@ def neural_frames(frames, state, settings, controller):
                               output_width=state.width, output_height=state.height,
                               frame_count=None, warmup_frames=opts.warmup_frames, factor=factor, mode=mode,
                               native_settings=resolve_native_settings(opts), composition_mask=opts.nr_mask,
-                              gpu=gpu, runtime_bundle=prepared.runtime_bundle, controller=controller)
+                              gpu=gpu, runtime_bundle=prepared.runtime_bundle, controller=controller,
+                              cuda_video=True)
     guides = TemporalGuideGenerator(session.render_width, session.render_height)
+    matrix, color_range = _matrix_code(state.metadata), _range_code(state.metadata)
+    output = np.empty((state.height, state.width, 4), dtype=np.uint16 if state.depth > 8 else np.uint8)
     try:
-        for index, frame in enumerate(frames):
+        for index, frame in enumerate(itertools.chain((first,), frames)):
             controller.check()
-            rgba = ffmpeg.decoded_rgba(frame, state.depth)
-            if rgba.shape[:2] != (session.render_height, session.render_width):
-                rgba = resize_fit(rgba, session.render_width, session.render_height, controller=controller)
-            guide = guides.process(rgba)
-            processed, _ = session.process(index=index, rgba=np.ascontiguousarray(rgba),
-                                           reset=guide.reset, pts=frame.pts)
+            if frame.format.name == "cuda":
+                score, reset = session.score_cuda_frame(frame, color_matrix=matrix, color_range=color_range)
+                prepared_frame = frame
+                rotation = int(state.metadata.get("rotation") or 0)
+            else:
+                rgba = ffmpeg.decoded_rgba(frame, state.depth)
+                if rgba.shape[:2] != (session.render_height, session.render_width):
+                    rgba = resize_fit(rgba, session.render_width, session.render_height, controller=controller)
+                guide = guides.process(rgba)
+                score, reset = guide.scene_score, guide.reset
+                prepared_frame, rotation = np.ascontiguousarray(rgba), 0
+            # Return the final packed result for the cache and filters.
+            # Software decoding also keeps motion/stabilization on the GPU,
+            # instead of selecting full-resolution CPU DIS and NumPy.
+            processed, _ = session.process_frame_to_host(
+                index=index, frame=prepared_frame, reset=reset, scene_score=score, pts=frame.pts,
+                color_matrix=matrix, color_range=color_range, rotation=rotation,
+                chroma_location=ffmpeg.chroma_location_code(state.metadata), output_buffer=output)
             yield _timing(av.VideoFrame.from_ndarray(processed, format="rgba64le" if processed.dtype == np.uint16 else "rgba"), frame)
+    except BaseException:
+        session.abort()
+        raise
     finally:
         session.close()
 
@@ -329,9 +379,7 @@ def dlss_frames(frames, state, settings, controller):
             controller.check()
             rgba = np.ascontiguousarray(ffmpeg.decoded_rgba(frame, state.depth))
             guide = guides.process(rgba)
-            result = session.process(rgba, reset=guide.reset, phase=index)
-            pixels = np.rint(np.clip(result.astype(np.float32), 0, 1) * 65535).astype(np.uint16)
-            pixels[..., 3] = 65535
+            pixels = session.process(rgba, reset=guide.reset, phase=index, output_dtype=np.uint16)
             yield _timing(av.VideoFrame.from_ndarray(pixels, format="rgba64le"), frame)
     finally:
         session.close()
@@ -339,48 +387,76 @@ def dlss_frames(frames, state, settings, controller):
 
 def rtx_frames(frames, state, after, settings, stage, controller, directory, *, normalized_input=False):
     from ..upscale.video.host_pipeline import _PinnedFramePool
-    from ..upscale.video.media import packed_bytes, sdr_normalization_filter
-    from ..upscale.video.native import RTXVideoSession, FORMAT_R10, FORMAT_RGBA8, FORMAT_YUV422P10, probe_capabilities
+    from ..upscale.video.media import sdr_normalization_filter
+    from ..upscale.video.native import RTXVideoSession, FORMAT_R10, FORMAT_RGBA8, FORMAT_GBRP10, probe_capabilities
+    from ..upscale.video.cuda_pipeline import (_matrix_code, _range_code, _primaries_code,
+                                              _transfer_code, _chroma_location_code)
     from .workflow import _video_upscale_stage_options
     opts = _video_upscale_stage_options(settings, stage)
     caps = probe_capabilities(settings.ai_gpu_uuid, controller=controller)
     fmt = "gbrp10le" if state.depth > 8 else "rgba"
-    # RTX Video accepts gamma-2.2 BT.709 RGB, matching the existing host path.
-    primary = state.metadata.get("color_primaries") or "bt709"
-    transfer = state.metadata.get("color_transfer") or "bt709"
-    primary = "bt709" if primary in {"unknown", "unspecified"} else primary
-    transfer = "bt709" if transfer in {"unknown", "unspecified"} else transfer
-    source_format = av.VideoFormat(state.metadata.get("pixel_format") or "gbrp10le")
-    matrix = "gbr" if source_format.is_rgb else state.metadata.get("color_space")
-    if matrix in {None, "", "unknown", "unspecified"}:
-        matrix = "bt470bg" if state.height == 576 else "smpte170m" if state.height < 576 else "bt709"
-    range_in = "full" if source_format.is_rgb or state.metadata.get("color_range") == "pc" else "limited"
-    planar = "gbrp10le" if state.depth > 8 else "gbrp"
-    graph = f"ve_gpu,{sdr_normalization_filter(matrix, primary, transfer, range_in)},format={planar},scale={state.width}:{state.height}:flags=lanczos,setsar=1,format={fmt}"
-    gamma = replace(state, metadata={**state.metadata, "color_primaries": "bt709", "color_transfer": "bt470m"})
-    normalized = (iter(frames) if normalized_input else
-                  pipe_filter(frames, state, gamma, graph, controller, directory, pixel_format=fmt, tag_output=False))
+    incoming = iter(frames)
+    try:
+        first = next(incoming)
+    except StopIteration:
+        return
+    def complete_input():
+        yield first
+        yield from incoming
+    sequence = complete_input()
+    cuda_input = first.format.name == "cuda"
+    if cuda_input or normalized_input:
+        normalized = sequence
+    else:
+        # Build the host normalizer only when needed; creating its shader also
+        # performs filesystem work that the direct CUDA route does not need.
+        primary = state.metadata.get("color_primaries") or "bt709"
+        transfer = state.metadata.get("color_transfer") or "bt709"
+        primary = "bt709" if primary in {"unknown", "unspecified"} else primary
+        transfer = "bt709" if transfer in {"unknown", "unspecified"} else transfer
+        source_format = av.VideoFormat(state.metadata.get("pixel_format") or "gbrp10le")
+        matrix = "gbr" if source_format.is_rgb else state.metadata.get("color_space")
+        if matrix in {None, "", "unknown", "unspecified"}:
+            matrix = "bt470bg" if state.height == 576 else "smpte170m" if state.height < 576 else "bt709"
+        range_in = "full" if source_format.is_rgb or state.metadata.get("color_range") == "pc" else "limited"
+        planar = "gbrp10le" if state.depth > 8 else "gbrp"
+        graph = f"ve_gpu,{sdr_normalization_filter(matrix, primary, transfer, range_in)},format={planar},scale={state.width}:{state.height}:flags=lanczos,setsar=1,format={fmt}"
+        gamma = replace(state, metadata={**state.metadata, "color_primaries": "bt709", "color_transfer": "bt470m"})
+        normalized = pipe_filter(sequence, state, gamma, graph, controller, directory, pixel_format=fmt, tag_output=False)
+    cuda_metadata = {"stream": {**state.metadata, "pix_fmt": state.metadata.get("pixel_format", "yuv420p"),
+                                "height": state.metadata.get("coded_height", state.height)},
+                     "height": state.height}
     session = RTXVideoSession(state.width, state.height, after.width, after.height, opts,
                               FORMAT_R10 if state.depth > 8 else FORMAT_RGBA8, caps, controller)
     pool = None
     try:
         pool = _PinnedFramePool(int(caps.gpu["cuda_ordinal"]), after.width, after.height,
-                                FORMAT_YUV422P10, "yuv422p10le", controller, capacity=1)
+                                FORMAT_GBRP10, "gbrp10le", controller, capacity=1)
         for frame in normalized:
             controller.check()
             slot = pool.acquire()
             try:
-                session.process_host_to_host_planar(packed_bytes(frame), output_format=FORMAT_YUV422P10,
-                                                    plane_pointers=slot.plane_pointers, strides=slot.strides)
+                if frame.format.name == "cuda":
+                    session.process_cuda_to_host_planar(
+                        frame, output_format=FORMAT_GBRP10,
+                        plane_pointers=slot.plane_pointers, strides=slot.strides,
+                        color_matrix=_matrix_code(cuda_metadata), color_range=_range_code(cuda_metadata),
+                        color_primaries=_primaries_code(cuda_metadata), color_transfer=_transfer_code(cuda_metadata),
+                        chroma_location=_chroma_location_code(cuda_metadata),
+                        rotation=int(state.metadata.get("rotation") or 0))
+                else:
+                    session.process_host_to_host_planar(frame, output_format=FORMAT_GBRP10,
+                                                        plane_pointers=slot.plane_pointers, strides=slot.strides)
                 slot.pts, slot.time_base, slot.duration = frame.pts, frame.time_base, frame.duration
                 result, _ = slot.to_av_frame()
             finally:
                 slot.release()
-            result.colorspace, result.color_range = (9 if after.hdr else 1), 1
+            result.colorspace, result.color_range = 0, 2
             result.color_primaries, result.color_trc = (9, 16) if after.hdr else (1, 1)
             yield result
     finally:
         normalized.close()
+        sequence.close()
         if pool:
             pool.close(abort=controller.cancel.is_set())
         session.close()
@@ -504,12 +580,10 @@ def native_stage(stage, frames, state, settings, controller, directory, *, norma
         transformed = interpolation_frames(frames, state, settings, controller, directory)
     else:
         raise ValueError(f"Unknown rolling processing stage: {stage}.")
-    # Output packing/clamping matches the existing FFV1 stage boundaries.
-    # RTX's bridge returns tagged YUV, other native engines return RGB.
-    raw_meta = after.metadata
     if stage in {"super_resolution", "rtx_video_hdr"}:
-        raw_meta = {**raw_meta, "color_space": "bt2020nc" if after.hdr else "bt709", "color_range": "tv"}
-    raw = replace(after, metadata=raw_meta)
+        return transformed, after
+    # Other engines use the established RGB packing/clamping boundary.
+    raw = after
     return pipe_filter(transformed, raw, after, "ve_gpu,format=gbrp10le", controller, directory), after
 
 
@@ -574,7 +648,8 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
                                    settings.codec, state.width, state.height)
     codec_args, selected, _ = _codec_command(settings.codec, settings.quality, state.width, state.height,
                                             float(state.rate), None if gpu is None else int(gpu["cuda_ordinal"]),
-                                            hdr_mode=state.hdr, hdr_metadata=meta)
+                                            hdr_mode=state.hdr, hdr_metadata=meta,
+                                            output_depth=ffmpeg.output_video_depth(state.depth, settings.codec, state.hdr))
     audio = plan_audio_streams(source, ffmpeg.resolve_container(settings.codec, settings.container), controller)
     tags = _color_tags(state.metadata, rgb=first.format.is_rgb)
     duration = float(state.metadata.get("video_duration") or state.metadata.get("duration") or 0)
@@ -582,7 +657,7 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
                "-f", "nut", "-i", "pipe:0",
                *(["-t", f"{duration:.9f}"] if duration > 0 else []), "-i", str(source),
                "-map", "0:v:0", "-map", "1:a?", "-map_metadata", "1", "-map_chapters", "1",
-               "-vf", tags, *codec_args, *audio.encoder_args(), "-fps_mode", "passthrough",
+               "-vf", tags, *codec_args, *audio.encoder_args(), "-fps_mode", "passthrough", "-enc_time_base:v", "demux",
                str(output.temporary)]
     command = prepare_command(command, selection=settings.ffmpeg_device,
                               dimensions=(state.width, state.height), input_format=first.format.name,
@@ -688,8 +763,10 @@ def render_rolling_video(source: Path, settings: UISettings, destination: Path,
     with active_job(controller), ExitStack() as resources:
         first_stage = groups[0]
         decode_format = None
+        cuda_device = None
         initial_filter = None
         first_filtered_state = None
+        rtx_metadata = None
         if isinstance(first_stage, tuple):
             initial_filter, first_filtered_state = build_filter_group(first_stage, state, settings, directory, control)
             rotation = int(state.metadata.get("rotation") or 0)
@@ -698,14 +775,26 @@ def render_rolling_video(source: Path, settings: UISettings, destination: Path,
             decode_format = "gbrp10le"
         elif first_stage in ("super_resolution", "rtx_video_hdr"):
             from ..upscale.video.media import inspect_video, decode_filter
-            initial_filter, _ = decode_filter(inspect_video(source, control, reject_hdr=True))
+            rtx_metadata = inspect_video(source, control, reject_hdr=True)
+            initial_filter, _ = decode_filter(rtx_metadata)
             decode_format = "gbrp10le" if state.depth > 8 else "rgba"
+            from ..core.gpu_selection import detect_gpu, prefer_cuda_video
+            if prefer_cuda_video(settings.ffmpeg_device, settings.ai_gpu_uuid, settings.video_gpu_uuid):
+                cuda_device = int(detect_gpu(settings.ai_gpu_uuid)["cuda_ordinal"])
+            state = replace(state, width=rtx_metadata["width"], height=rtx_metadata["height"])
         if first_stage in ("neural_model", "dlss_super_resolution"):
             decode_format = "rgba64le" if state.depth > 8 else "rgba"
+            if first_stage == "neural_model" and state.metadata.get("pixel_format") in {
+                    "yuv420p", "yuvj420p", "nv12", "yuv420p10le", "p010", "p010le"}:
+                from ..core.gpu_selection import detect_gpu, prefer_cuda_video
+                if prefer_cuda_video(settings.ffmpeg_device, settings.ai_gpu_uuid, settings.video_gpu_uuid):
+                    gpu = detect_gpu(settings.ai_gpu_uuid)
+                    cuda_device = int(gpu.get("cuda_ordinal", gpu.get("index", 0)))
         elif first_stage == "frame_generation":
             decode_format = "p010le" if state.hdr else "rgba"
         frames = source_frames(source, state, control, stats, pixel_format=decode_format,
-                               video_filter=initial_filter, directory=directory)
+                               video_filter=initial_filter, directory=directory, cuda_device=cuda_device,
+                               rtx_metadata=rtx_metadata)
         resources.callback(frames.close)
         try:
             for index, group in enumerate(groups):

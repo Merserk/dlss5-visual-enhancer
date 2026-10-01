@@ -44,13 +44,24 @@ class VideoDecoder:
             # Keep the original layout when Vulkan can represent it. Conversion
             # to RGB/YUV required by a consumer is an explicit GPU operation.
             pixel_format = source_format if source_format in {"yuv420p", "yuv420p10le", "yuv422p10le", "gbrp10le", "rgba", "rgba64le", "nv12", "p010le"} else "rgba64le"
+        # Retain the source matrix/transfer when a YUV host boundary is needed.
+        # Otherwise the planner's generic BT.709 default changes tagged HDR
+        # pixels while the AI consumer still interprets them as BT.2020.
+        color_options = []
+        for key, flag in (("color_space", "-colorspace"), ("color_primaries", "-color_primaries"),
+                          ("color_transfer", "-color_trc"), ("color_range", "-color_range")):
+            value = info.get(key)
+            if key == "color_range" and av.VideoFormat(pixel_format).is_rgb:
+                value = "pc"
+            if value and value not in {"unknown", "unspecified"}:
+                color_options.extend((flag, value))
         command = [str(FFMPEG), "-v", "warning", "-xerror", "-copyts", "-noautorotate",
                    *(["-ss", f"{fast:.6f}"] if start_seconds > 0 else []),
                    "-i", str(source),
                    *(["-ss", f"{accurate:.6f}"] if start_seconds > 0 else []),
                    "-map", "0:v:0", "-an", "-sn", "-dn", "-c:v", "rawvideo",
                    *(["-vf", video_filter] if video_filter else []),
-                   "-pix_fmt", pixel_format, "-fps_mode", "passthrough", "-enc_time_base", "demux",
+                   "-pix_fmt", pixel_format, *color_options, "-fps_mode", "passthrough", "-enc_time_base", "demux",
                    "-f", "nut", "-write_index", "0", "pipe:1"]
         command = prepare_command(command, selection=selection or getattr(controller, "ffmpeg_device", None))
         self.logs = BoundedLogBuffer(max_tail=60)
@@ -62,6 +73,15 @@ class VideoDecoder:
         self.thread.start()
         try:
             self.container = av.open(_Reader(self.process.stdout), format="nut")
+            # Raw NUT pixel-format tags differ between the CLI and PyAV's
+            # FFmpeg builds (P010 can be identified as RGB555). The producer
+            # explicitly writes this layout; decode its packets in that exact
+            # format instead of interpreting 10-bit luma as packed RGB.
+            stream = self.container.streams.video[0]
+            if stream.codec_context.name != "rawvideo":
+                raise ValueError("The frame decoder did not return raw video.")
+            stream.codec_context.codec_tag = "\0\0\0\0"
+            stream.codec_context.pix_fmt = pixel_format
         except BaseException:
             self.close()
             raise RuntimeError("FFmpeg decoder failed:\n" + "\n".join(self.logs.snapshot()))

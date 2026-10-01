@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Persistent in-process CUDA bridge for RTX Video VSR and TrueHDR.
 
-The legacy D3D11 worker remains packaged as an explicit developer A/B probe,
+The legacy D3D11 worker remains available as an explicit developer A/B probe,
 but production frames never fall back to it. Host callers cross PCIe once in
 each direction; CUDA video callers stay on the selected adapter through DLPack.
 """
@@ -11,6 +11,7 @@ import collections
 import ctypes
 import gc
 import json
+import queue
 import subprocess
 import threading
 import time
@@ -34,6 +35,7 @@ WORKER = (ROOT / "native (dev)" / "Upscale" / "RTX Video" / "rtx_video" /
 BRIDGE_ABI_VERSION = 1
 MEMORY_HOST, MEMORY_CUDA = 1, 2
 FORMAT_RGBA8, FORMAT_R10, FORMAT_RGBA16F, FORMAT_NV12, FORMAT_P010, FORMAT_YUV422P10 = 1, 2, 3, 4, 5, 6
+FORMAT_GBRP10 = 7
 
 
 class FrameDescriptorV1(ctypes.Structure):
@@ -140,6 +142,26 @@ class _BridgeManager:
         self.gpu_ordinal: int | None = None
         self.poisoned_reason = ""
         self.ffmpeg_devices: dict[int, tuple[Any, ctypes.c_void_p]] = {}
+        self.calls: queue.SimpleQueue = queue.SimpleQueue()
+        self.worker: threading.Thread | None = None
+        self.worker_lock = threading.Lock()
+
+    def _run_calls(self) -> None:
+        while True:
+            request = self.calls.get()
+            function, keepalive, done, result, failure = request
+            try:
+                with NGX_RUNTIME_LOCK:
+                    self.guard()
+                    result.append(function())
+            except BaseException as exc:
+                failure.append(exc)
+            finally:
+                # Drop frame/surface references even while the worker is idle.
+                # A timed-out native call retains them until it really returns.
+                function = keepalive = request = None
+                done.set()
+                done = result = failure = None
 
     def _ensure_ffmpeg_device(self, ordinal: int) -> None:
         """Create and retain FFmpeg's primary CUDA context before NGX loads.
@@ -232,6 +254,7 @@ class _BridgeManager:
             )
 
     def initialize(self, ordinal: int) -> dict[str, Any]:
+        self.guard()
         with NGX_RUNTIME_LOCK:
             self.guard()
             if self.gpu_ordinal is not None and self.gpu_ordinal != ordinal:
@@ -252,6 +275,7 @@ class _BridgeManager:
             return self.status()
 
     def status(self) -> dict[str, Any]:
+        self.guard()
         library = self._load()
         record = BridgeStatusV1.empty()
         if not library.rtxv_get_status_v1(ctypes.byref(record)):
@@ -278,19 +302,12 @@ class _BridgeManager:
         result: list[Any] = []
         failure: list[BaseException] = []
 
-        def invoke() -> None:
-            try:
-                with NGX_RUNTIME_LOCK:
-                    result.append(function())
-            except BaseException as exc:
-                failure.append(exc)
-            finally:
-                done.set()
-
-        thread = threading.Thread(target=invoke, name=f"rtx-video-{label}", daemon=True)
-        thread.start()
+        with self.worker_lock:
+            if self.worker is None:
+                self.worker = threading.Thread(target=self._run_calls, name="rtx-video-cuda", daemon=True)
+                self.worker.start()
+        self.calls.put((function, keepalive, done, result, failure))
         if not done.wait(timeout):
-            _ = keepalive
             self.poisoned_reason = f"{label} exceeded {timeout:g} seconds"
             self.guard()
         if failure:
@@ -355,16 +372,20 @@ def probe_legacy_capabilities(luid: str) -> dict[str, Any]:
 
 
 class RTXVideoCudaSurface:
-    def __init__(self, library: Any, handle: int, descriptor: FrameDescriptorV1, ordinal: int) -> None:
+    def __init__(self, library: Any, handle: int, descriptor: FrameDescriptorV1, ordinal: int,
+                 released: threading.Event | None = None) -> None:
         self.library, self.handle = library, int(handle)
         self.descriptor, self.ordinal = descriptor, int(ordinal)
         self.closed = False
+        self.released = released
 
     def retain(self) -> None:
         self.library.rtxv_surface_retain(ctypes.c_void_p(self.handle))
 
     def release(self) -> None:
         self.library.rtxv_surface_release(ctypes.c_void_p(self.handle))
+        if self.released is not None:
+            self.released.set()
 
     def close(self) -> None:
         if not self.closed:
@@ -432,6 +453,7 @@ class RTXVideoSession:
         self.last_results = (0, 0)
         self.last_timing: dict[str, float] = {}
         self.upload_bytes = self.download_bytes = self.pool_waits = 0
+        self.surface_ready = threading.Event()
         self.closed = False
         descriptor = SessionDescriptorV1()
         descriptor.struct_size, descriptor.abi_version = ctypes.sizeof(descriptor), BRIDGE_ABI_VERSION
@@ -444,6 +466,7 @@ class RTXVideoSession:
         descriptor.hdr_middle_gray, descriptor.hdr_peak_luminance = int(options.hdr_middle_gray), int(options.hdr_peak_luminance)
         descriptor.reserved[0] = int(bool(image_srgb))
         error = ctypes.create_string_buffer(4096)
+        _MANAGER.guard()
         with NGX_RUNTIME_LOCK:
             _MANAGER.guard()
             self.handle = int(self.library.rtxv_session_create(ctypes.byref(descriptor), error, len(error)) or 0)
@@ -487,6 +510,24 @@ class RTXVideoSession:
             "upload_bytes": int(result.upload_bytes), "download_bytes": int(result.download_bytes),
         }
 
+    def _host_source(self, pixels: Any) -> tuple[FrameDescriptorV1, Any]:
+        source = FrameDescriptorV1.empty()
+        source.memory_type = MEMORY_HOST
+        source.width, source.height = self.width, self.height
+        name = str(getattr(getattr(pixels, "format", None), "name", ""))
+        if name in {"rgba", "gbrp10le"}:
+            expected = "gbrp10le" if self.input_format == FORMAT_R10 else "rgba"
+            if name != expected or (pixels.width, pixels.height) != (self.width, self.height):
+                raise ValueError("Normalized host frame layout does not match the RTX Video session.")
+            source.pixel_format = FORMAT_GBRP10 if name == "gbrp10le" else FORMAT_RGBA8
+            for index, plane in enumerate(pixels.planes):
+                source.planes[index], source.strides[index] = int(plane.buffer_ptr), int(plane.line_size)
+            return source, pixels
+        owner, pointer = self._host_pointer(pixels, self.input_bytes)
+        source.pixel_format = self.input_format
+        source.planes[0], source.strides[0] = pointer, self.width * 4
+        return source, owner
+
     def _evaluate(self, source: FrameDescriptorV1, destination: FrameDescriptorV1,
                   keepalive: tuple[Any, ...]) -> dict[str, Any]:
         result, error = FrameResultV1.empty(), ctypes.create_string_buffer(4096)
@@ -508,12 +549,10 @@ class RTXVideoSession:
     def process_frame(self, pixels) -> bytearray:
         """Compatibility route for images/software decode: one upload/download."""
         self._check()
-        source_owner, source_pointer = self._host_pointer(pixels, self.input_bytes)
+        source, source_owner = self._host_source(pixels)
         output = bytearray(self.output_bytes)
         _, destination_pointer = self._host_pointer(output, self.output_bytes)
-        source, destination = FrameDescriptorV1.empty(), FrameDescriptorV1.empty()
-        source.memory_type, source.pixel_format = MEMORY_HOST, self.input_format
-        source.width, source.height, source.planes[0], source.strides[0] = self.width, self.height, source_pointer, self.width * 4
+        destination = FrameDescriptorV1.empty()
         destination.memory_type, destination.pixel_format = MEMORY_HOST, self.output_format
         destination.width, destination.height = self.output_width, self.output_height
         destination.planes[0] = destination_pointer
@@ -523,8 +562,10 @@ class RTXVideoSession:
 
     def _acquire_surface(self, pixel_format: int) -> RTXVideoCudaSurface:
         deadline, error = time.monotonic() + self.timeout, ctypes.create_string_buffer(4096)
+        last_collection = time.monotonic()
         while True:
             self._check()
+            self.surface_ready.clear()
             with NGX_RUNTIME_LOCK:
                 handle = int(self.library.rtxv_surface_acquire(
                     ctypes.c_void_p(self.handle), pixel_format, error, len(error)) or 0)
@@ -533,15 +574,20 @@ class RTXVideoSession:
                 if not self.library.rtxv_surface_frame_desc(ctypes.c_void_p(handle), ctypes.byref(descriptor)):
                     self.library.rtxv_surface_release(ctypes.c_void_p(handle))
                     raise RTXVideoBridgeError("RTX Video returned an invalid CUDA surface descriptor.")
-                return RTXVideoCudaSurface(self.library, handle, descriptor, self.ordinal)
+                return RTXVideoCudaSurface(self.library, handle, descriptor, self.ordinal, self.surface_ready)
             detail = error.value.decode("utf-8", "replace")
             if "pool is exhausted" not in detail:
                 raise RTXVideoBridgeError(f"Could not acquire RTX Video CUDA output surface: {detail}")
             self.pool_waits += 1
-            gc.collect()
-            if time.monotonic() >= deadline:
+            now = time.monotonic()
+            if now >= deadline:
                 raise RTXVideoBridgeError("RTX Video CUDA output surface pool remained exhausted.")
-            time.sleep(0.001)
+            # Encoder backpressure is released by DLPack, not by repeatedly
+            # collecting the entire Python heap on the render thread.
+            if now - last_collection >= 0.1:
+                gc.collect()
+                last_collection = now
+            self.surface_ready.wait(min(0.01, deadline - now))
 
     def process_cuda_frame(self, frame: Any, *, color_matrix: int = 1, color_range: int = 0,
                            color_primaries: int = 1, color_transfer: int = 0,
@@ -621,9 +667,9 @@ class RTXVideoSession:
 
     def _planar_destination(self, pixel_format: int, plane_pointers: tuple[int, ...],
                             strides: tuple[int, ...]) -> FrameDescriptorV1:
-        required = 3 if pixel_format == FORMAT_YUV422P10 else 2
-        if pixel_format not in {FORMAT_NV12, FORMAT_P010, FORMAT_YUV422P10}:
-            raise ValueError("Pinned host output must be NV12, P010, or YUV422P10.")
+        required = 3 if pixel_format in {FORMAT_YUV422P10, FORMAT_GBRP10} else 2
+        if pixel_format not in {FORMAT_NV12, FORMAT_P010, FORMAT_YUV422P10, FORMAT_GBRP10}:
+            raise ValueError("Pinned host output must be NV12, P010, YUV422P10, or GBRP10.")
         if len(plane_pointers) != required or len(strides) != required:
             raise ValueError(f"Pinned host output requires {required} planes.")
         if any(int(pointer) <= 0 for pointer in plane_pointers) or any(int(stride) <= 0 for stride in strides):
@@ -664,7 +710,7 @@ class RTXVideoSession:
         destination = self._planar_destination(output_format, plane_pointers, strides)
         details = self._evaluate(source, destination, (frame,))
         details.update(input_format=sw_format, output_format={
-            FORMAT_NV12: "nv12", FORMAT_P010: "p010le", FORMAT_YUV422P10: "yuv422p10le",
+            FORMAT_NV12: "nv12", FORMAT_P010: "p010le", FORMAT_YUV422P10: "yuv422p10le", FORMAT_GBRP10: "gbrp10le",
         }[output_format])
         return details
 
@@ -674,15 +720,11 @@ class RTXVideoSession:
     ) -> dict[str, Any]:
         """One host upload and one pinned planar download for software decoders."""
         self._check()
-        source_owner, source_pointer = self._host_pointer(pixels, self.input_bytes)
-        source = FrameDescriptorV1.empty()
-        source.memory_type, source.pixel_format = MEMORY_HOST, self.input_format
-        source.width, source.height = self.width, self.height
-        source.planes[0], source.strides[0] = source_pointer, self.width * 4
+        source, source_owner = self._host_source(pixels)
         destination = self._planar_destination(output_format, plane_pointers, strides)
         details = self._evaluate(source, destination, (source_owner, pixels))
-        details.update(input_format="host-packed", output_format={
-            FORMAT_NV12: "nv12", FORMAT_P010: "p010le", FORMAT_YUV422P10: "yuv422p10le",
+        details.update(input_format="host-gbrp10" if source.pixel_format == FORMAT_GBRP10 else "host-packed", output_format={
+            FORMAT_NV12: "nv12", FORMAT_P010: "p010le", FORMAT_YUV422P10: "yuv422p10le", FORMAT_GBRP10: "gbrp10le",
         }[output_format])
         return details
 
@@ -732,11 +774,7 @@ class RTXVideoSession:
                                    duration: int | None = None) -> tuple[Any, dict[str, Any]]:
         """Upload a normalized software-decoded frame once and return CUDA YUV."""
         self._check()
-        source_owner, source_pointer = self._host_pointer(pixels, self.input_bytes)
-        source = FrameDescriptorV1.empty()
-        source.memory_type, source.pixel_format = MEMORY_HOST, self.input_format
-        source.width, source.height = self.width, self.height
-        source.planes[0], source.strides[0] = source_pointer, self.width * 4
+        source, source_owner = self._host_source(pixels)
         surface = self._acquire_surface(FORMAT_P010 if output_p010 else FORMAT_NV12)
         try:
             details = self._evaluate(source, surface.descriptor, (source_owner, pixels, surface))
@@ -749,7 +787,8 @@ class RTXVideoSession:
             output.time_base = time_base
         if duration is not None:
             output.duration = duration
-        details.update(input_format="host-r10" if self.input_format == FORMAT_R10 else "host-rgba8",
+        details.update(input_format="host-gbrp10" if source.pixel_format == FORMAT_GBRP10 else
+                       "host-r10" if self.input_format == FORMAT_R10 else "host-rgba8",
                        output_format="p010le" if output_p010 else "nv12")
         return output, details
 
@@ -770,6 +809,10 @@ class RTXVideoSession:
             return
         self.closed = True
         handle, self.handle = self.handle, 0
+        if _MANAGER.poisoned_reason:
+            # The watchdog may have left a CUDA call holding the runtime lock.
+            # Its allocations must survive until that call returns or restart.
+            return
         with NGX_RUNTIME_LOCK:
             self.library.rtxv_session_release(ctypes.c_void_p(handle))
 

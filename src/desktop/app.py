@@ -20,18 +20,17 @@ from ..core import app_log
 from .image_provider import IconImageProvider, PreviewImageProvider
 from .bridge import AppBridge
 from .preview_player import PreviewPlayer
+from .responsiveness import UiResponsivenessMonitor
 from .window_geometry import restore_window_geometry
 from .window_focus import ClickFocusFilter
 from .win_frameless import install_win_chrome, remove_win_chrome, ensure_win_style, log_native_chrome
 
 
 def hide_inherited_console() -> None:
-    """Detach/hide any console inherited when launched windowless.
+    """Detach any console inherited when launched through the GUI launcher.
 
-    The GUI launcher sets DLSS5_WINDOWLESS=1 and starts pythonw.exe with
-    CREATE_NO_WINDOW. If Windows still attached a console (e.g. launched
-    from a console python, or a flashing helper), hide it so double-clicking
-    the .exe shows only the Qt window.
+    pythonw.exe does not allocate a console. If launched from a terminal,
+    detach our process without hiding the caller's terminal window.
     """
     if os.environ.get("DLSS5_WINDOWLESS") != "1":
         return
@@ -39,17 +38,9 @@ def hide_inherited_console() -> None:
         return
     try:
         kernel32 = ctypes.windll.kernel32
-        user32 = ctypes.windll.user32
         hwnd = kernel32.GetConsoleWindow()
         if hwnd:
-            try:
-                user32.ShowWindow(hwnd, 0)  # SW_HIDE
-            except Exception:
-                pass
-            try:
-                kernel32.FreeConsole()
-            except Exception:
-                pass
+            kernel32.FreeConsole()
     except Exception:
         pass
 
@@ -405,9 +396,17 @@ def launch_desktop() -> int:
     except Exception:
         pass
 
+    responsiveness = UiResponsivenessMonitor(
+        Path(app_log.session_path()).with_suffix(".ui-hang.err"),
+        context=lambda: (f"operation={bridge.operationState}; "
+                         f"selected={bridge._context().selected_path}"),
+        parent=app,
+    )
+    app.aboutToQuit.connect(responsiveness.stop)
     try:
         return app.exec()
     finally:
+        responsiveness.stop()
         # aboutToQuit normally runs this first. Keep the fallback for exits
         # that bypass the signal, then dismantle QML and the native event
         # filter while the application object is still alive.
