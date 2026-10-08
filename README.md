@@ -36,11 +36,9 @@ The **Neural Rendering** workspace provides separate **Image** and **Video** pip
 
 - **Neuroframe Engine:** brings DLSS 5 Neural Rendering to images and videos directly inside Visual Enhancer. No external graphics injector or game add-on is required.
 - **Image and video processing:** use Neural Rendering as one stage in a larger workflow, on single files or batches.
-- **Neural Rendering controls:** NR Style, NR Intensity, Local Tone Strength, Local Structure Strength, Skin Structure Strength, Automatic Mask, and 1–4 Neural Rendering passes.
-- **Composition controls:** NR Color Strength, Tone Preservation, Face/Skin Protection, Grain Preservation, and Mask Feather control how Neural Rendering is blended with the source.
-- **Detail-Only:** one-click preset that sets NR Color Strength to `0.00` and Tone Preservation to `1.00` while keeping the other controls editable.
-- **Custom NR Mask:** use an image mask to control where Neural Rendering is applied. The selected mask is also available to Live during the current application session.
-- **Shimmer Suppression:** helps stabilize fine detail between frames in Video and Live processing.
+- **Neural Rendering controls:** choose Style 0, Style 1, or Style 2, then adjust NR Intensity, Local Tone Strength, Local Structure Strength, Skin Structure Strength, Automatic Mask, and 1–4 Neural Rendering passes.
+- **Temporal quality:** Video Neural Rendering exposes **Optical Flow Quality** with High, Medium, and Low choices; Live has an independent setting for the same control.
+- **NR Control Mask:** load an image as the native Neural Rendering control mask. Red controls intensity, green controls local tone, and blue controls local structure. While a control mask is active it replaces Automatic Mask, and the same selected mask is available to Live during the current application session.
 - **Independent scaling:** a separate Scaling stage supports Source, 200%, 175%, 150%, 125%, 75%, 50%, and 25% with image- or video-specific resampling filters.
 - **HDR handling:** compatible video pipelines can retain 10-bit HDR with a supported HDR codec and the export HDR option enabled.
 
@@ -50,7 +48,7 @@ The **Neural Rendering** workspace provides separate **Image** and **Video** pip
 - **Flexible sizing:** use 1× native-resolution enhancement, 1.5×, 2×, 3×, 4×, or custom dimensions, subject to the 16384-pixel-per-dimension texture limit and source-size restrictions.
 - **NVIDIA RTX Video HDR:** an independent Video pipeline stage converts SDR video to HDR with adjustable contrast, saturation, middle gray, peak luminance, and processing precision.
 - **Combined processing:** RTX Video Super Resolution and RTX Video HDR can both be enabled in one workflow. HDR receives the dimensions produced by earlier stages and does not require VSR to be enabled.
-- **DLSS Super Resolution:** a separate image/video stage offers DLAA (1×), Quality (1.5×), Balanced (~1.72×), Performance (2×), and Ultra Performance (3×), with selectable DLSS presets.
+- **DLSS Super Resolution:** a separate image/video stage offers DLAA (1×), Quality (1.5×), Balanced (~1.72×), Performance (2×), and Ultra Performance (3×), with selectable DLSS presets. Video DLSS Super Resolution also exposes High, Medium, and Low Optical Flow Quality.
 - **Image output:** PNG, JPEG, WebP, AVIF, or TIFF, including 16-bit PNG/TIFF export and quality settings for lossy formats.
 - **Video output:** H.264, H.265, AV1, ProRes Proxy, ProRes HQ, and FFV1 Lossless RGB 10-bit. H.264, H.265, and AV1 also expose explicit **NVIDIA NVENC** codec choices; plain codec choices use the selected decoding/encoding path and can use hardware acceleration where supported.
 
@@ -58,7 +56,7 @@ The **Neural Rendering** workspace provides separate **Image** and **Video** pip
 
 - **Video pipeline stage:** uses NVIDIA DLSS Frame Generation to create intermediate frames at a selected output frame rate; it can be positioned among the other video stages.
 - **Target frame rates:** choose from 23.976 to 480 FPS, including common cinema, broadcast, and high-refresh rates. The selected target must exceed the frame rate entering the stage.
-- **DLSSG modes:** **Auto**, **Native DLSSG**, and **Cascade** provide different interpolation paths depending on the input and requested output.
+- **DLSSG modes:** **Auto**, **Native DLSSG**, and **Cascade** provide different interpolation paths depending on the input and requested output. **Optical Flow Quality** can be set to High, Medium, or Low.
 - **Preview clips:** render 1, 3, 5, 10, 20, or 30 seconds from the selected video position before a full export.
 - **HDR preservation:** 10-bit HDR output is supported with H.265, AV1, ProRes Proxy, ProRes HQ, and FFV1 Lossless RGB 10-bit when HDR export is enabled.
 
@@ -67,7 +65,7 @@ The **Neural Rendering** workspace provides separate **Image** and **Video** pip
 - **Local and online playback:** apply DLSS 5 Neural Rendering while watching local videos, direct network streams, YouTube, and Twitch sources.
 - **Integrated playback:** pause or resume playback, control volume and mute, expand the player, or enter fullscreen without leaving the Live workflow.
 - **Live quality controls:** choose source quality, maximum input resolution from 480p to 2160p, 1/2/4-second segments, Auto/Source/60/30/24 FPS modes, a 2–30 second playback buffer, and an independent Live Scale with Source, 200%, 175%, 150%, 125%, 75%, 50%, and 25% options.
-- **Independent Live tuning:** Live keeps its own Neural Rendering settings, so Live adjustments do not overwrite the main Neural Rendering settings. The custom NR mask remains shared for the current session.
+- **Independent Live tuning:** Live keeps its own Neural Rendering settings, including Optical Flow Quality, so Live adjustments do not overwrite the main Neural Rendering settings. The NR Control Mask remains shared for the current session.
 - **Dynamic updates:** most Neural Rendering controls can be changed while Live is running. Source selection, Live Scale, source quality, maximum input resolution, target FPS, segment duration, and playback buffer changes apply the next time Live starts.
 - **Performance information:** view processing and playback status while Live is running.
 
@@ -79,7 +77,8 @@ The **Neural Rendering** workspace provides separate **Image** and **Video** pip
 - **Film grain:** add an independent Grain stage to images or videos, with controls for amount, size, color, tonal response, and seed. Video can use animated grain, and the stage also supports HDR video.
 - **Unified media viewer:** compare Input and Output with **Split**, **2-Up**, and **Output** views, fit images to the viewer, inspect them at 100%, and scrub through video from a shared timeline.
 - **Smart preview cache:** preview stages reuse unchanged intermediate results, reducing repeat work when adjusting later stages. Realtime Preview can refresh supported changes automatically; video previews follow the selected playhead position, while Frame Generation clips can also be rendered manually. Compatible SDR Neural Rendering and upscaling previews can seek directly to the selected position instead of preparing video from the beginning; other inputs use the established lossless preview path.
-- **Video cache modes:** **Stage by Stage** writes video intermediates between processing cards, while **Rolling Cache (5 GB)** uses bounded disposable working storage and streams later stages where possible. Cache intermediates can use **FFV1** or **ProRes Proxy**.
+- **Bounded rolling cache:** video exports use a configurable **5–30 GB** rolling cache and process the timeline in disposable parts. **Native precision** keeps lossless high-precision frame data, while **Compressed RGB (8-bit)** reduces SDR cache usage with lossless byte compression; HDR intermediates automatically stay on the native-precision path.
+- **Pause and resume video exports:** Neural Rendering, Upscale, and Frame Interpolation video batches can be paused from the queue. Pausing releases GPU workers and memory; resuming continues from the last committed part. Windows sleep/suspend requests also trigger this safe pause path during supported exports.
 - **Focus Preview:** hide the side panels to give the media viewer more space, using the viewer control, menu command, or `Ctrl+Shift+F`.
 - **Full-resolution image previews:** inspect generated image previews at their output resolution.
 - **Batch processing:** add multiple files or folders, drag and drop media, retry failed items, clear completed items, stop processing, and reveal completed files in Explorer.
@@ -134,24 +133,19 @@ Stages execute **top to bottom** in their displayed order. Preflight checks dime
 
 | Setting | Values | Default |
 | --- | --- | --- |
-| NR Style | Default, Natural, Cinematic | Default |
+| NR Style | Style 0, Style 1, Style 2 | Style 0 |
 | NR Intensity | 0.00–2.00 | 1.00 |
 | NR Passes | 1–4 | 1 |
-| Local Tone Strength | 0.00–2.00 | 1.00 |
-| Local Structure Strength | 0.00–2.00 | 1.00 |
-| Skin Structure Strength | -1.00–2.00 | -1.00 |
-| NR Color Strength | 0.00–1.00 | 1.00 |
-| Tone Preservation | 0.00–1.00 | 0.00 |
-| Face/Skin Protection | 0.00–1.00 | 0.00 |
-| Grain Preservation | 0.00–1.00 | 0.00 |
-| Mask Feather | 0–128 output pixels | 0 |
-| Automatic Mask | Off, On | Off |
-| Shimmer Suppression | 0.00–1.00; Video and Live only | 0.70 |
-| Custom NR Mask | Load or clear a mask image; shared with Live for the current session | None |
+| Local Tone Strength | 0.00–1.00 | 1.00 |
+| Local Structure Strength | 0.00–1.00 | 1.00 |
+| Skin Structure Strength | 0.00–1.00; active with Automatic Mask and no loaded Control Mask | 1.00 |
+| Automatic Mask | Off, On; unavailable while an NR Control Mask is loaded | Off |
+| Optical Flow Quality | High, Medium, Low; Video only | High |
+| NR Control Mask | Load or clear a session-scoped image mask; shared with Live for the current session | None |
 
 **NR Passes** controls how many Neural Rendering passes are applied. Additional passes increase processing and can produce a stronger cumulative result. The Neural Rendering stage operates at the dimensions supplied by the preceding stages; use the separate **Scaling** stage to change those dimensions. Its input must be at least 64×64, and Neural Rendering supports dimensions up to 16384 pixels per side.
 
-**Detail-Only** sets NR Color Strength to `0.00` and Tone Preservation to `1.00`. All other Neural Rendering controls remain editable. Setting Skin Structure Strength above `-1.00` automatically enables Automatic Mask so the skin adjustment can take effect; Automatic Mask can still be switched off manually afterward.
+**Automatic Mask** enables the Skin Structure Strength control. Loading an **NR Control Mask** disables Automatic Mask and uses the native control-mask channels instead: red controls intensity, green controls local tone, and blue controls local structure. Grayscale masks apply the same value across all native mask channels. The loaded mask is session-scoped and is not stored in settings presets.
 
 ### Scaling and DLSS Super Resolution
 
@@ -162,6 +156,7 @@ Stages execute **top to bottom** in their displayed order. Preflight checks dime
 | Scaling: video filter | Spline36, Lanczos, Bicubic, Area, Bilinear | Spline36 |
 | DLSS Super Resolution: mode | DLAA (1×), Quality (1.5×), Balanced (~1.72×), Performance (2×), Ultra Performance (3×) | Quality |
 | DLSS Super Resolution: preset | Default, J, K, L, M | Default |
+| DLSS Super Resolution: Optical Flow Quality | High, Medium, Low; Video only | High |
 
 **Scaling** performs conventional resizing independently of Neural Rendering and RTX Video Super Resolution. It must produce at least 64×64 pixels; Neural Rendering supports up to 16384 pixels per dimension. **DLSS Super Resolution** is a separate neural upscaling stage: DLAA retains the input size, while the other modes increase it. DLSS Super Resolution requires at least 32×32 input and supports a maximum output texture dimension of 16384 pixels. Video output dimensions for DLSS Super Resolution are rounded up to even values.
 
@@ -212,6 +207,7 @@ RTX Video HDR accepts SDR video at its position in the pipeline, not existing HD
 | --- | --- | --- |
 | Output FPS | 23.976, 25, 29.97, 30, 50, 59.94, 60, 90, 119.88, 120, 144, 165, 180, 240, 360, 480 | 60 |
 | DLSS engine | Auto, Native DLSSG, Cascade | Auto |
+| Optical Flow Quality | High, Medium, Low | High |
 | Preview length | 1, 3, 5, 10, 20, 30 seconds; shared video preview selector | 3 seconds |
 
 **Auto** chooses a suitable Frame Generation path for the source and selected target FPS. The target must exceed the frame rate entering this stage; otherwise, preflight rejects the pipeline. A source already at or above the selected target is not silently resampled by this stage. Configure the final codec and HDR output in the shared video Export Settings.
@@ -240,7 +236,7 @@ RTX Video HDR accepts SDR video at its position in the pipeline, not existing HD
 | Grain Seed | 0–65535 | 0 |
 | Animated Grain | Off, On; Video only | On |
 
-**Color Match** adjusts a processed image using either its original input or a user-selected reference image; it is not a video option. **LUT** mode applies a supplied `.cube` file or uses the adjustment controls to generate a grade. For LUT adjustments, **Auto** analyzes an image, **Auto 1 Frame** analyzes the current video frame, and **Auto Fixed Frames** analyzes a fixed set of video frames. Selecting a LUT reference image can derive adjustments by comparing the source with that reference. **Reset** clears adjustment values, and **Save LUT** exports the graded 3D LUT. The Coloring, Sharpening, and Grain cards can each be enabled, disabled, and repositioned like other pipeline stages. Video Sharpening with nonzero strength must run before HDR conversion. Grain can process SDR or HDR video at its position; image grain is static, while **Animated Grain** changes the generated grain field between video frames. **Grain Preservation** in the Neural Rendering controls is separate from this Grain effect stage.
+**Color Match** adjusts a processed image using either its original input or a user-selected reference image; it is not a video option. **LUT** mode applies a supplied `.cube` file or uses the adjustment controls to generate a grade. For LUT adjustments, **Auto** analyzes an image, **Auto 1 Frame** analyzes the current video frame, and **Auto Fixed Frames** analyzes a fixed set of video frames. Selecting a LUT reference image can derive adjustments by comparing the source with that reference. **Reset** clears adjustment values, and **Save LUT** exports the graded 3D LUT. The Coloring, Sharpening, and Grain cards can each be enabled, disabled, and repositioned like other pipeline stages. Video Sharpening with nonzero strength must run before HDR conversion. Grain can process SDR or HDR video at its position; image grain is static, while **Animated Grain** changes the generated grain field between video frames.
 
 ### Live
 
@@ -253,7 +249,7 @@ RTX Video HDR accepts SDR video at its position in the pipeline, not existing HD
 | Target FPS | Auto, Source, 60, 30, 24 | Auto |
 | Playback buffer | 2–30 seconds | 6 seconds |
 | Live Scale | Source (Original), 200%, 175%, 150%, 125%, 75%, 50%, 25% | Source (Original) |
-| Neural Rendering controls | Independent Live copy of the Neural Rendering controls | Neural Rendering defaults |
+| Neural Rendering controls | Independent Live copy of Style, Intensity, Passes, Local Tone, Local Structure, Skin Structure, Automatic Mask, and Optical Flow Quality; NR Control Mask is shared | Neural Rendering defaults |
 
 Most Live Neural Rendering controls can be changed while playback is active. Buffered frames keep their previous appearance until playback reaches newly processed frames. Live Scale, source selection, source quality, maximum input resolution, segment duration, target FPS, and playback buffer take effect on the next **Start Live**. The Live tab uses Neural Rendering independently of the Image/Video stage pipelines.
 
@@ -284,15 +280,15 @@ The Neural Rendering video exporter maps the processed video alongside the origi
 | Interface Language | Available application languages | English (US) |
 | AI Processing GPU | Automatic (Best Available) or a compatible detected NVIDIA RTX GPU | Automatic |
 | Decoding / Encoding Device | Automatic (Best Available), CPU software decoding/encoding, or a detected Vulkan-capable device | Automatic |
-| Cache Memory | Rolling Cache (5 GB), Stage by Stage | Rolling Cache (5 GB) |
-| Cache codec | FFV1, ProRes Proxy | FFV1 |
+| Cache Memory mode | Native precision (Fast lossless), Compressed RGB (8-bit) (Fast compressed) | Native precision |
+| Cache size | 5, 10, 15, 20, 25, 30 GB | 10 GB |
 | Realtime Preview | Off, On; supported Image and Video pipeline changes | On |
-| Settings preset | Export or import adjustable application settings as JSON; custom NR mask is not included | n/a |
-| Factory reset | Restores processing, device, cache, and export settings to defaults and clears the custom NR mask; interface language and window layout are separate | n/a |
+| Settings preset | Export or import adjustable application settings as JSON; NR Control Mask is not included | n/a |
+| Factory reset | Restores processing, device, cache, and export settings to defaults and clears the NR Control Mask; interface language and window layout are separate | n/a |
 
-**Stage by Stage** caches complete video intermediates between enabled processing cards. **Rolling Cache (5 GB)** uses bounded disposable working storage and streams later stages where possible instead of retaining another complete intermediate for every card. **FFV1** provides lossless RGB 10-bit cache storage; **ProRes Proxy** uses 10-bit 4:2:2 intermediates.
+Video exports always use the bounded rolling-cache workflow. The selected **Cache size** is the working-storage ceiling used to divide long exports into parts. **Native precision** preserves the stage's native frame precision in lossless frame blocks. **Compressed RGB (8-bit)** stores SDR intermediates as independently compressed RGB frames to reduce cache usage; HDR passes automatically use native precision instead. Smart video previews use a separate lossless preview cache.
 
-Saved GPU and decoding/encoding device selections are validated when the application starts; unavailable selections fall back to Automatic. Compatible older settings presets can be imported and migrated automatically. Pipeline stage order and enabled-state settings are included in saved presets; the custom NR mask is not.
+Saved GPU and decoding/encoding device selections are validated when the application starts; unavailable selections fall back to Automatic. Compatible older settings presets can be imported and migrated automatically, including older Neural Rendering style names and retired cache choices. Pipeline stage order and enabled-state settings are included in saved presets; the NR Control Mask is not.
 
 ## Command line
 
@@ -302,12 +298,14 @@ Saved GPU and decoding/encoding device selections are validated when the applica
 
 | Command | Default behavior | Common options |
 | --- | --- | --- |
-| `render` | Neural Rendering at the original dimensions; PNG for images, H.264/MP4 for videos | `--style natural`, `--strength 0.8`, `--preset pipeline.json` |
+| `render` | Neural Rendering at the original dimensions; PNG for images, H.264/MP4 for videos | `--style 1`, `--strength 0.8`, `--preset pipeline.json` |
 | `upscale` | RTX Super Resolution at 2×; PNG for images, H.265/MKV for videos | `--scale 2`, `--size 3840x2160`, `--engine dlss --mode quality` |
 | `interpolate` | DLSS Frame Generation to 60 FPS; H.264/MP4 | `--fps 120`, `--preset settings.json` |
 | `devices` | List NVIDIA GPU indices, UUIDs, driver versions, and VRAM | `--json` |
 
 Use `VE_CLI.exe --help` for the command list and `VE_CLI.exe render --help`, `VE_CLI.exe upscale --help`, or `VE_CLI.exe interpolate --help` for command-specific options. Running without arguments also shows help.
+
+For `render`, `--style 0`, `--style 1`, and `--style 2` select the corresponding Neural Rendering styles.
 
 ### Quick examples
 
