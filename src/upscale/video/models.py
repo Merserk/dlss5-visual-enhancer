@@ -7,6 +7,7 @@ from fractions import Fraction
 from ...core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, hdr_mode_supported, resolve_container, validate_codec_container
 from ...core.naming import validate_rename
 from ...core.dlss_modes import UPSCALE_ENGINES, dlss_output_size, validate_dlss
+from ...core.runtime import OPTICAL_FLOW_QUALITIES
 
 VSR_QUALITIES = [("1 - Low", 1), ("2 - Medium", 2), ("3 - High", 3), ("4 - Ultra", 4)]
 SCALE_FACTORS = [("1×", 1.0), ("1.5×", 1.5), ("2×", 2.0), ("3×", 3.0), ("4×", 4.0)]
@@ -21,6 +22,7 @@ class UpscaleOptions:
     engine: str = "RTX Video Super Resolution"
     dlss_mode: str = "Quality"
     dlss_preset: str = "Default"
+    optical_flow_quality: str = "High"
     vsr_enabled: bool = True
     vsr_quality: int = 4
     size_mode: str = "Scale factor"
@@ -49,6 +51,8 @@ class UpscaleOptions:
         if self.engine not in UPSCALE_ENGINES:
             raise ValueError(f"Unknown upscale engine: {self.engine!r}.")
         validate_dlss(self.dlss_mode, self.dlss_preset)
+        if not isinstance(self.optical_flow_quality, str) or self.optical_flow_quality not in OPTICAL_FLOW_QUALITIES:
+            raise ValueError("Optical Flow Quality must be High, Medium, or Low.")
         for name in ("vsr_enabled", "hdr_enabled", "aspect_lock", "prefer_nvenc"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be on or off.")
@@ -136,7 +140,6 @@ class UpscaleCapabilities:
     vsr: dict
     hdr: dict
     sdk_version: str = "1.1.0"
-    worker_version: str = "1.0.0"
     bridge_version: str = ""
     bridge_status: dict = field(default_factory=dict)
 

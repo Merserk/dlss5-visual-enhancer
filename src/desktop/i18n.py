@@ -6,11 +6,11 @@ The language is a desktop preference, independent of processing presets.
 from __future__ import annotations
 
 from pathlib import Path
-import re
 
 from PySide6.QtCore import QCoreApplication, QLibraryInfo, QLocale, QTranslator
 from PySide6.QtGui import QFontDatabase, QGuiApplication
 
+from ..core.ui_messages import UiMessage, join_messages, substitute
 
 DEFAULT_LANGUAGE = "en_US"
 LANGUAGES = (
@@ -35,29 +35,10 @@ def tr(source: str) -> str:
     return QCoreApplication.translate("App", source)
 
 
-class UiMessage(str):
-    """Retain the English diagnostic plus arguments for live retranslation."""
-
-    def __new__(cls, source: str, *args):
-        values = tuple(str(arg) for arg in args)
-        obj = super().__new__(cls, _substitute(source, values))
-        obj.source = source
-        obj.args = args
-        return obj
-
-
-def _substitute(source: str, args: tuple[str, ...]) -> str:
-    return re.sub(r"%([1-9]\d*)", lambda match: args[int(match[1]) - 1], source)
-
-
 def translate_text(value: str) -> str:
     if isinstance(value, UiMessage):
-        return _substitute(tr(value.source), tuple(translate_text(arg) if isinstance(arg, UiMessage) else str(arg) for arg in value.args))
+        return substitute(tr(value.source), tuple(translate_text(arg) if isinstance(arg, UiMessage) else str(arg) for arg in value.args))
     return tr(value)
-
-
-def join_messages(values: list[str], separator: str = "\n") -> UiMessage:
-    return UiMessage(separator.join(f"%{index+1}" for index in range(len(values))), *values)
 
 
 def language_choices() -> list[dict[str, str]]:

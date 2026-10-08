@@ -12,16 +12,16 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source>  -  1 frame</source>
-      <translation>  -  1 frame</translation>
+      <translation>  -  1프레임</translation>
     </message>
     <message>
       <source>  -  f</source>
-      <translation>  -  f</translation>
+      <translation>  -  프레임 </translation>
     </message>
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="620" />
       <source> f</source>
-      <translation> f</translation>
+      <translation> 프레임 </translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="154" />
@@ -35,7 +35,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source> input FPS</source>
-      <translation> input FPS</translation>
+      <translation> 입력 FPS</translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="427" />
@@ -180,7 +180,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/NeuralModelControls.qml" line="263" />
       <location filename="../qml/controls/AppFilePicker.qml" line="12" />
       <location filename="../qml/views/LiveView.qml" line="408" />
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>All Files (*.*)</source>
       <translation>모든 파일 (*.*)</translation>
     </message>
@@ -228,12 +228,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Applied to processing</source>
       <translation>처리에 적용됨</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="22" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="131" />
-      <source>Apply Detail-Only Preset</source>
-      <translation>디테일 전용 프리셋 적용</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/ColoringControls.qml" line="38" />
       <source>Apply LUT</source>
@@ -352,8 +347,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/views/SettingsView.qml" line="71" />
-      <source>Cache Memory</source>
-      <translation>캐시 메모리</translation>
+      <source>Cache Memory (Rolling Cache 10GB)</source>
+      <translation>캐시 메모리 (롤링 캐시 10 GB)</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="149" />
@@ -514,11 +509,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Color Match</source>
       <translation>색상 일치</translation>
     </message>
-    <message>
-      <location filename="../qml/views/LiveView.qml" line="524" />
-      <source>Color Strength</source>
-      <translation>색상 강도</translation>
-    </message>
+    
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="46" />
       <source>Coloring</source>
@@ -544,12 +535,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Completed with warnings: %1 completed, %2 failed.</source>
       <translation>경고와 함께 완료: %1개 완료, %2개 실패.</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="10" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="120" />
-      <source>Composition &amp; Masking</source>
-      <translation>합성 및 마스킹</translation>
-    </message>
+    
     <message>
       <source>Configure hardware assignment, preview behavior, native layout, and portable settings presets.</source>
       <translation>하드웨어 할당, 미리 보기, 창 레이아웃 및 휴대 가능한 프리셋을 구성합니다.</translation>
@@ -790,12 +776,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>내보내기 경로</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>Export Preset JSON</source>
       <translation>JSON 프리셋 내보내기</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="114" />
+      <location filename="../qml/views/SettingsView.qml" line="103" />
       <source>Export Preset...</source>
       <translation>프리셋 내보내기...</translation>
     </message>
@@ -821,13 +807,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Exposure</source>
       <translation>노출</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="57" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="173" />
-      <location filename="../qml/views/LiveView.qml" line="526" />
-      <source>Face / Skin Protection</source>
-      <translation>얼굴 / 피부 보호</translation>
-    </message>
+    
     <message>
       <source>Factory reset restores all DLSS, upscale, interpolation, GPU, mask, and encoding settings. Window geometry remains a desktop preference.</source>
       <translation>초기화하면 DLSS, 업스케일, 보간, GPU, 마스크 및 인코딩 설정이 복원됩니다. 창 크기와 위치는 데스크톱 환경 설정으로 유지됩니다.</translation>
@@ -906,13 +886,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Grain Amount</source>
       <translation>그레인 강도</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="68" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="187" />
-      <location filename="../qml/views/LiveView.qml" line="527" />
-      <source>Grain Preservation</source>
-      <translation>그레인 보존</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/GrainControls.qml" line="50" />
       <source>Grain Seed</source>
@@ -1031,7 +1005,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>이미지 (*.png *.jpg *.jpeg *.webp *.tif *.tiff *.bmp *.avif *.heic *.heif *.svg *.dng *.cr2 *.nef *.arw)</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>Import Preset JSON</source>
       <translation>JSON 프리셋 가져오기</translation>
     </message>
@@ -1041,7 +1015,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>가져오기 실패: %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="121" />
+      <location filename="../qml/views/SettingsView.qml" line="110" />
       <source>Import...</source>
       <translation>가져오기...</translation>
     </message>
@@ -1108,8 +1082,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>JSON 프리셋</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>JSON Presets (*.json)</source>
       <translation>JSON 프리셋 (*.json)</translation>
     </message>
@@ -1207,8 +1181,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="108" />
       <location filename="../qml/components/NeuralModelControls.qml" line="233" />
-      <source>Load Custom Mask...</source>
-      <translation>사용자 지정 마스크 불러오기...</translation>
+      <source>Load Control Mask...</source>
+      <translation>제어 마스크 불러오기...</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="3834" />
@@ -1263,17 +1237,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>MPV: %1 드롭, %2 재버퍼링, A/V 동기화 %3 ms</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="128" />
+      <location filename="../qml/views/SettingsView.qml" line="117" />
       <source>Maintenance &amp; Defaults</source>
       <translation>유지 관리 및 기본값</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="79" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="201" />
-      <location filename="../qml/views/LiveView.qml" line="528" />
-      <source>Mask Feather</source>
-      <translation>마스크 경계 부드럽게</translation>
-    </message>
+    
     <message>
       <source>Match Colors</source>
       <translation>색상 맞추기</translation>
@@ -1362,12 +1330,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>NO OUTPUT</source>
       <translation>출력 없음</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="35" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="145" />
-      <source>NR Color Strength</source>
-      <translation>NR 색상 강도</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/NeuralModelControls.qml" line="25" />
       <location filename="../qml/views/LiveView.qml" line="479" />
@@ -1408,7 +1371,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="227" />
-      <location filename="../qml/views/SettingsView.qml" line="158" />
+      <location filename="../qml/views/SettingsView.qml" line="147" />
       <source>No</source>
       <translation>아니요</translation>
     </message>
@@ -1455,7 +1418,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>온라인 스트림 URL</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="133" />
+      <location filename="../qml/views/SettingsView.qml" line="122" />
       <source>Open Logs</source>
       <translation>로그 열기</translation>
     </message>
@@ -1631,7 +1594,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>프리셋</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="109" />
+      <location filename="../qml/views/SettingsView.qml" line="98" />
       <source>Preset name (e.g. 4K Master)...</source>
       <translation>프리셋 이름 (예: 4K Master)...</translation>
     </message>
@@ -1639,7 +1602,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MenuStrip.qml" line="210" />
       <location filename="../qml/views/FrameInterpolationView.qml" line="195" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="249" />
-      <location filename="../qml/views/SettingsView.qml" line="98" />
+      <location filename="../qml/views/SettingsView.qml" line="87" />
       <location filename="../qml/views/UpscaleView.qml" line="448" />
       <location filename="../qml/views/UpscaleView.qml" line="481" />
       <source>Preview</source>
@@ -1753,7 +1716,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>준비 완료.</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="101" />
+      <location filename="../qml/views/SettingsView.qml" line="90" />
       <source>Realtime Preview</source>
       <translation>실시간 미리 보기</translation>
     </message>
@@ -1829,12 +1792,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>%1 설정 초기화</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="134" />
+      <location filename="../qml/views/SettingsView.qml" line="123" />
       <source>Reset All Settings to Defaults</source>
       <translation>모든 설정 초기화</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="170" />
+      <location filename="../qml/views/SettingsView.qml" line="159" />
       <source>Reset all settings?</source>
       <translation>모든 설정을 초기화할까요?</translation>
     </message>
@@ -1877,11 +1840,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/LiveView.qml" line="177" />
       <source>Resume</source>
       <translation>재개</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="88" />
-      <source>Rolling Cache (5 GB)</source>
-      <translation>롤링 캐시 (5 GB)</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="2050" />
@@ -1981,8 +1939,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="137" />
       <location filename="../qml/components/NeuralModelControls.qml" line="262" />
-      <source>Select Custom NR Mask</source>
-      <translation>사용자 지정 NR 마스크 선택</translation>
+      <source>Select NR Control Mask</source>
+      <translation>NR 제어 마스크 선택</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="175" />
@@ -2074,7 +2032,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>설정</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="106" />
+      <location filename="../qml/views/SettingsView.qml" line="95" />
       <source>Settings Presets</source>
       <translation>설정 프리셋</translation>
     </message>
@@ -2098,12 +2056,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Sharpness</source>
       <translation>선명도</translation>
     </message>
-    <message>
-      <location filename="../qml/components/NeuralModelControls.qml" line="106" />
-      <location filename="../qml/views/LiveView.qml" line="490" />
-      <source>Shimmer Suppression</source>
-      <translation>깜박임 억제</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="952" />
       <location filename="../qml/components/MediaViewport.qml" line="1011" />
@@ -2162,11 +2115,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MediaViewport.qml" line="410" />
       <source>Split</source>
       <translation>분할</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="89" />
-      <source>Stage by Stage</source>
-      <translation>단계별 처리</translation>
     </message>
     <message>
       <source>Standard</source>
@@ -2307,7 +2255,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>타사 라이선스</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="175" />
+      <location filename="../qml/views/SettingsView.qml" line="164" />
       <source>This restores every processing setting and clears the custom mask. This cannot be undone unless you exported a preset.</source>
       <translation>모든 처리 설정을 복원하고 사용자 지정 마스크를 지웁니다. 내보낸 프리셋이 있어야 되돌릴 수 있습니다.</translation>
     </message>
@@ -2331,13 +2279,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Tonal Response</source>
       <translation>톤 반응</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="46" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="159" />
-      <location filename="../qml/views/LiveView.qml" line="525" />
-      <source>Tone Preservation</source>
-      <translation>톤 보존</translation>
-    </message>
+    
     <message>
       <source>Ultra</source>
       <translation>최고</translation>
@@ -2446,8 +2388,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>동영상 내보내기는 각 단계를 완료한 뒤 다음 단계를 시작합니다. 전체 길이의 중간 파일에는 많은 디스크 공간이 필요할 수 있습니다.</translation>
     </message>
     <message>
-      <source>Video exports use a lossless rolling disk cache of up to 5 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
-      <translation>동영상 내보내기는 최대 5 GB의 무손실 롤링 디스크 캐시를 사용합니다. 사용한 데이터는 자동으로 삭제됩니다. 최종 출력에는 추가 디스크 공간이 필요합니다.</translation>
+      <source>Video exports use a rolling disk cache of up to 10 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
+      <translation>동영상 내보내기는 최대 10 GB의 롤링 디스크 캐시를 사용합니다. 사용한 데이터는 자동으로 삭제됩니다. 최종 출력에는 추가 디스크 공간이 필요합니다.</translation>
     </message>
     <message>
       <location filename="../qml/components/MenuStrip.qml" line="83" />
@@ -2501,7 +2443,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="228" />
-      <location filename="../qml/views/SettingsView.qml" line="159" />
+      <location filename="../qml/views/SettingsView.qml" line="148" />
       <source>Yes</source>
       <translation>예</translation>
     </message>
@@ -2565,6 +2507,291 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/AboutView.qml" line="38" />
       <source>© 2026 Merserk. NVIDIA, DLSS, and RTX are trademarks of NVIDIA Corporation.</source>
       <translation>© 2026 Merserk. NVIDIA, DLSS 및 RTX는 NVIDIA Corporation의 상표입니다.</translation>
+    </message>
+    <message>
+      <source>Fast lossless</source>
+      <translation>빠른 무손실</translation>
+    </message>
+    <message>
+      <source>Fast compressed</source>
+      <translation>빠른 압축</translation>
+    </message>
+    <message>
+      <source>Fast 8-bit RGB compression without color subsampling. HDR uses Fast lossless. Models run one at a time.</source>
+      <translation>색상 서브샘플링 없는 빠른 8비트 RGB 압축. HDR에는 빠른 무손실을 사용합니다. 모델은 한 번에 하나씩 실행됩니다.</translation>
+    </message>
+    <message>
+      <source>Lossless RAM cache with disk fallback. Models run one at a time.</source>
+      <translation>디스크 대체 저장을 지원하는 무손실 RAM 캐시입니다. 모델은 하나씩 실행됩니다.</translation>
+    </message>
+    <message>
+      <source>Export paused; GPU memory released</source>
+      <translation>내보내기 일시 중지됨; GPU 메모리 해제됨</translation>
+    </message>
+    <message>
+      <source>Part %1 · %2 · %3 FPS · %4 GB</source>
+      <translation>파트 %1 · %2 · %3 FPS · %4 GB</translation>
+    </message>
+    <message>
+      <source>Preroll: %1 frames</source>
+      <translation>사전 처리: %1 프레임</translation>
+    </message>
+    <message>
+      <source>Pausing export; releasing GPU workers…</source>
+      <translation>내보내기를 일시 중지하고 GPU 프로세스를 해제하는 중…</translation>
+    </message>
+    <message>
+      <source>Resuming export from the last committed part…</source>
+      <translation>마지막 완료 파트부터 내보내기를 재개하는 중…</translation>
+    </message>
+    <message>
+      <source>Loading model</source>
+      <translation>모델 로드 중</translation>
+    </message>
+    <message>
+      <source>Flushing output</source>
+      <translation>출력 마무리 중</translation>
+    </message>
+    <message>
+      <source>Writing cache</source>
+      <translation>캐시 기록 중</translation>
+    </message>
+    <message>
+      <source>Releasing worker</source>
+      <translation>프로세스 해제 중</translation>
+    </message>
+    <message>
+      <source>Committing part</source>
+      <translation>파트 확정 중</translation>
+    </message>
+    <message>
+      <source>Finalizing video</source>
+      <translation>동영상 마무리 중</translation>
+    </message>
+    <message>
+      <source>Startup %1 s · switch %2 s</source>
+      <translation>시작 %1초 · 전환 %2초</translation>
+    </message>
+    <message>
+      <source>Cache Memory (Rolling Cache)</source>
+      <translation>캐시 메모리 (롤링 캐시)</translation>
+    </message>
+    <message>
+      <source>Cache size</source>
+      <translation>캐시 크기</translation>
+    </message>
+    <message>
+      <source>%1 GB (Default)</source>
+      <translation>%1 GB (기본값)</translation>
+    </message>
+    <message>
+      <source>Native precision</source>
+      <translation>원본 정밀도</translation>
+    </message>
+    <message>
+      <source>Compressed RGB (8-bit)</source>
+      <translation>압축 RGB (8비트)</translation>
+    </message>
+    <message>
+      <source>Control Mask replaces Automatic Mask. RGB channels control intensity, tone, and structure.</source>
+      <translation>제어 마스크가 자동 마스크를 대신합니다. RGB 채널로 강도, 톤, 구조를 제어합니다.</translation>
+    </message>
+    <message>
+      <location filename="../qml/components/BatchQueueDrawer.qml" line="307" />
+      <source>Processing Stage %1 of %2 (Part %3)</source>
+      <translation>%2개 중 %1단계 처리 중 (파트 %3)</translation>
+    </message>
+    <message>
+      <source>Optical Flow Quality</source>
+      <translation>광학 흐름 품질</translation>
+    </message>
+    <message>
+      <source>%1 (Discrete GPU)</source>
+      <translation>%1 (외장 GPU)</translation>
+    </message>
+    <message>
+      <source>%1 (Integrated GPU)</source>
+      <translation>%1 (내장 GPU)</translation>
+    </message>
+    <message>
+      <source>%1 fps target | %2 fps processing | %3 enhanced | %4 sampled out | %5s buffered</source>
+      <translation>목표: %1 fps | 처리: %2 fps | 향상된 프레임: %3 | 샘플링에서 제외: %4 | 버퍼: %5초</translation>
+    </message>
+    <message>
+      <source>%1 · pass %2/%3</source>
+      <translation>%1 · 패스 %2/%3</translation>
+    </message>
+    <message>
+      <source>%1. GPU filters: %2.</source>
+      <translation>%1. GPU 필터: %2.</translation>
+    </message>
+    <message>
+      <source>AI GPU selection: %1</source>
+      <translation>AI용 GPU 선택: %1</translation>
+    </message>
+    <message>
+      <source>Active: %1 — %2×%3.</source>
+      <translation>활성: %1 — %2×%3.</translation>
+    </message>
+    <message>
+      <source>Application: %1</source>
+      <translation>애플리케이션: %1</translation>
+    </message>
+    <message>
+      <source>Applying; newer changes pending</source>
+      <translation>적용 중; 새 변경 사항이 대기 중입니다</translation>
+    </message>
+    <message>
+      <source>Available</source>
+      <translation>사용 가능</translation>
+    </message>
+    <message>
+      <source>Buffering: %1</source>
+      <translation>버퍼링: %1</translation>
+    </message>
+    <message>
+      <source>CPU (Software decoding / encoding)</source>
+      <translation>CPU (소프트웨어 디코딩 / 인코딩)</translation>
+    </message>
+    <message>
+      <source>Config: %1</source>
+      <translation>설정: %1</translation>
+    </message>
+    <message>
+      <source>Failed: %1</source>
+      <translation>실패: %1</translation>
+    </message>
+    <message>
+      <source>Finished processing: %1. Playback available until Stop.</source>
+      <translation>처리 완료: %1. 중지를 누를 때까지 재생할 수 있습니다.</translation>
+    </message>
+    <message>
+      <source>Finished: %1. %2 frames enhanced.</source>
+      <translation>완료: %1. %2개 프레임이 향상되었습니다.</translation>
+    </message>
+    <message>
+      <source>Logs: %1</source>
+      <translation>로그: %1</translation>
+    </message>
+    <message>
+      <source>Missing</source>
+      <translation>없음</translation>
+    </message>
+    <message>
+      <source>Outputs: %1</source>
+      <translation>출력: %1</translation>
+    </message>
+    <message>
+      <source>Playing: %1</source>
+      <translation>재생 중: %1</translation>
+    </message>
+    <message>
+      <source>Preparing Neural Rendering: %1x%2 -&gt; %3x%4...</source>
+      <translation>Neural Rendering 준비 중: %1x%2 -&gt; %3x%4...</translation>
+    </message>
+    <message>
+      <source>Probing %1...</source>
+      <translation>%1 분석 중...</translation>
+    </message>
+    <message>
+      <source>Processing finished or stopped; changes apply on the next Start.</source>
+      <translation>처리가 완료되거나 중지되었습니다. 변경 사항은 다음 시작 시 적용됩니다.</translation>
+    </message>
+    <message>
+      <source>Requested up to %1p; received %2.</source>
+      <translation>최대 %1p 요청; 수신된 해상도: %2.</translation>
+    </message>
+    <message>
+      <source>Runtime error: %1</source>
+      <translation>런타임 오류: %1</translation>
+    </message>
+    <message>
+      <source>Runtime state: %1</source>
+      <translation>런타임 상태: %1</translation>
+    </message>
+    <message>
+      <source>Software codecs</source>
+      <translation>소프트웨어 코덱</translation>
+    </message>
+    <message>
+      <source>Source quality selection applies to YouTube/Twitch pages; using the supplied source.</source>
+      <translation>소스 화질 선택은 YouTube/Twitch 페이지에 적용됩니다. 제공된 소스를 사용합니다.</translation>
+    </message>
+    <message>
+      <source>Startup warning: %1</source>
+      <translation>시작 시 경고: %1</translation>
+    </message>
+    <message>
+      <source>The resolved stream differs from the requested height.</source>
+      <translation>가져온 스트림의 높이가 요청한 높이와 다릅니다.</translation>
+    </message>
+    <message>
+      <source>Update failed; recovery failed</source>
+      <translation>업데이트 실패; 복구 실패</translation>
+    </message>
+    <message>
+      <source>Update failed—previous settings restored</source>
+      <translation>업데이트 실패 — 이전 설정이 복원되었습니다</translation>
+    </message>
+    <message>
+      <source>Video GPU selection: %1</source>
+      <translation>비디오용 GPU 선택: %1</translation>
+    </message>
+    <message>
+      <source>Vulkan codecs where supported; software fallback</source>
+      <translation>지원되는 경우 Vulkan 코덱 사용; 그 외에는 소프트웨어 코덱 사용</translation>
+    </message>
+    <message>
+      <source>Native DLSSG</source>
+      <translation>네이티브 DLSSG</translation>
+    </message>
+    <message>
+      <source>Cascade</source>
+      <translation>캐스케이드</translation>
+    </message>
+    <message>
+      <source>Area</source>
+      <translation>영역 평균</translation>
+    </message>
+    <message>
+      <source>Bicubic</source>
+      <translation>쌍삼차</translation>
+    </message>
+    <message>
+      <source>Bilinear</source>
+      <translation>쌍선형</translation>
+    </message>
+    <message>
+      <source>Nearest</source>
+      <translation>최근접 이웃</translation>
+    </message>
+    <message>
+      <source>FFV1 Lossless RGB 10-bit</source>
+      <translation>FFV1 무손실 RGB 10비트</translation>
+    </message>
+    <message>
+      <source>Ready</source>
+      <translation>준비 완료</translation>
+    </message>
+    <message>
+      <source>Initializing</source>
+      <translation>초기화 중</translation>
+    </message>
+    <message>
+      <source>The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings.</source>
+      <translation>선택한 FFmpeg/Vulkan GPU를 사용할 수 없습니다. 설정에서 자동 또는 다른 GPU를 선택하세요.</translation>
+    </message>
+    <message>
+      <source>Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver.</source>
+      <translation>Vulkan GPU 필터링을 사용할 수 없습니다. AMD, Intel 또는 NVIDIA의 최신 Vulkan 드라이버를 설치하세요.</translation>
+    </message>
+    <message>
+      <source>%1: %2 (%3)</source>
+      <translation>%1: %2 (%3)</translation>
+    </message>
+    <message>
+      <source>Style %1</source>
+      <translation>스타일 %1</translation>
     </message>
   </context>
 </TS>

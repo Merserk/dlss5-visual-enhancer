@@ -83,7 +83,7 @@ Rectangle {
         id: brand; z: 2
         anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter; spacing: 8
         Image {
-            source: Qt.resolvedUrl("../../../../native (dev)/icon.png")
+            source: Qt.resolvedUrl("../../../../native (dev)/assets/icon.png")
             sourceSize: Qt.size(112, 112)
             width: 28; height: 28
             fillMode: Image.PreserveAspectFit

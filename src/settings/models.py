@@ -7,7 +7,9 @@ from types import SimpleNamespace
 from ..core.ffmpeg import CODEC_CHOICES as FFMPEG_CODEC_CHOICES, CONTAINER_CHOICES, ENCODING_QUALITIES, HDR_ALLOWED_CODECS, hdr_mode_supported, resolve_container
 from ..core.ffmpeg.vulkan import valid_selection
 from ..core.ffmpeg.grain import GrainOptions
-from ..core.cache_video import CACHE_VIDEO_CODECS
+from ..core.cache_video import (
+    CACHE_MODES, CACHE_SIZE_CHOICES_GB, DEFAULT_CACHE_SIZE_GB, cache_size_bytes, validate_cache_mode,
+)
 from ..core.naming import validate_rename
 from ..core.runtime import resolve_native_settings, resolve_upscaling_mode
 from ..core.dlss_modes import DLSS_METHODS, validate_dlss
@@ -23,7 +25,7 @@ IMAGE_16BIT_FORMATS = ("PNG", "TIFF")
 IMAGE_BIT_DEPTH_CHOICES = (8, 16)
 CONFIG_SECTION = "Settings"
 PRESET_FORMAT = "dlss5-visual-enhancer-settings-preset"
-PRESET_SCHEMA_VERSION = 28
+PRESET_SCHEMA_VERSION = 34
 MAX_PRESET_BYTES = 1024 * 1024
 
 AUTOMATIC_MASK_CHOICES = ("Off", "On")
@@ -33,7 +35,6 @@ UPSCALE_PREVIEW_LENGTH_CHOICES = PREVIEW_LENGTH_CHOICES
 
 IMAGE_SCALING_FILTERS = ("Lanczos4", "Area", "Bicubic", "Bilinear", "Nearest")
 VIDEO_SCALING_FILTERS = ("Spline36", "Lanczos", "Bicubic", "Area", "Bilinear")
-CACHE_MEMORY_MODES = ("stage", "rolling")
 
 LEGACY_IMAGE_STAGE_ORDER = ("neural_model", "scale_method", "super_resolution")
 LEGACY_VIDEO_STAGE_ORDER = (*LEGACY_IMAGE_STAGE_ORDER, "frame_generation")
@@ -66,14 +67,12 @@ LUT_ADJUSTMENT_RANGES = {
     "lut_saturation": (-100, 100),
 }
 
-
 def validate_stage_layout(order: tuple[str, ...], enabled: tuple[str, ...], *, video: bool) -> None:
     allowed = VIDEO_STAGE_ORDER if video else IMAGE_STAGE_ORDER
     if not isinstance(order, tuple) or len(order) != len(allowed) or set(order) != set(allowed):
         raise ValueError("Pipeline order must contain each available processing card exactly once.")
     if not isinstance(enabled, tuple) or len(enabled) != len(set(enabled)) or not set(enabled) <= set(allowed):
         raise ValueError("Pipeline enabled stages contain an unavailable or duplicate card.")
-
 
 def migrate_stage_layout(order: tuple[str, ...], enabled: tuple[str, ...], *,
                          video: bool, scale_method: str, upscale_engine: str,
@@ -151,14 +150,11 @@ def migrate_stage_layout(order: tuple[str, ...], enabled: tuple[str, ...], *,
     result = (*result[0], "coloring", "cas_sharpening"), result[1]
     return finish(*result)
 
-
 def coerce_hdr_mode(codec: str, enabled: bool) -> bool:
     return bool(enabled) and hdr_mode_supported(codec)
 
-
 def automatic_mask_choice(enabled: bool) -> str:
     return "On" if enabled else "Off"
-
 
 def parse_automatic_mask(value: str) -> bool:
     if value not in AUTOMATIC_MASK_CHOICES:
@@ -203,23 +199,15 @@ class UISettings:
     ai_gpu_uuid: str = "auto"
     video_gpu_uuid: str = "auto"
     ffmpeg_device: str = "auto"
-    cache_memory_mode: str = "rolling"
-    cache_codec: str = "FFV1"
-    nr_style: str = "Default"
+    cache_codec: str = "Fast lossless"  # Keep the persisted key for existing settings/presets.
+    cache_size_gb: int = DEFAULT_CACHE_SIZE_GB
+    nr_style: str = "Style 0"
     nr_intensity: float = 1.0
     nr_passes: int = 1
+    nr_optical_flow_quality: str = "High"
     local_tone_strength: float = 1.0
     local_structure_strength: float = 1.0
-    skin_structure_strength: float = -1.0
-    nr_color_strength: float = 1.0
-    tone_preservation: float = 0.0
-    face_skin_protection: float = 0.0
-    grain_preservation: float = 0.0
-    # Video/Live temporal residual stabilization. Image rendering always
-    # remains reset-based and does not consume this value.
-    shimmer_suppression: float = 0.70
-    mask_feather: int = 0
-    # Validated native file-picker identity; intentionally omitted from config/presets.
+    skin_structure_strength: float = 1.0
     nr_mask: object | None = None
     upscaling_factor: float = 1.0
     image_scaling_filter: str = "Lanczos4"
@@ -232,18 +220,13 @@ class UISettings:
     # reads/writes only these, so tuning or resetting Live never touches
     # the Neural Rendering tab (and vice versa). nr_mask stays shared:
     # only the Neural tab manages the custom mask.
-    live_nr_style: str = "Default"
+    live_nr_style: str = "Style 0"
     live_nr_intensity: float = 1.0
     live_nr_passes: int = 1
+    live_nr_optical_flow_quality: str = "High"
     live_local_tone_strength: float = 1.0
     live_local_structure_strength: float = 1.0
-    live_skin_structure_strength: float = -1.0
-    live_nr_color_strength: float = 1.0
-    live_tone_preservation: float = 0.0
-    live_face_skin_protection: float = 0.0
-    live_grain_preservation: float = 0.0
-    live_shimmer_suppression: float = 0.70
-    live_mask_feather: int = 0
+    live_skin_structure_strength: float = 1.0
     live_automatic_mask: bool = False
     live_upscaling_factor: float = 1.0
     # Factory default only. Existing saved codec values are loaded unchanged.
@@ -261,6 +244,7 @@ class UISettings:
     video_custom_suffix: str = "_Neural_Rendering"
     frame_interpolation_target_fps: str = "60"
     frame_interpolation_engine: str = "Auto"
+    frame_interpolation_optical_flow_quality: str = "High"
     # Factory default only. Existing saved selections are loaded unchanged.
     frame_interpolation_codec: str = "H.264"
     frame_interpolation_container: str = "MP4"
@@ -287,6 +271,7 @@ class UISettings:
     upscale_engine: str = "RTX Video Super Resolution"
     upscale_dlss_mode: str = "Quality"
     upscale_dlss_preset: str = "Default"
+    upscale_optical_flow_quality: str = "High"
     upscale_vsr_quality: int = 4
     upscale_size_mode: str = "Scale factor"
     upscale_scale_factor: float = 2.0
@@ -308,7 +293,7 @@ class UISettings:
 
     def component_values(
         self,
-    ) -> tuple[str, float, int, float, float, float, float, float, float, float, float, int, float, bool, str, str, str]:
+    ) -> tuple:
         return (
             self.nr_style,
             self.nr_intensity,
@@ -316,19 +301,13 @@ class UISettings:
             self.local_tone_strength,
             self.local_structure_strength,
             self.skin_structure_strength,
-            self.nr_color_strength,
-            self.tone_preservation,
-            self.face_skin_protection,
-            self.grain_preservation,
-            self.shimmer_suppression,
-            self.mask_feather,
+
             self.upscaling_factor,
             self.automatic_mask,
             self.codec,
             self.container,
             self.quality,
         )
-
 
 def live_effect_options(settings: UISettings) -> SimpleNamespace:
     """Namespace exposing the Live tab's independent NR values under the
@@ -340,22 +319,16 @@ def live_effect_options(settings: UISettings) -> SimpleNamespace:
         nr_style=settings.live_nr_style,
         nr_intensity=settings.live_nr_intensity,
         nr_passes=settings.live_nr_passes,
+        nr_optical_flow_quality=settings.live_nr_optical_flow_quality,
         local_tone_strength=settings.live_local_tone_strength,
         local_structure_strength=settings.live_local_structure_strength,
         skin_structure_strength=settings.live_skin_structure_strength,
-        nr_color_strength=settings.live_nr_color_strength,
-        tone_preservation=settings.live_tone_preservation,
-        face_skin_protection=settings.live_face_skin_protection,
-        grain_preservation=settings.live_grain_preservation,
-        shimmer_suppression=settings.live_shimmer_suppression,
-        mask_feather=settings.live_mask_feather,
+
         nr_mask=settings.nr_mask,
         automatic_mask=settings.live_automatic_mask,
     )
 
-
 DEFAULT_SETTINGS = UISettings()
-
 
 def _validate(settings: UISettings) -> UISettings:
     validate_stage_layout(settings.image_stage_order, settings.image_enabled_stages, video=False)
@@ -390,10 +363,8 @@ def _validate(settings: UISettings) -> UISettings:
     image_upscale_options(settings).validate(for_render=False)
     if not valid_selection(settings.ffmpeg_device):
         raise ValueError("FFmpeg/Vulkan must be Automatic, CPU, or a Vulkan GPU UUID.")
-    if settings.cache_memory_mode not in CACHE_MEMORY_MODES:
-        raise ValueError("Cache Memory must be Stage by Stage or Rolling Cache (5 GB).")
-    if settings.cache_codec not in CACHE_VIDEO_CODECS:
-        raise ValueError("Cache Memory codec must be FFV1 or ProRes Proxy.")
+    validate_cache_mode(settings.cache_codec)
+    cache_size_bytes(settings.cache_size_gb)
     for label, value in (
         ("AI Processing GPU", settings.ai_gpu_uuid),
         ("Video Processing GPU", settings.video_gpu_uuid),
@@ -401,6 +372,7 @@ def _validate(settings: UISettings) -> UISettings:
         if not isinstance(value, str) or not value.strip() or len(value) > 160:
             raise ValueError(f"{label} selection must be Automatic or a valid GPU UUID.")
     resolve_native_settings(settings)
+    resolve_native_settings(live_effect_options(settings))
     if isinstance(settings.nr_passes, bool) or not isinstance(settings.nr_passes, int):
         raise ValueError("NR Passes must be an integer from 1 to 4.")
     if not 1 <= settings.nr_passes <= 4:
@@ -409,14 +381,6 @@ def _validate(settings: UISettings) -> UISettings:
         raise ValueError("Live NR Passes must be an integer from 1 to 4.")
     if not 1 <= settings.live_nr_passes <= 4:
         raise ValueError("Live NR Passes must be between 1 and 4.")
-    if isinstance(settings.mask_feather, bool) or not isinstance(settings.mask_feather, int):
-        raise ValueError("Mask Feather must be an integer from 0 to 128.")
-    if not 0 <= settings.mask_feather <= 128:
-        raise ValueError("Mask Feather must be between 0 and 128 pixels.")
-    if isinstance(settings.live_mask_feather, bool) or not isinstance(settings.live_mask_feather, int):
-        raise ValueError("Live Mask Feather must be an integer from 0 to 128.")
-    if not 0 <= settings.live_mask_feather <= 128:
-        raise ValueError("Live Mask Feather must be between 0 and 128 pixels.")
     resolve_upscaling_mode(settings.upscaling_factor)
     if settings.image_scaling_filter not in IMAGE_SCALING_FILTERS:
         raise ValueError(f"Unknown image scaling filter: {settings.image_scaling_filter!r}.")
@@ -467,6 +431,10 @@ def _validate(settings: UISettings) -> UISettings:
         "Frame Interpolation codec": (
             settings.frame_interpolation_codec,
             CODEC_CHOICES,
+        ),
+        "Frame Interpolation Optical Flow Quality": (
+            settings.frame_interpolation_optical_flow_quality,
+            ("High", "Medium", "Low"),
         ),
         "Frame Interpolation container": (
             settings.frame_interpolation_container,

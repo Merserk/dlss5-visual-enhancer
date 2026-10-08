@@ -40,4 +40,14 @@ Column {
             }
         }
     }
+
+    AppComboBox {
+        objectName: "srOpticalFlowQuality"
+        width: parent.width
+        label: qsTranslate("App", "Optical Flow Quality")
+        visible: !root.isImage
+        model: appBridge ? appBridge.opticalFlowQualityChoices : ["High", "Medium", "Low"]
+        currentValue: appBridge ? appBridge.upscaleOpticalFlowQuality : "High"
+        onActivated: v => { if (appBridge) appBridge.upscaleOpticalFlowQuality = v; }
+    }
 }

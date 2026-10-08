@@ -30,15 +30,12 @@ QUALITIES = {"auto": "Auto (Default)", "good": "Good", "best": "Best", "max": "M
 DLSS_MODES = {"dlaa": "DLAA", "quality": "Quality", "balanced": "Balanced",
               "performance": "Performance", "ultra-performance": "Ultra Performance"}
 
-
 class UsageError(ValueError):
     """Invalid arguments or configuration; exit status 2."""
-
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise UsageError(message)
-
 
 def finite_float(value):
     try:
@@ -49,13 +46,11 @@ def finite_float(value):
         raise argparse.ArgumentTypeError("expected a finite number")
     return result
 
-
 def dimensions(value):
     match = re.fullmatch(r"(\d+)[xX](\d+)", value)
     if not match or not all(2 <= int(v) <= 16384 for v in match.groups()):
         raise argparse.ArgumentTypeError("use WIDTHxHEIGHT, with each dimension from 2 to 16384")
     return tuple(int(v) for v in match.groups())
-
 
 def build_parser():
     parser = Parser(prog="VE_CLI.exe", description="Visual Enhancer for images and videos, from your terminal.",
@@ -83,7 +78,7 @@ def build_parser():
         command.add_argument("--quiet", action="store_true", help="hide progress; keep errors and the final result")
         command.add_argument("--json", action="store_true", help="write one JSON result to stdout; progress/errors go to stderr")
         if name == "render":
-            command.add_argument("--style", choices=("default", "natural", "cinematic"), help="Neural Rendering style (default: default or preset value)")
+            command.add_argument("--style", choices=("0", "1", "2"), help="Neural Rendering style (default: 0 or preset value)")
             command.add_argument("--strength", type=finite_float, metavar="0..2", help="Neural Rendering intensity (default: 1 or preset value)")
         elif name == "upscale":
             command.add_argument("--engine", choices=("rtx", "dlss"), help="upscaling engine (default: rtx or preset value)")
@@ -97,7 +92,6 @@ def build_parser():
     devices.add_argument("--json", action="store_true", help="write GPU information as JSON")
     return parser
 
-
 def media_mode(path):
     from ..core.disk_paths import supported_file
 
@@ -106,7 +100,6 @@ def media_mode(path):
     if supported_file(path, "video"):
         return "Video"
     return None
-
 
 def collect_inputs(values, *, recursive=False, exclude=None):
     paths, seen = [], set()
@@ -151,7 +144,6 @@ def collect_inputs(values, *, recursive=False, exclude=None):
             raise UsageError(f"No supported images or videos found: {value}")
     return paths
 
-
 def selected_gpu(value):
     from ..core.gpu_detection import detect_gpus
 
@@ -163,7 +155,6 @@ def selected_gpu(value):
                 raise UsageError(f"{gpu['name']} cannot run RTX processing. {gpu['compatibility_error']}")
             return gpu["uuid"]
     raise UsageError(f"Unknown GPU: {value}. Run VE_CLI.exe devices for available IDs.")
-
 
 def settings_for(args, modes):
     from ..core.ffmpeg import container_for_codec, containers_for_codec
@@ -180,7 +171,7 @@ def settings_for(args, modes):
                 settings = replace(settings, image_enabled_stages=("neural_model",), video_enabled_stages=("neural_model",))
             changes = {}
             if args.style:
-                changes["nr_style"] = args.style.title()
+                changes["nr_style"] = "Style " + args.style
             if args.strength is not None:
                 changes["nr_intensity"] = args.strength
             if changes and any("neural_model" not in (settings.image_enabled_stages if mode == "Image" else settings.video_enabled_stages) for mode in modes):
@@ -247,7 +238,6 @@ def settings_for(args, modes):
     except ValueError as exc:
         raise UsageError(str(exc)) from exc
 
-
 def plan_outputs(paths, settings, output, args):
     from ..core.ffmpeg import resolve_container
     from ..core.naming import output_filename, unique_output_path
@@ -295,7 +285,6 @@ def plan_outputs(paths, settings, output, args):
         destinations.append(destination)
     return settings, destinations, target
 
-
 @contextmanager
 def cancellation_signals(controller):
     old = {}
@@ -314,7 +303,6 @@ def cancellation_signals(controller):
     finally:
         for sig, handler in old.items():
             signal.signal(sig, handler)
-
 
 def dry_run(paths, destinations, settings):
     from ..core.ffmpeg import probe_video
@@ -342,7 +330,6 @@ def dry_run(paths, destinations, settings):
                      "stages": [*enabled_stages(settings, mode), "export"],
                      "width": estimate.width, "height": estimate.height, "fps": estimate.fps, "hdr": estimate.hdr})
     return jobs
-
 
 def run_jobs(paths, destinations, settings, console):
     from ..core import app_log
@@ -406,7 +393,6 @@ def run_jobs(paths, destinations, settings, console):
                     "cancelled": cancelled, "elapsed_seconds": round(time.monotonic() - started, 3),
                     "items": items, "log_path": log_path}
 
-
 def emit_error(message, *, status, json_output):
     if json_output:
         print(json.dumps({"schema_version": 1, "ok": False, "exit_code": status, "error": str(message)}, ensure_ascii=False))
@@ -414,7 +400,6 @@ def emit_error(message, *, status, json_output):
     if status == 2 and not json_output:
         print("Run VE_CLI.exe COMMAND --help for usage.", file=sys.stderr)
     return status
-
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 LIVE_MAX_HEIGHTS = (480, 720, 1080, 1440, 2160)
 LIVE_MAX_HEIGHT_CHOICES = tuple(str(height) for height in LIVE_MAX_HEIGHTS)
 LIVE_SOURCE_QUALITY_CHOICES = ("Auto", *LIVE_MAX_HEIGHT_CHOICES)
@@ -17,18 +16,13 @@ class LiveOptions:
     max_height: int = 720
     # Shared DLSS values (mirrored with the Neural Rendering modes, persisted
     # globally); effects can update during playback, sizing stays fixed.
-    nr_style: str = "Default"
+    nr_style: str = "Style 0"
     nr_intensity: float = 1.0
     nr_passes: int = 1
+    nr_optical_flow_quality: str = "High"
     local_tone_strength: float = 1.0
     local_structure_strength: float = 1.0
-    skin_structure_strength: float = -1.0
-    nr_color_strength: float = 1.0
-    tone_preservation: float = 0.0
-    face_skin_protection: float = 0.0
-    grain_preservation: float = 0.0
-    shimmer_suppression: float = 0.70
-    mask_feather: int = 0
+    skin_structure_strength: float = 1.0
     nr_mask: object | None = None
     automatic_mask: bool = False
     # Source default: Live renders at the input size; 75%/50%/25% downscale
@@ -50,7 +44,6 @@ class LiveOptions:
     keep_files: bool = False
     source_quality: str = "Auto"
 
-
 @dataclass(slots=True)
 class ResolvedSource:
     kind: str  # "file" | "direct" | "youtube" | "twitch"
@@ -60,7 +53,6 @@ class ResolvedSource:
     is_live: bool
     video_headers: dict[str, str] = field(default_factory=dict)
     audio_headers: dict[str, str] = field(default_factory=dict)
-
 
 @dataclass(slots=True)
 class LiveSessionInfo:

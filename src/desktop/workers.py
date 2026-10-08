@@ -13,6 +13,7 @@ class WorkerSignals(QObject):
     """Signals for background task execution."""
     started = Signal()
     progress = Signal(float, str)
+    renderPhase = Signal(object)
     itemUpdated = Signal(int, str, float, str, str, float)
     metadataReady = Signal(str, object)
     finished = Signal(object)
@@ -44,6 +45,7 @@ class JobWorker(QRunnable):
         self.controller = controller or JobController()
         self.inject_callbacks = inject_callbacks
         self.signals = WorkerSignals()
+        self.controller.phase_callback = self.signals.renderPhase.emit
         self.setAutoDelete(True)
 
     def on_batch_item_update(self, update: BatchItemUpdate) -> None:
@@ -95,12 +97,17 @@ class JobWorker(QRunnable):
                             kwargs[name] = value
 
                 result = self.task_fn(*self.args, **kwargs)
+                self.controller.release_processes()
                 if self.controller.cancel.is_set():
                     self.signals.cancelled.emit()
                 else:
                     self.signals.finished.emit(result)
         except Cancelled:
+            self.controller.release_processes()
             self.signals.cancelled.emit()
         except Exception as exc:
+            self.controller.release_processes()
             traceback.print_exc()
             self.signals.failed.emit(str(exc))
+        finally:
+            self.controller.release_processes()

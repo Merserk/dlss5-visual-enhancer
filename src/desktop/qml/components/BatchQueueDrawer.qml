@@ -141,9 +141,10 @@ Rectangle {
     Rectangle {
         id: header
         anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
-        height: 44; color: Theme.bgSurface
+        height: 44 + (drawer.appBridge && drawer.appBridge.exportPhaseText ? 24 : 0); color: Theme.bgSurface
         Row {
-            anchors.left: parent.left; anchors.leftMargin: 16; anchors.verticalCenter: parent.verticalCenter
+            id: queueCaption
+            anchors.left: parent.left; anchors.leftMargin: 16; y: 10
             spacing: 10
             AppIcon { iconName: "queue"; iconSize: 18; color: Theme.textPrimary; anchors.verticalCenter: parent.verticalCenter }
             Text {
@@ -157,8 +158,18 @@ Rectangle {
             }
         }
         Row {
-            anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
+            id: queueActions
+            anchors.right: parent.right; anchors.rightMargin: 12; y: 8
             spacing: 4
+            AppIconButton {
+                objectName: "exportPauseResume"
+                visible: !drawer.imageQueue && drawer.appBridge && drawer.appBridge.canPauseExport
+                enabled: visible && (!drawer.appBridge.exportPauseRequested || drawer.appBridge.exportPaused)
+                iconName: drawer.appBridge && drawer.appBridge.exportPaused ? "play" : "pause"
+                buttonSize: 28
+                tooltipText: drawer.appBridge && drawer.appBridge.exportPaused ? qsTranslate("App", "Resume") : qsTranslate("App", "Pause")
+                onClicked: drawer.appBridge.toggleExportPause()
+            }
             AppIconButton { objectName: "queueAddFiles"; iconName: "add_file"; buttonSize: 28; tooltipText: qsTranslate("App", "Add files"); enabled: drawer.canModify; onClicked: fileDialog.open() }
             AppIconButton { iconName: "add_folder"; buttonSize: 28; tooltipText: qsTranslate("App", "Add folder"); enabled: drawer.canModify; onClicked: folderDialog.open() }
             Rectangle { width: 1; height: 16; color: Theme.borderDefault; anchors.verticalCenter: parent.verticalCenter }
@@ -184,6 +195,15 @@ Rectangle {
                 tooltipText: drawer.collapsed ? qsTranslate("App", "Expand queue") : qsTranslate("App", "Collapse queue")
                 onClicked: drawer.collapsed = !drawer.collapsed
             }
+        }
+        Text {
+            objectName: "exportPassProgress"
+            anchors.left: parent.left; anchors.leftMargin: 16
+            anchors.right: parent.right; anchors.rightMargin: 12
+            y: 44; height: 20
+            text: drawer.appBridge ? drawer.appBridge.exportPhaseText : ""
+            elide: Text.ElideRight; color: Theme.textSecondary
+            font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeSmall
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.borderSubtle }
     }
@@ -282,6 +302,9 @@ Rectangle {
                 if (stopped) return itemState === "Skipped" ? qsTranslate("App", "Skipped before processing") : qsTranslate("App", "Stopped by user")
                 if (!running) return qsTranslate("App", "Waiting to start")
                 var stage = detail.match(/\bStage\s+(\d+)\s+of\s+(\d+)\b/i)
+                var part = !drawer.imageQueue && detail.match(/\bPart\s+(\d+)\b/i)
+                if (stage && part)
+                    return qsTranslate("App", "Processing Stage %1 of %2 (Part %3)").arg(stage[1]).arg(stage[2]).arg(part[1])
                 return stage ? qsTranslate("App", "Processing Stage %1 of %2").arg(stage[1]).arg(stage[2]) : qsTranslate("App", "Processing")
             }
             readonly property string metadataText: {
@@ -381,7 +404,9 @@ Rectangle {
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; width: parent.width; spacing: 6
                         Text {
+                            objectName: "batchQueueProgressTitle"
                             width: parent.width; text: queueRow.progressTitle; elide: Text.ElideRight
+                            wrapMode: Text.Wrap; maximumLineCount: 2
                             font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeSmall
                             color: queueRow.failed ? Theme.dangerHover : (queueRow.running ? Theme.textPrimary : Theme.textSecondary)
                         }
@@ -398,7 +423,10 @@ Rectangle {
                             width: parent.width; spacing: 8
                             Text {
                                 id: percentLabel
-                                text: Math.floor(queueRow.fraction * 100) + "%"
+                                objectName: "batchQueuePercent"
+                                text: (queueRow.running
+                                       ? (queueRow.fraction * 100).toFixed(2)
+                                       : Math.floor(queueRow.fraction * 100)) + "%"
                                 font.family: Theme.monoFontFamily; font.pixelSize: Theme.fontSizeSmall
                                 color: queueRow.complete ? Theme.success : Theme.textPrimary
                             }
@@ -437,7 +465,7 @@ Rectangle {
                     width: drawer.fpsWidth; height: parent.height; visible: drawer.showFps
                     Column {
                         anchors.centerIn: parent; spacing: 4
-                        MetricText { text: queueRow.running && queueRow.processingFps > 0 ? queueRow.processingFps.toFixed(1) : "—" }
+                        MetricText { objectName: "batchQueueFps"; text: queueRow.running && queueRow.processingFps > 0 ? queueRow.processingFps.toFixed(1) : "—" }
                         MetricCaption { text: "FPS" }
                     }
                     HoverHandler { id: fpsHover }
@@ -447,7 +475,7 @@ Rectangle {
                     width: drawer.remainingWidth; height: parent.height; visible: drawer.showRemaining
                     Column {
                         anchors.centerIn: parent; spacing: 4
-                        MetricText { text: queueRow.running && queueRow.remainingSeconds >= 0 ? "~" + drawer.clockTime(queueRow.remainingSeconds, false) : "—" }
+                        MetricText { objectName: "batchQueueRemaining"; text: queueRow.running && queueRow.remainingSeconds >= 0 ? "~" + drawer.clockTime(queueRow.remainingSeconds, false) : "—" }
                         MetricCaption { text: queueRow.running && queueRow.remainingSeconds >= 0 ? qsTranslate("App", "estimated") : "" }
                     }
                     HoverHandler { id: remainingHover }

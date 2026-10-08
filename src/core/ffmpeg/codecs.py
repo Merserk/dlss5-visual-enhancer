@@ -118,6 +118,23 @@ def container_for_codec(codec: str) -> str:
         raise ValueError(f"Unknown video codec: {codec!r}.") from exc
 
 
+def _prores_color_metadata(metadata: dict | None, *, hdr_mode: bool = False) -> dict:
+    """Describe the limited-range YUV delivery signal, independently of source range."""
+    colors = dict(metadata or {})
+    hdr = hdr_mode or bool(colors.get("hdr"))
+    defaults = {"color_primaries": "bt2020" if hdr else "bt709",
+                "color_transfer": "smpte2084" if hdr else "bt709"}
+    for field, fallback in defaults.items():
+        if colors.get(field) in (None, "", "unknown", "unspecified", "reserved"):
+            colors[field] = fallback
+    if colors.get("color_space") in (None, "", "unknown", "unspecified", "reserved", "gbr", "0", 0):
+        colors["color_space"] = "bt2020nc" if hdr or colors["color_primaries"] == "bt2020" else "bt709"
+    # MOV/ProRes decoders interpret YUV samples as limited range. Convert the
+    # pixels to that range; copying a full-range input tag is not sufficient.
+    colors["color_range"] = "tv"
+    return colors
+
+
 def _hdr_color_args(metadata: dict | None) -> list[str]:
     """Return ffmpeg color flags copying input colorspace when possible.
 
@@ -269,7 +286,9 @@ def resolve_encoding_quality(
             "selection": quality_name,
             "mode": "constant-quality",
             "target_bitrate_kbps": None,
-            "cq": 0,
+            # FFmpeg NVENC reserves CQ 0 for automatic rate control. The
+            # highest explicit integer quality is 1; software CRF keeps 0.
+            "cq": 1 if _is_nvenc_codec(norm) else 0,
         }
     multiplier = {"Auto (Default)": 1, "Good": 2, "Best": 4}[quality_name]
     bit_depth = 10 if hdr_mode and _is_hdr_allowed_codec(codec) else 8
@@ -282,3 +301,28 @@ def resolve_encoding_quality(
         "target_bitrate_kbps": auto * multiplier,
         "cq": None,
     }
+
+
+def nvenc_rate_control_options(quality: dict) -> dict[str, str]:
+    """Keep NVENC Max explicit and independent of preset rate-control defaults."""
+    values = {"rc": "vbr"}
+    if quality["mode"] == "constant-quality":
+        cq = int(quality["cq"])
+        if cq <= 0:
+            raise ValueError("NVENC constant quality requires an explicit positive CQ.")
+        # CQ is a quality target, not a hard quantizer bound. Driver presets
+        # can otherwise choose much coarser QPs, even with a CQ target of 1.
+        values.update(cq=str(cq), qmin="0", qmax=str(cq))
+    return values
+
+
+def software_max_quality_options(encoder: str) -> dict[str, str]:
+    """Express the lowest quality factor through each software encoder's API."""
+    values = {"crf": "0"}
+    if encoder == "libsvtav1":
+        # FFmpeg's CRF/qp options only override SVT defaults when positive.
+        # The native parameter parser accepts zero and actually applies it.
+        values["svtav1-params"] = "crf=0"
+    elif encoder == "libaom-av1":
+        values["b"] = "0"
+    return values

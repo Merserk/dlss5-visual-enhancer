@@ -12,16 +12,16 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source>  -  1 frame</source>
-      <translation>  -  1 frame</translation>
+      <translation>  -  1 帧</translation>
     </message>
     <message>
       <source>  -  f</source>
-      <translation>  -  f</translation>
+      <translation>  -  帧 </translation>
     </message>
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="620" />
       <source> f</source>
-      <translation> f</translation>
+      <translation> 帧 </translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="154" />
@@ -35,7 +35,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source> input FPS</source>
-      <translation> input FPS</translation>
+      <translation> 输入帧率</translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="427" />
@@ -180,7 +180,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/NeuralModelControls.qml" line="263" />
       <location filename="../qml/controls/AppFilePicker.qml" line="12" />
       <location filename="../qml/views/LiveView.qml" line="408" />
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>All Files (*.*)</source>
       <translation>所有文件 (*.*)</translation>
     </message>
@@ -228,12 +228,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Applied to processing</source>
       <translation>已应用于处理</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="22" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="131" />
-      <source>Apply Detail-Only Preset</source>
-      <translation>应用“仅细节”预设</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/ColoringControls.qml" line="38" />
       <source>Apply LUT</source>
@@ -352,8 +347,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/views/SettingsView.qml" line="71" />
-      <source>Cache Memory</source>
-      <translation>缓存空间</translation>
+      <source>Cache Memory (Rolling Cache 10GB)</source>
+      <translation>缓存空间（滚动缓存 10 GB）</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="149" />
@@ -514,11 +509,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Color Match</source>
       <translation>色彩匹配</translation>
     </message>
-    <message>
-      <location filename="../qml/views/LiveView.qml" line="524" />
-      <source>Color Strength</source>
-      <translation>色彩强度</translation>
-    </message>
+    
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="46" />
       <source>Coloring</source>
@@ -544,12 +535,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Completed with warnings: %1 completed, %2 failed.</source>
       <translation>完成但有警告：%1 个完成，%2 个失败。</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="10" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="120" />
-      <source>Composition &amp; Masking</source>
-      <translation>合成与蒙版</translation>
-    </message>
+    
     <message>
       <source>Configure hardware assignment, preview behavior, native layout, and portable settings presets.</source>
       <translation>配置硬件分配、预览行为、窗口布局和可移植的设置预设。</translation>
@@ -790,12 +776,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>导出路径</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>Export Preset JSON</source>
       <translation>导出 JSON 预设</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="114" />
+      <location filename="../qml/views/SettingsView.qml" line="103" />
       <source>Export Preset...</source>
       <translation>导出预设...</translation>
     </message>
@@ -821,13 +807,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Exposure</source>
       <translation>曝光</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="57" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="173" />
-      <location filename="../qml/views/LiveView.qml" line="526" />
-      <source>Face / Skin Protection</source>
-      <translation>面部 / 皮肤保护</translation>
-    </message>
+    
     <message>
       <source>Factory reset restores all DLSS, upscale, interpolation, GPU, mask, and encoding settings. Window geometry remains a desktop preference.</source>
       <translation>恢复出厂设置将重置 DLSS、放大、插帧、GPU、蒙版及编码设置。窗口大小和位置保留为桌面偏好。</translation>
@@ -906,13 +886,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Grain Amount</source>
       <translation>颗粒强度</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="68" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="187" />
-      <location filename="../qml/views/LiveView.qml" line="527" />
-      <source>Grain Preservation</source>
-      <translation>保留颗粒</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/GrainControls.qml" line="50" />
       <source>Grain Seed</source>
@@ -1031,7 +1005,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>图像 (*.png *.jpg *.jpeg *.webp *.tif *.tiff *.bmp *.avif *.heic *.heif *.svg *.dng *.cr2 *.nef *.arw)</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>Import Preset JSON</source>
       <translation>导入 JSON 预设</translation>
     </message>
@@ -1041,7 +1015,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>导入失败：%1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="121" />
+      <location filename="../qml/views/SettingsView.qml" line="110" />
       <source>Import...</source>
       <translation>导入...</translation>
     </message>
@@ -1108,8 +1082,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>JSON 预设</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>JSON Presets (*.json)</source>
       <translation>JSON 预设 (*.json)</translation>
     </message>
@@ -1207,8 +1181,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="108" />
       <location filename="../qml/components/NeuralModelControls.qml" line="233" />
-      <source>Load Custom Mask...</source>
-      <translation>加载自定义蒙版...</translation>
+      <source>Load Control Mask...</source>
+      <translation>加载控制遮罩...</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="3834" />
@@ -1263,17 +1237,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>MPV：%1 个丢帧，%2 次重新缓冲，A/V 同步 %3 ms</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="128" />
+      <location filename="../qml/views/SettingsView.qml" line="117" />
       <source>Maintenance &amp; Defaults</source>
       <translation>维护与默认设置</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="79" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="201" />
-      <location filename="../qml/views/LiveView.qml" line="528" />
-      <source>Mask Feather</source>
-      <translation>蒙版羽化</translation>
-    </message>
+    
     <message>
       <source>Match Colors</source>
       <translation>匹配色彩</translation>
@@ -1362,12 +1330,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>NO OUTPUT</source>
       <translation>无输出</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="35" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="145" />
-      <source>NR Color Strength</source>
-      <translation>NR 色彩强度</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/NeuralModelControls.qml" line="25" />
       <location filename="../qml/views/LiveView.qml" line="479" />
@@ -1408,7 +1371,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="227" />
-      <location filename="../qml/views/SettingsView.qml" line="158" />
+      <location filename="../qml/views/SettingsView.qml" line="147" />
       <source>No</source>
       <translation>否</translation>
     </message>
@@ -1455,7 +1418,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>在线流媒体 URL</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="133" />
+      <location filename="../qml/views/SettingsView.qml" line="122" />
       <source>Open Logs</source>
       <translation>打开日志</translation>
     </message>
@@ -1631,7 +1594,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>预设</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="109" />
+      <location filename="../qml/views/SettingsView.qml" line="98" />
       <source>Preset name (e.g. 4K Master)...</source>
       <translation>预设名称（例如 4K Master）...</translation>
     </message>
@@ -1639,7 +1602,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MenuStrip.qml" line="210" />
       <location filename="../qml/views/FrameInterpolationView.qml" line="195" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="249" />
-      <location filename="../qml/views/SettingsView.qml" line="98" />
+      <location filename="../qml/views/SettingsView.qml" line="87" />
       <location filename="../qml/views/UpscaleView.qml" line="448" />
       <location filename="../qml/views/UpscaleView.qml" line="481" />
       <source>Preview</source>
@@ -1753,7 +1716,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>就绪。</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="101" />
+      <location filename="../qml/views/SettingsView.qml" line="90" />
       <source>Realtime Preview</source>
       <translation>实时预览</translation>
     </message>
@@ -1829,12 +1792,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>重置 %1 设置</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="134" />
+      <location filename="../qml/views/SettingsView.qml" line="123" />
       <source>Reset All Settings to Defaults</source>
       <translation>重置所有设置</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="170" />
+      <location filename="../qml/views/SettingsView.qml" line="159" />
       <source>Reset all settings?</source>
       <translation>重置所有设置？</translation>
     </message>
@@ -1877,11 +1840,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/LiveView.qml" line="177" />
       <source>Resume</source>
       <translation>继续</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="88" />
-      <source>Rolling Cache (5 GB)</source>
-      <translation>滚动缓存（5 GB）</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="2050" />
@@ -1981,8 +1939,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="137" />
       <location filename="../qml/components/NeuralModelControls.qml" line="262" />
-      <source>Select Custom NR Mask</source>
-      <translation>选择自定义 NR 蒙版</translation>
+      <source>Select NR Control Mask</source>
+      <translation>选择 NR 控制遮罩</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="175" />
@@ -2074,7 +2032,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>设置</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="106" />
+      <location filename="../qml/views/SettingsView.qml" line="95" />
       <source>Settings Presets</source>
       <translation>设置预设</translation>
     </message>
@@ -2098,12 +2056,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Sharpness</source>
       <translation>锐度</translation>
     </message>
-    <message>
-      <location filename="../qml/components/NeuralModelControls.qml" line="106" />
-      <location filename="../qml/views/LiveView.qml" line="490" />
-      <source>Shimmer Suppression</source>
-      <translation>抑制闪烁</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="952" />
       <location filename="../qml/components/MediaViewport.qml" line="1011" />
@@ -2162,11 +2115,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MediaViewport.qml" line="410" />
       <source>Split</source>
       <translation>分屏</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="89" />
-      <source>Stage by Stage</source>
-      <translation>逐阶段处理</translation>
     </message>
     <message>
       <source>Standard</source>
@@ -2307,7 +2255,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>第三方许可证</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="175" />
+      <location filename="../qml/views/SettingsView.qml" line="164" />
       <source>This restores every processing setting and clears the custom mask. This cannot be undone unless you exported a preset.</source>
       <translation>这会重置所有处理设置并清除自定义蒙版。只有已导出的预设才能恢复。</translation>
     </message>
@@ -2331,13 +2279,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Tonal Response</source>
       <translation>色调响应</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="46" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="159" />
-      <location filename="../qml/views/LiveView.qml" line="525" />
-      <source>Tone Preservation</source>
-      <translation>保留色调</translation>
-    </message>
+    
     <message>
       <source>Ultra</source>
       <translation>超高</translation>
@@ -2446,8 +2388,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>视频导出完成每个阶段后再开始下一阶段。完整长度的中间文件可能需要大量磁盘空间。</translation>
     </message>
     <message>
-      <source>Video exports use a lossless rolling disk cache of up to 5 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
-      <translation>视频导出使用最多 5 GB 的无损滚动磁盘缓存。已使用的数据会自动删除。最终输出需要额外的磁盘空间。</translation>
+      <source>Video exports use a rolling disk cache of up to 10 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
+      <translation>视频导出使用最多 10 GB 的滚动磁盘缓存。已使用的数据会自动删除。最终输出需要额外的磁盘空间。</translation>
     </message>
     <message>
       <location filename="../qml/components/MenuStrip.qml" line="83" />
@@ -2501,7 +2443,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="228" />
-      <location filename="../qml/views/SettingsView.qml" line="159" />
+      <location filename="../qml/views/SettingsView.qml" line="148" />
       <source>Yes</source>
       <translation>是</translation>
     </message>
@@ -2565,6 +2507,291 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/AboutView.qml" line="38" />
       <source>© 2026 Merserk. NVIDIA, DLSS, and RTX are trademarks of NVIDIA Corporation.</source>
       <translation>© 2026 Merserk。NVIDIA、DLSS 和 RTX 是 NVIDIA Corporation 的商标。</translation>
+    </message>
+    <message>
+      <source>Fast lossless</source>
+      <translation>快速无损</translation>
+    </message>
+    <message>
+      <source>Fast compressed</source>
+      <translation>快速压缩</translation>
+    </message>
+    <message>
+      <source>Fast 8-bit RGB compression without color subsampling. HDR uses Fast lossless. Models run one at a time.</source>
+      <translation>快速8位RGB压缩，不进行色度抽样。HDR使用快速无损。模型依次运行。</translation>
+    </message>
+    <message>
+      <source>Lossless RAM cache with disk fallback. Models run one at a time.</source>
+      <translation>无损 RAM 缓存，内存不足时使用磁盘。模型逐个运行。</translation>
+    </message>
+    <message>
+      <source>Export paused; GPU memory released</source>
+      <translation>导出已暂停；GPU 内存已释放</translation>
+    </message>
+    <message>
+      <source>Part %1 · %2 · %3 FPS · %4 GB</source>
+      <translation>分段 %1 · %2 · %3 FPS · %4 GB</translation>
+    </message>
+    <message>
+      <source>Preroll: %1 frames</source>
+      <translation>预处理：%1 帧</translation>
+    </message>
+    <message>
+      <source>Pausing export; releasing GPU workers…</source>
+      <translation>正在暂停导出并释放 GPU 进程…</translation>
+    </message>
+    <message>
+      <source>Resuming export from the last committed part…</source>
+      <translation>正在从上一个完成的分段恢复导出…</translation>
+    </message>
+    <message>
+      <source>Loading model</source>
+      <translation>正在加载模型</translation>
+    </message>
+    <message>
+      <source>Flushing output</source>
+      <translation>正在完成输出</translation>
+    </message>
+    <message>
+      <source>Writing cache</source>
+      <translation>正在写入缓存</translation>
+    </message>
+    <message>
+      <source>Releasing worker</source>
+      <translation>正在释放进程</translation>
+    </message>
+    <message>
+      <source>Committing part</source>
+      <translation>正在提交分段</translation>
+    </message>
+    <message>
+      <source>Finalizing video</source>
+      <translation>正在完成视频</translation>
+    </message>
+    <message>
+      <source>Startup %1 s · switch %2 s</source>
+      <translation>启动 %1 秒 · 切换 %2 秒</translation>
+    </message>
+    <message>
+      <source>Cache Memory (Rolling Cache)</source>
+      <translation>缓存空间（滚动缓存）</translation>
+    </message>
+    <message>
+      <source>Cache size</source>
+      <translation>缓存大小</translation>
+    </message>
+    <message>
+      <source>%1 GB (Default)</source>
+      <translation>%1 GB（默认）</translation>
+    </message>
+    <message>
+      <source>Native precision</source>
+      <translation>原生精度</translation>
+    </message>
+    <message>
+      <source>Compressed RGB (8-bit)</source>
+      <translation>压缩 RGB（8 位）</translation>
+    </message>
+    <message>
+      <source>Control Mask replaces Automatic Mask. RGB channels control intensity, tone, and structure.</source>
+      <translation>控制蒙版会替代自动蒙版。RGB 通道控制强度、色调和结构。</translation>
+    </message>
+    <message>
+      <location filename="../qml/components/BatchQueueDrawer.qml" line="307" />
+      <source>Processing Stage %1 of %2 (Part %3)</source>
+      <translation>正在处理第 %1 / %2 阶段 (分段 %3)</translation>
+    </message>
+    <message>
+      <source>Optical Flow Quality</source>
+      <translation>光流质量</translation>
+    </message>
+    <message>
+      <source>%1 (Discrete GPU)</source>
+      <translation>%1（独立 GPU）</translation>
+    </message>
+    <message>
+      <source>%1 (Integrated GPU)</source>
+      <translation>%1（集成 GPU）</translation>
+    </message>
+    <message>
+      <source>%1 fps target | %2 fps processing | %3 enhanced | %4 sampled out | %5s buffered</source>
+      <translation>目标：%1 帧/秒 | 处理：%2 帧/秒 | 已增强：%3 帧 | 采样时跳过：%4 帧 | 已缓冲：%5 秒</translation>
+    </message>
+    <message>
+      <source>%1 · pass %2/%3</source>
+      <translation>%1 · 第 %2/%3 遍处理</translation>
+    </message>
+    <message>
+      <source>%1. GPU filters: %2.</source>
+      <translation>%1。GPU 滤镜：%2。</translation>
+    </message>
+    <message>
+      <source>AI GPU selection: %1</source>
+      <translation>AI GPU 选择：%1</translation>
+    </message>
+    <message>
+      <source>Active: %1 — %2×%3.</source>
+      <translation>已启用：%1 — %2×%3。</translation>
+    </message>
+    <message>
+      <source>Application: %1</source>
+      <translation>应用程序：%1</translation>
+    </message>
+    <message>
+      <source>Applying; newer changes pending</source>
+      <translation>正在应用；有更新的更改等待应用</translation>
+    </message>
+    <message>
+      <source>Available</source>
+      <translation>可用</translation>
+    </message>
+    <message>
+      <source>Buffering: %1</source>
+      <translation>正在缓冲：%1</translation>
+    </message>
+    <message>
+      <source>CPU (Software decoding / encoding)</source>
+      <translation>CPU（软件解码 / 编码）</translation>
+    </message>
+    <message>
+      <source>Config: %1</source>
+      <translation>配置：%1</translation>
+    </message>
+    <message>
+      <source>Failed: %1</source>
+      <translation>失败：%1</translation>
+    </message>
+    <message>
+      <source>Finished processing: %1. Playback available until Stop.</source>
+      <translation>处理已完成：%1。按下“停止”前可继续播放。</translation>
+    </message>
+    <message>
+      <source>Finished: %1. %2 frames enhanced.</source>
+      <translation>已完成：%1。已增强 %2 帧。</translation>
+    </message>
+    <message>
+      <source>Logs: %1</source>
+      <translation>日志：%1</translation>
+    </message>
+    <message>
+      <source>Missing</source>
+      <translation>缺失</translation>
+    </message>
+    <message>
+      <source>Outputs: %1</source>
+      <translation>输出：%1</translation>
+    </message>
+    <message>
+      <source>Playing: %1</source>
+      <translation>正在播放：%1</translation>
+    </message>
+    <message>
+      <source>Preparing Neural Rendering: %1x%2 -&gt; %3x%4...</source>
+      <translation>正在准备 Neural Rendering：%1x%2 -&gt; %3x%4...</translation>
+    </message>
+    <message>
+      <source>Probing %1...</source>
+      <translation>正在分析 %1...</translation>
+    </message>
+    <message>
+      <source>Processing finished or stopped; changes apply on the next Start.</source>
+      <translation>处理已完成或已停止；更改将在下次启动时生效。</translation>
+    </message>
+    <message>
+      <source>Requested up to %1p; received %2.</source>
+      <translation>请求最高 %1p；已接收 %2。</translation>
+    </message>
+    <message>
+      <source>Runtime error: %1</source>
+      <translation>运行时错误：%1</translation>
+    </message>
+    <message>
+      <source>Runtime state: %1</source>
+      <translation>运行时状态：%1</translation>
+    </message>
+    <message>
+      <source>Software codecs</source>
+      <translation>软件编解码器</translation>
+    </message>
+    <message>
+      <source>Source quality selection applies to YouTube/Twitch pages; using the supplied source.</source>
+      <translation>源画质选择适用于 YouTube/Twitch 页面；当前使用提供的源。</translation>
+    </message>
+    <message>
+      <source>Startup warning: %1</source>
+      <translation>启动警告：%1</translation>
+    </message>
+    <message>
+      <source>The resolved stream differs from the requested height.</source>
+      <translation>解析出的流高度与请求的高度不同。</translation>
+    </message>
+    <message>
+      <source>Update failed; recovery failed</source>
+      <translation>更新失败；恢复失败</translation>
+    </message>
+    <message>
+      <source>Update failed—previous settings restored</source>
+      <translation>更新失败 — 已恢复先前的设置</translation>
+    </message>
+    <message>
+      <source>Video GPU selection: %1</source>
+      <translation>视频 GPU 选择：%1</translation>
+    </message>
+    <message>
+      <source>Vulkan codecs where supported; software fallback</source>
+      <translation>支持时使用 Vulkan 编解码器；否则使用软件编解码器</translation>
+    </message>
+    <message>
+      <source>Native DLSSG</source>
+      <translation>原生 DLSSG</translation>
+    </message>
+    <message>
+      <source>Cascade</source>
+      <translation>级联</translation>
+    </message>
+    <message>
+      <source>Area</source>
+      <translation>区域平均</translation>
+    </message>
+    <message>
+      <source>Bicubic</source>
+      <translation>双三次</translation>
+    </message>
+    <message>
+      <source>Bilinear</source>
+      <translation>双线性</translation>
+    </message>
+    <message>
+      <source>Nearest</source>
+      <translation>最近邻</translation>
+    </message>
+    <message>
+      <source>FFV1 Lossless RGB 10-bit</source>
+      <translation>FFV1 无损 RGB 10 位</translation>
+    </message>
+    <message>
+      <source>Ready</source>
+      <translation>就绪</translation>
+    </message>
+    <message>
+      <source>Initializing</source>
+      <translation>正在初始化</translation>
+    </message>
+    <message>
+      <source>The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings.</source>
+      <translation>所选的 FFmpeg/Vulkan GPU 不可用。请在设置中选择“自动”或其他 GPU。</translation>
+    </message>
+    <message>
+      <source>Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver.</source>
+      <translation>Vulkan GPU 滤镜不可用。请安装 AMD、Intel 或 NVIDIA 的最新 Vulkan 驱动程序。</translation>
+    </message>
+    <message>
+      <source>%1: %2 (%3)</source>
+      <translation>%1: %2 (%3)</translation>
+    </message>
+    <message>
+      <source>Style %1</source>
+      <translation>风格 %1</translation>
     </message>
   </context>
 </TS>

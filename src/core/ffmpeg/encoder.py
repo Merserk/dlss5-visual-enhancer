@@ -5,13 +5,13 @@ import threading
 from functools import lru_cache
 from pathlib import Path
 
-from ..jobs import BoundedLogBuffer, JobController, drain_bounded_text, drain_text
+from ..jobs import BoundedLogBuffer, JobController, capture_process, drain_bounded_text, drain_text
 from ..paths import FFMPEG
 from .audio import AudioPlan, plan_audio_streams
 from .codecs import (
     CODEC_CHOICES, _NVENC_ENCODERS, _base_codec, _hdr_color_args,
-    _is_hdr_allowed_codec, _is_nvenc_codec, _normalize_codec, _x265_hdr_params,
-    resolve_encoding_quality,
+    _is_hdr_allowed_codec, _is_nvenc_codec, _normalize_codec, _prores_color_metadata, _x265_hdr_params,
+    nvenc_rate_control_options, resolve_encoding_quality, software_max_quality_options,
 )
 
 @lru_cache(maxsize=128)
@@ -36,15 +36,10 @@ def _encoder_probe(
         "null",
         "-",
     ]
-    return (
-        subprocess.run(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        ).returncode
-        == 0
-    )
+    try:
+        return capture_process(command).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 @lru_cache(maxsize=16)
@@ -141,9 +136,10 @@ def _codec_command(
         )
     high_depth = hdr_mode or (output_depth is not None and output_depth > 8)
     quality = resolve_encoding_quality(quality_name, codec, width, height, fps, hdr_mode=high_depth)
-    # ProRes Proxy is always 10-bit; HDR just copies colorspace
+    # ProRes is always 10-bit limited-range YUV, including full-range sources.
+    prores_colors = (_hdr_color_args(_prores_color_metadata(hdr_metadata, hdr_mode=hdr_mode))
+                     if norm in {"ProRes Proxy", "ProRes HQ"} else [])
     if norm == "ProRes Proxy":
-        hdr_extra = _hdr_color_args(hdr_metadata) if hdr_metadata else []
         prores_quality = (
             ["-bits_per_mb", str(int(quality["bits_per_mb"]))]
             if quality.get("bits_per_mb") is not None
@@ -152,7 +148,7 @@ def _codec_command(
         return (
             [
                 "-c:v", "prores_ks", "-profile:v", "0",
-                *prores_quality, "-pix_fmt", "yuv422p10le", *hdr_extra,
+                *prores_quality, "-pix_fmt", "yuv422p10le", *prores_colors,
             ],
             "prores_ks (Proxy)",
             quality,
@@ -160,7 +156,7 @@ def _codec_command(
     if norm == "ProRes HQ":
         return (
             ["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le",
-             *(_hdr_color_args(hdr_metadata) if hdr_metadata else [])],
+             *prores_colors],
             "prores_ks (HQ)", quality,
         )
     if norm == "FFV1 Lossless RGB 10-bit":
@@ -170,12 +166,10 @@ def _codec_command(
             "ffv1 (Lossless RGB 10-bit)", quality,
         )
     if quality["mode"] == "constant-quality":
-        nvenc_quality = ["-rc", "vbr", "-cq", "0", "-b:v", "0"]
         software_quality = ["-crf", "0"]
-        bitrate = None
+        bitrate = "0"
     else:
         bitrate = f"{quality['target_bitrate_kbps']}k"
-        nvenc_quality = ["-rc", "vbr", "-b:v", bitrate]
         software_quality = ["-b:v", bitrate]
     gpu_args = ["-gpu", str(gpu_ordinal)] if gpu_ordinal is not None else []
     signal_metadata = hdr_metadata
@@ -226,8 +220,10 @@ def _codec_command(
         # Prefer libsvtav1 (fastest CPU AV1), fallback to libaom-av1
         if _cpu_encoder_available("libsvtav1"):
             if quality["mode"] == "constant-quality":
+                svt_quality = [argument for key, value in software_max_quality_options("libsvtav1").items()
+                               for argument in ("-" + key, value)]
                 return (
-                    ["-c:v", "libsvtav1", "-preset", "6", "-crf", "0", "-pix_fmt", pix_fmt, *hdr_color],
+                    ["-c:v", "libsvtav1", "-preset", "6", *svt_quality, "-pix_fmt", pix_fmt, *hdr_color],
                     "libsvtav1",
                     quality,
                 )
@@ -254,6 +250,8 @@ def _codec_command(
         )
 
     if norm in _NVENC_ENCODERS:
+        nvenc_quality = [argument for key, value in nvenc_rate_control_options(quality).items()
+                         for argument in ("-" + key, value)] + ["-b:v", bitrate]
         encoder = _NVENC_ENCODERS[norm]
         if not _encoder_probe(encoder, width, height, gpu_ordinal):
             raise RuntimeError(f"{norm} cannot encode {width}×{height} on the selected NVIDIA GPU.")
@@ -294,13 +292,18 @@ def start_encoder(
         speed_profile=speed_profile, output_depth=output_depth,
     )
     normalized_codec = _normalize_codec(codec)
+    if normalized_codec in {"ProRes Proxy", "ProRes HQ"}:
+        # Let the planner convert RGB to the selected matrix and limited range
+        # together. Retagging a format-only conversion leaves full-range pixels
+        # labeled limited and increases playback contrast.
+        hdr_metadata = _prores_color_metadata(hdr_metadata, hdr_mode=hdr_mode)
     if (output_depth is not None and output_depth > 8
             and str((hdr_metadata or {}).get("color_range") or "").lower()
             in {"pc", "jpeg", "full"}
             and normalized_codec in {"H.265", "HEVC", "AV1"}):
         range_filter = "scale=in_range=pc:out_range=pc"
         video_filter = f"{video_filter},{range_filter}" if video_filter else range_filter
-    if normalized_codec in {"ProRes Proxy", "ProRes HQ", "FFV1 Lossless RGB 10-bit"}:
+    if normalized_codec == "FFV1 Lossless RGB 10-bit":
         colors = hdr_metadata or {}
         primaries = str(colors.get("color_primaries") or "bt709")
         transfer = str(colors.get("color_transfer") or "bt709")
@@ -308,17 +311,9 @@ def start_encoder(
             primaries = "bt2020" if colors.get("hdr") else "bt709"
         if transfer in {"unknown", "unspecified"}:
             transfer = "smpte2084" if colors.get("hdr") else "bt709"
-        if normalized_codec == "FFV1 Lossless RGB 10-bit":
-            tag_filter = ("format=gbrp10le,setparams="
-                          f"color_primaries={primaries}:color_trc={transfer}:"
-                          "colorspace=gbr:range=full")
-        else:
-            matrix = str(colors.get("color_space") or "bt709")
-            if matrix in {"unknown", "unspecified"}:
-                matrix = "bt2020nc" if colors.get("hdr") else "bt709"
-            tag_filter = ("format=yuv422p10le,setparams="
-                          f"color_primaries={primaries}:color_trc={transfer}:"
-                          f"colorspace={matrix}:range=limited")
+        tag_filter = ("format=gbrp10le,setparams="
+                      f"color_primaries={primaries}:color_trc={transfer}:"
+                      "colorspace=gbr:range=full")
         video_filter = f"{video_filter},{tag_filter}" if video_filter else tag_filter
     # Raw NUT RGB frames do not reliably carry transfer/primaries tags between
     # the bundled FFmpeg and PyAV versions. Describe their actual signal before

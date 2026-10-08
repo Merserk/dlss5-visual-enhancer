@@ -55,7 +55,7 @@ class GrainOptions:
         return self
 
 
-def grain_filter(options: GrainOptions, *, hdr: bool = False) -> str:
+def grain_filter(options: GrainOptions, *, hdr: bool = False, frame_offset: int = 0) -> str:
     """Build one persistent shader pass; frame is libplacebo's execution counter.
 
     Static grain never consumes frame/random state. Video hashes the counter
@@ -66,6 +66,8 @@ def grain_filter(options: GrainOptions, *, hdr: bool = False) -> str:
     if not options.amount:
         return ""
     temporal = "uint(frame)" if options.animated else "0u"
+    if options.animated and frame_offset:
+        temporal = f"(uint(frame) + {int(frame_offset) & 0xffffffff}u)"
     # Generate only the components actually needed by the selected color mix.
     kind = "vec4" if options.color else "float"
     uint_kind = "uvec4" if options.color else "uint"

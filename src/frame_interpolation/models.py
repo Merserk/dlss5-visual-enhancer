@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from fractions import Fraction
+from ..core.runtime import OPTICAL_FLOW_QUALITIES
 
 
 FPS_RATES: dict[str, Fraction] = {
@@ -51,6 +52,7 @@ class FrameInterpolationOptions:
     video_gpu_uuid: str = "auto"
     target_fps: str = "60"
     engine: str = "Auto"
+    optical_flow_quality: str = "High"
     codec: str = "H.264"
     container: str = "MP4"
     quality: str = "Auto (Default)"

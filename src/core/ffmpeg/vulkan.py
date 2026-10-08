@@ -18,8 +18,9 @@ from functools import lru_cache
 from pathlib import Path
 
 from .. import app_log
-from ..jobs import Cancelled, JobController
+from ..jobs import Cancelled, JobController, capture_process
 from ..paths import FFMPEG, FFPROBE
+from ..ui_messages import UiMessage
 
 DEVICE_AUTO = "auto"
 DEVICE_CPU = "cpu"
@@ -174,7 +175,7 @@ def candidates(selection: str | None = None, *, filters: bool = False) -> tuple[
         return devices
     selected = tuple(device for device in devices if device.selection == selection)
     if not selected:
-        raise ValueError("The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings.")
+        raise ValueError(UiMessage("The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings."))
     return selected
 
 
@@ -183,7 +184,7 @@ def filter_device(selection: str | None = None) -> VulkanDevice:
     for device in devices:
         if filter_supported(device.selection):
             return device
-    raise RuntimeError("Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver.")
+    raise RuntimeError(UiMessage("Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver."))
 
 
 def device_args(device: VulkanDevice) -> list[str]:
@@ -191,8 +192,7 @@ def device_args(device: VulkanDevice) -> list[str]:
 
 
 def _capture(command: list[str], timeout: float = 20) -> subprocess.CompletedProcess:
-    return subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, timeout=timeout, creationflags=_NO_WINDOW)
+    return capture_process(command, timeout=timeout)
 
 
 @lru_cache(maxsize=32)
@@ -297,7 +297,7 @@ def _decoder_supported(selection: str, source: str, mtime_ns: int, size: int) ->
     try:
         command = [str(FFMPEG), "-v", "error", *device_args(device),
                    "-hwaccel", "vulkan", "-hwaccel_device", "ve_vk", "-hwaccel_output_format", "vulkan",
-                   "-i", source, "-vf", "format=vulkan,libplacebo=format=rgba,hwdownload,format=rgba",
+                   "-threads", "2", "-i", source, "-vf", "format=vulkan,libplacebo=format=rgba,hwdownload,format=rgba",
                    "-frames:v", "1", "-f", "null", "-"]
         return _capture(command).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
@@ -431,7 +431,7 @@ def gpu_filter_graph(graph: str) -> str:
 
 def prepare_command(command: list[str], *, selection: str | None = None,
                     dimensions: tuple[int, int] | None = None, input_format: str | None = None,
-                    rate: str = "30", time_base: str | None = None) -> list[str]:
+                    rate: str = "30", time_base: str | None = None, preserve_samples: bool = False) -> list[str]:
     """Choose Vulkan codecs and transfer boundaries for one FFmpeg video output.
 
     GPU graphs are marked with ve_gpu by their callers. This planner never
@@ -447,6 +447,7 @@ def prepare_command(command: list[str], *, selection: str | None = None,
     if encoder is None and "-vf" not in command:
         return command
     graph = _option(command, "-vf", "")
+    original_parts = [part for part in _split_filters(graph) if part != "ve_gpu"]
     graph = gpu_filter_graph(graph)
     first_input = _option(command, "-i", "")
     width, height = dimensions or (0, 0)
@@ -480,6 +481,12 @@ def prepare_command(command: list[str], *, selection: str | None = None,
     else:
         command[-1:-1] = ["-colorspace", matrix]
     encode_device = None
+    copy_samples = (preserve_samples and encoder == "ffv1" and input_format == pix_fmt and
+                    all(part.startswith("setparams=") or part == "format=" + pix_fmt for part in original_parts))
+    if copy_samples:
+        # A lossless cache must not resample an already matching RGB surface.
+        # Repeated UNORM/libplacebo packing can otherwise lose a code value.
+        graph = ",".join(part for part in original_parts if part.startswith("setparams="))
     codec_options = []
     for name in ("-profile:v", "-profile", "-bits_per_mb", "-level", "-slicecrc", "-b:v"):
         if name in command:
@@ -522,12 +529,12 @@ def prepare_command(command: list[str], *, selection: str | None = None,
             return libplacebo(":".join(normalized)) + "," + result
         return result
     if encode_device:
-        if input_format != vk_format or _option(command, "-vf"):
+        if not copy_samples and (input_format != vk_format or _option(command, "-vf")):
             graph = (graph + "," if graph else "") + output_format(vk_format)
         lossless = _option(command, "-crf") == "0" or _option(command, "-cq") == "0"
         quality = _option(command, "-crf", _option(command, "-cq", "18"))
         command = _remove_options(command, {"-preset", "-tune", "-crf", "-cq", "-rc", "-gpu",
-                                            "-x264-params", "-x265-params", "-cpu-used", "-pix_fmt"})
+                                            "-x264-params", "-x265-params", "-svtav1-params", "-cpu-used", "-pix_fmt"})
         flag = "-c:v" if "-c:v" in command else "-vcodec"
         command[command.index(flag) + 1] = target
         if target in {"h264_vulkan", "hevc_vulkan", "av1_vulkan"}:
@@ -538,7 +545,7 @@ def prepare_command(command: list[str], *, selection: str | None = None,
                 command = _remove_options(command, {"-b:v"})
                 command[-1:-1] = ["-rc_mode", "cqp", "-qp", quality]
     else:
-        graph = (graph + "," if graph else "") + f"{output_format(pix_fmt)},hwdownload,format={pix_fmt}"
+        graph = (graph + "," if graph else "") + ("" if copy_samples else output_format(pix_fmt) + ",") + f"hwdownload,format={pix_fmt}"
     if "-vf" in command:
         command[command.index("-vf") + 1] = graph
     else:

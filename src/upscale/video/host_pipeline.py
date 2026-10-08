@@ -97,9 +97,8 @@ def _encoder_settings(options: UpscaleOptions, width: int, height: int,
             raise RuntimeError(
                 "AV1 CPU encoding is unavailable: neither libsvtav1 nor libaom-av1 can initialize.")
         values = ({"preset": "6"} if encoder == "libsvtav1" else {"cpu-used": "4"})
-        values.update(common)
-        if encoder == "libaom-av1" and quality["mode"] == "constant-quality":
-            values["b"] = "0"
+        if quality["mode"] == "constant-quality":
+            values.update(ffmpeg.software_max_quality_options(encoder))
         return _EncoderSettings(
             encoder, encoder, "yuv420p10le" if ten_bit else "yuv420p",
             FORMAT_P010 if ten_bit else FORMAT_NV12, values, bit_rate, quality)

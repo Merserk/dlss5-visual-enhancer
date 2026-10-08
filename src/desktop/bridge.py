@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import subprocess
 import sys
 import time
@@ -24,11 +25,11 @@ from ..portable import decode_app_path, encode_app_path
 from ..core.disk_paths import prepare_output_dir, supported_file as _is_supported_media_file
 from ..core.cache_cleanup import cleanup_old_caches
 from ..core import app_log
-from ..core.runtime import prepare_runtime, NR_STYLES, UPSCALING_MODES, resolve_upscaling_mode, resolve_output_size
+from ..core.runtime import prepare_runtime, NR_STYLES, OPTICAL_FLOW_QUALITIES, UPSCALING_MODES, resolve_upscaling_mode, resolve_output_size
 from ..core.dlss_modes import DLSS_MODES, DLSS_PRESETS, UPSCALE_ENGINES, dlss_output_size
 from ..core.ffmpeg import CODEC_CHOICES, ENCODING_QUALITIES, FIXED_QUALITY_CODECS, container_for_codec, containers_for_codec, hdr_mode_supported, probe_video, resolve_container
 from ..core.naming import RENAME_MODES, validate_rename
-from ..core.nr_composition import inspect_nr_mask, mask_status
+from ..core.nr_control_mask import inspect_nr_mask, mask_status
 from ..core.ffmpeg.grain import GRAIN_FIELDS
 from ..settings.models import (
     DEFAULT_SETTINGS, UPSCALE_MODE_CHOICES,
@@ -83,7 +84,6 @@ from ..frame_interpolation.models import FrameInterpolationOptions, FPS_CHOICES,
 from ..live.models import LiveOptions, LIVE_MAX_HEIGHTS, LIVE_MAX_HEIGHT_CHOICES, LIVE_SEGMENT_CHOICES, LIVE_FPS_CHOICES, LIVE_SOURCE_QUALITY_CHOICES
 from ..live.pipeline import start_live_session, stop_live_session, live_status, is_live_running, update_live_effects, sweep_stale_live_dirs
 from ..live.mpv_embed import MpvEmbedController
-
 
 # Canonical media-type sets used for auto-switching Image/Video modes and for
 # filtering dropped / picked inputs. Image aliases (.jpeg, .tif, .bmp, .heic,
@@ -140,15 +140,14 @@ _PASTE_BROWSER_UA = (
     "Chrome/126.0 Safari/537.36"
 )
 
-
 class AppBridge(QObject):
     """Central native bridge between Qt Quick/QML and backend AI runtimes."""
 
     LIVE_EFFECT_FIELDS = {
-        "live_nr_style", "live_nr_intensity", "live_nr_passes", "live_local_tone_strength",
+        "live_nr_style", "live_nr_intensity", "live_nr_passes", "live_nr_optical_flow_quality", "live_local_tone_strength",
         "live_local_structure_strength", "live_skin_structure_strength", "live_automatic_mask",
-        "live_nr_color_strength", "live_tone_preservation", "live_face_skin_protection",
-        "live_grain_preservation", "live_shimmer_suppression", "live_mask_feather", "nr_mask",
+
+           "nr_mask",
     }
     LIVE_RESTART_FIELDS = {"ai_gpu_uuid", "video_gpu_uuid", "ffmpeg_device", "live_upscaling_factor"}
 
@@ -166,7 +165,7 @@ class AppBridge(QObject):
     # stays disabled for Frame Interpolation regardless (manual Preview only).
     FI_RANGE_FIELDS = {
         "ffmpeg_device", "ai_gpu_uuid", "video_gpu_uuid",
-        "frame_interpolation_target_fps", "frame_interpolation_engine",
+        "frame_interpolation_target_fps", "frame_interpolation_engine", "frame_interpolation_optical_flow_quality",
     }
     # Cap stored ranges per context so repeated previews can't grow state.
     PREVIEW_RANGE_LIMIT = 32
@@ -181,16 +180,15 @@ class AppBridge(QObject):
         "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
         "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
         "ai_gpu_uuid", "video_gpu_uuid",
-        "nr_style", "nr_intensity", "nr_passes",
+        "nr_style", "nr_intensity", "nr_passes", "nr_optical_flow_quality",
         "local_tone_strength", "local_structure_strength",
         "skin_structure_strength", "automatic_mask",
-        "nr_color_strength", "tone_preservation",
-        "face_skin_protection", "grain_preservation",
-        "shimmer_suppression", "mask_feather", "nr_mask",
+
+          "nr_mask",
         "upscaling_factor", "image_scaling_filter", "video_scaling_filter",
         "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
         "upscale_image_engine", "upscale_image_dlss_mode", "upscale_image_dlss_preset",
-        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset",
+        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset", "upscale_optical_flow_quality",
         "upscale_image_vsr_quality", "upscale_image_size_mode",
         "upscale_image_scale_factor", "upscale_image_width",
         "upscale_image_height", "upscale_image_aspect_lock",
@@ -200,7 +198,7 @@ class AppBridge(QObject):
         "upscale_hdr_enabled", "upscale_hdr_contrast",
         "upscale_hdr_saturation", "upscale_hdr_middle_gray",
         "upscale_hdr_peak_luminance", "upscale_hdr_precision",
-        "frame_interpolation_target_fps", "frame_interpolation_engine",
+        "frame_interpolation_target_fps", "frame_interpolation_engine", "frame_interpolation_optical_flow_quality",
     } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"}
     PROCESSING_PREVIEW_FIELDS = {
         "nr-image": {
@@ -216,7 +214,7 @@ class AppBridge(QObject):
             "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
             "video_scaling_filter", "upscaling_factor",
             "lut_path",
-            "upscale_dlss_mode", "upscale_dlss_preset",
+            "upscale_dlss_mode", "upscale_dlss_preset", "upscale_optical_flow_quality",
             "upscale_vsr_enabled", "upscale_vsr_quality", "upscale_size_mode",
             "upscale_scale_factor", "upscale_width", "upscale_height",
             "upscale_aspect_lock", "upscale_hdr_enabled", "upscale_hdr_contrast",
@@ -224,11 +222,11 @@ class AppBridge(QObject):
             "upscale_hdr_peak_luminance", "upscale_hdr_precision",
         } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"},
         "upscale-image": {"upscale_image_engine", "upscale_image_dlss_mode", "upscale_image_dlss_preset"},
-        "upscale-video": {"upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset"},
+        "upscale-video": {"upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset", "upscale_optical_flow_quality"},
     }
     UPSCALE_RANGE_FIELDS = {
         "ffmpeg_device",
-        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset",
+        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset", "upscale_optical_flow_quality",
         "ai_gpu_uuid", "video_gpu_uuid",
         "upscale_vsr_enabled", "upscale_vsr_quality",
         "upscale_size_mode", "upscale_scale_factor",
@@ -246,12 +244,11 @@ class AppBridge(QObject):
         "cas_sharpness", "sharpening_method", *GRAIN_FIELDS,
         "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
         "ai_gpu_uuid", "video_gpu_uuid",
-        "nr_style", "nr_intensity", "nr_passes",
+        "nr_style", "nr_intensity", "nr_passes", "nr_optical_flow_quality",
         "local_tone_strength", "local_structure_strength",
         "skin_structure_strength", "automatic_mask",
-        "nr_color_strength", "tone_preservation",
-        "face_skin_protection", "grain_preservation",
-        "shimmer_suppression", "mask_feather", "nr_mask",
+
+          "nr_mask",
         "lut_path",
         "upscaling_factor", "video_scaling_filter",
     } | set(LUT_ADJUSTMENT_RANGES) | {"lut_resolution"}
@@ -264,6 +261,7 @@ class AppBridge(QObject):
     isProcessingChanged = Signal()
     overallProgressChanged = Signal()
     statusMessageChanged = Signal()
+    exportPhaseChanged = Signal()
     splitPositionChanged = Signal()
     hasOutputPreviewChanged = Signal()
     previewInputUrlChanged = Signal()
@@ -306,6 +304,7 @@ class AppBridge(QObject):
         self._image_provider = image_provider
         self._thread_pool = QThreadPool.globalInstance()
         self._active_worker: JobWorker | None = None
+        self._export_context_key = ""
         self._active_preview_fast_color = False
         self._live_worker: JobWorker | None = None
         self._scan_worker: JobWorker | None = None
@@ -341,6 +340,9 @@ class AppBridge(QObject):
         # per workflow context and projected through the public properties below.
         self._is_processing = False
         self._overall_progress = 0.0
+        self._export_phase = {}
+        self._export_pause_requested = False
+        self._export_paused = False
         self._status_message = UiMessage("Initializing runtime…")
         self._split_position = 0.5
         self._preset_status = ""
@@ -519,6 +521,10 @@ class AppBridge(QObject):
         self._operation_state = LIVE_RUNNING if self._is_live_running else IDLE
         self._is_processing = False
         self._active_worker = None
+        self._export_context_key = ""
+        self._export_phase = {}
+        self._export_pause_requested = self._export_paused = False
+        self.exportPhaseChanged.emit()
         self._active_preview_fast_color = False
         if message is not None:
             self._status_message = message
@@ -669,8 +675,15 @@ class AppBridge(QObject):
 
     @Property(list, notify=gpuChoicesChanged)
     def ffmpegDeviceChoices(self) -> list[dict[str, str]]:
-        from ..core.ffmpeg.vulkan import device_choices
-        return device_choices()
+        from ..core.ffmpeg.vulkan import DEVICE_AUTO, DEVICE_CPU, candidates
+        choices = [{"label": "Automatic (Best Available)", "value": DEVICE_AUTO},
+                   {"label": translate_text(UiMessage("CPU (Software decoding / encoding)")), "value": DEVICE_CPU}]
+        for device in candidates(DEVICE_AUTO):
+            label = (UiMessage("%1 (Discrete GPU)", device.name) if device.discrete
+                     else UiMessage("%1 (Integrated GPU)", device.name) if device.device_type == 1
+                     else f"{device.name} (GPU)")
+            choices.append({"label": translate_text(label), "value": device.selection})
+        return choices
 
     @Property(str, notify=settingsUpdated)
     def ffmpegDevice(self) -> str:
@@ -685,10 +698,11 @@ class AppBridge(QObject):
         from ..core.ffmpeg.vulkan import filter_device
         try:
             device = filter_device(self._settings.ffmpeg_device)
-            codecs = "Software codecs" if self._settings.ffmpeg_device == "cpu" else "Vulkan codecs where supported; software fallback"
-            return f"{codecs}. GPU filters: {device.name}."
+            codecs = (UiMessage("Software codecs") if self._settings.ffmpeg_device == "cpu"
+                      else UiMessage("Vulkan codecs where supported; software fallback"))
+            return translate_text(UiMessage("%1. GPU filters: %2.", codecs, device.name))
         except (ValueError, RuntimeError) as exc:
-            return str(exc)
+            return translate_text(str(exc))
 
     @Property(str, notify=settingsUpdated)
     def sharpeningMethod(self) -> str:
@@ -1194,6 +1208,39 @@ class AppBridge(QObject):
     def overallProgress(self) -> float:
         return self._overall_progress
 
+    @Property(bool, notify=operationStateChanged)
+    def canPauseExport(self) -> bool:
+        return (self._operation_state in {BATCH_PREPARING, BATCH_RUNNING}
+                and (self._export_context_key or self._context_key()) in {"nr-video", "upscale-video", "fi-video"})
+
+    @Property(bool, notify=exportPhaseChanged)
+    def exportPaused(self) -> bool:
+        return self._export_paused
+
+    @Property(bool, notify=exportPhaseChanged)
+    def exportPauseRequested(self) -> bool:
+        return self._export_pause_requested
+
+    @Property(str, notify=exportPhaseChanged)
+    def exportPhaseText(self) -> str:
+        values = self._export_phase
+        if self._export_paused:
+            return translate_text(UiMessage("Export paused; GPU memory released"))
+        if not values.get("part"):
+            return ""
+        parts = [UiMessage("Part %1 · %2 · %3 FPS · %4 GB", values["part"], UiMessage(values.get("stage", "")),
+                           f"{float(values.get('fps') or 0):.1f}", f"{float(values.get('cache_bytes') or 0) / 1e9:.2f}")]
+        if values.get("state") in {"load", "flush", "cache", "unload", "commit", "delivery"}:
+            labels = {"load": "Loading model", "flush": "Flushing output", "cache": "Writing cache",
+                      "unload": "Releasing worker", "commit": "Committing part", "delivery": "Finalizing video"}
+            parts.append(UiMessage(labels[values["state"]]))
+        elif values.get("preroll"):
+            parts.append(UiMessage("Preroll: %1 frames", values["preroll"]))
+        if values.get("state") == "unload":
+            parts.append(UiMessage("Startup %1 s · switch %2 s",
+                f"{float(values.get('startup_seconds') or 0):.2f}", f"{float(values.get('swap_seconds') or 0):.2f}"))
+        return translate_text(join_messages(parts, " · "))
+
     @Property(str, notify=statusMessageChanged)
     def statusMessage(self) -> str:
         return translate_text(self._status_message)
@@ -1544,6 +1591,7 @@ class AppBridge(QObject):
         for signal in (self.statusMessageChanged, self.presetStatusChanged,
                        self.liveStatusTextChanged, self.settingsUpdated,
                        self.runtimeStateChanged, self.gpuChoicesChanged,
+                       self.exportPhaseChanged,
                        self.estimateChanged, self.lutSaveChanged,
                        self.lutAutoChanged, self.lutReferenceChanged):
             signal.emit()
@@ -1614,7 +1662,7 @@ class AppBridge(QObject):
                     getattr(self._settings, field.name, None)
                     for field in _dataclass_fields(self._settings)
                     if not (
-                        field.name in {"cache_memory_mode", "cache_codec"}
+                        field.name in {"cache_codec", "cache_size_gb"}
                         or (key == "upscale-video" and field.name == "upscale_preview_length")
                         or (key == "nr-video" and field.name == "nr_preview_length")
                         or (key.endswith("video") and field.name in self.VIDEO_EXPORT_FIELDS)
@@ -1857,29 +1905,30 @@ class AppBridge(QObject):
     @Property(str, notify=runtimeStateChanged)
     def diagnosticsText(self) -> str:
         lines = [
-            f"Application: Visual Enhancer {self.appVersion}",
-            f"Runtime state: {self._runtime_state}",
+            UiMessage("Application: %1", f"Visual Enhancer {self.appVersion}"),
+            UiMessage("Runtime state: %1", UiMessage(self._runtime_state)),
             f"Python: {platform.python_version()}",
             f"Qt: {qVersion()}",
             f"OS: {platform.platform()}",
             f"GPU: {self.gpuName} {self.gpuVram}".rstrip(),
-            f"AI GPU selection: {self._settings.ai_gpu_uuid}",
-            f"Video GPU selection: {self._settings.video_gpu_uuid}",
-            f"FFmpeg: {'Available' if Path(FFMPEG).is_file() else 'Missing'} ({FFMPEG})",
-            f"FFprobe: {'Available' if Path(FFPROBE).is_file() else 'Missing'} ({FFPROBE})",
-            f"MPV: {'Available' if Path(MPV).is_file() else 'Missing'} ({MPV})",
-            f"Outputs: {OUTPUTS}",
-            f"Logs: {LOGS}",
-            f"Config: {CONFIG_PATH}",
+            UiMessage("AI GPU selection: %1", self._settings.ai_gpu_uuid),
+            UiMessage("Video GPU selection: %1", self._settings.video_gpu_uuid),
+            *[UiMessage("%1: %2 (%3)", name,
+                        UiMessage("Available") if Path(path).is_file() else UiMessage("Missing"), path)
+              for name, path in (("FFmpeg", FFMPEG), ("FFprobe", FFPROBE), ("MPV", MPV))],
+            UiMessage("Outputs: %1", OUTPUTS),
+            UiMessage("Logs: %1", LOGS),
+            UiMessage("Config: %1", CONFIG_PATH),
         ]
         if self._runtime_error:
-            lines.append(f"Runtime error: {self._runtime_error}")
-        lines.extend(f"Startup warning: {warning}" for warning in self._startup_warnings)
-        return "\n".join(lines)
+            lines.append(UiMessage("Runtime error: %1", self._runtime_error))
+        lines.extend(UiMessage("Startup warning: %1", warning) for warning in self._startup_warnings)
+        return translate_text(join_messages(lines))
 
-    @Property(list, constant=True)
-    def nrStyleChoices(self) -> list[str]:
-        return list(NR_STYLES)
+    @Property(list, notify=languageChanged)
+    def nrStyleChoices(self) -> list[dict[str, str]]:
+        return [{"label": translate_text(UiMessage("Style %1", style.rsplit(" ", 1)[-1])), "value": style}
+                for style in NR_STYLES]
 
     @Property(list, constant=True)
     def nrScaleChoices(self) -> list[dict[str, float]]:
@@ -1950,17 +1999,17 @@ class AppBridge(QObject):
     def fiEngineChoices(self) -> list[str]:
         return list(ENGINE_CHOICES)
 
-    @Property(list, constant=True)
+    @Property(list, notify=languageChanged)
     def fiPreviewLengthChoices(self) -> list[dict[str, str]]:
-        return [{"label": f"{v}s", "value": v} for v in PREVIEW_LENGTH_CHOICES]
+        return [{"label": translate_text(UiMessage("%1 s", v)), "value": v} for v in PREVIEW_LENGTH_CHOICES]
 
-    @Property(list, constant=True)
+    @Property(list, notify=languageChanged)
     def upscalePreviewLengthChoices(self) -> list[dict[str, str]]:
-        return [{"label": f"{value}s", "value": value} for value in PREVIEW_LENGTH_CHOICES]
+        return [{"label": translate_text(UiMessage("%1 s", value)), "value": value} for value in PREVIEW_LENGTH_CHOICES]
 
-    @Property(list, constant=True)
+    @Property(list, notify=languageChanged)
     def nrPreviewLengthChoices(self) -> list[dict[str, str]]:
-        return [{"label": f"{value}s", "value": value} for value in PREVIEW_LENGTH_CHOICES]
+        return [{"label": translate_text(UiMessage("%1 s", value)), "value": value} for value in PREVIEW_LENGTH_CHOICES]
 
     @Property(list, constant=True)
     def liveSourceQualityChoices(self) -> list[str]:
@@ -1970,9 +2019,9 @@ class AppBridge(QObject):
     def liveMaxHeightChoices(self) -> list[dict[str, str]]:
         return [{"label": f"{v}p", "value": v} for v in LIVE_MAX_HEIGHT_CHOICES]
 
-    @Property(list, constant=True)
+    @Property(list, notify=languageChanged)
     def liveSegmentChoices(self) -> list[dict[str, str]]:
-        return [{"label": f"{v} sec", "value": v} for v in LIVE_SEGMENT_CHOICES]
+        return [{"label": translate_text(UiMessage("%1 s", v)), "value": v} for v in LIVE_SEGMENT_CHOICES]
 
     @Property(list, constant=True)
     def liveFpsChoices(self) -> list[str]:
@@ -2304,6 +2353,18 @@ class AppBridge(QObject):
     def nrPasses(self, val: int) -> None:
         self._save_setting(nr_passes=int(val))
 
+    @Property(list, constant=True)
+    def opticalFlowQualityChoices(self) -> list[str]:
+        return list(OPTICAL_FLOW_QUALITIES)
+
+    @Property(str, notify=settingsUpdated)
+    def opticalFlowQuality(self) -> str:
+        return self._settings.nr_optical_flow_quality
+
+    @opticalFlowQuality.setter
+    def opticalFlowQuality(self, val: str) -> None:
+        self._save_setting(nr_optical_flow_quality=val)
+
     @Property(float, notify=settingsUpdated)
     def localToneStrength(self) -> float:
         return self._settings.local_tone_strength
@@ -2326,11 +2387,7 @@ class AppBridge(QObject):
 
     @skinStructureStrength.setter
     def skinStructureStrength(self, val: float) -> None:
-        val = round(val, 2)
-        auto_mask = self._settings.automatic_mask
-        if val > -1.0 and not auto_mask:
-            auto_mask = True
-        self._save_setting(skin_structure_strength=val, automatic_mask=auto_mask)
+        self._save_setting(skin_structure_strength=round(val, 2))
 
     @Property(bool, notify=settingsUpdated)
     def automaticMask(self) -> bool:
@@ -2339,54 +2396,6 @@ class AppBridge(QObject):
     @automaticMask.setter
     def automaticMask(self, val: bool) -> None:
         self._save_setting(automatic_mask=bool(val))
-
-    @Property(float, notify=settingsUpdated)
-    def nrColorStrength(self) -> float:
-        return self._settings.nr_color_strength
-
-    @nrColorStrength.setter
-    def nrColorStrength(self, val: float) -> None:
-        self._save_setting(nr_color_strength=round(val, 2))
-
-    @Property(float, notify=settingsUpdated)
-    def tonePreservation(self) -> float:
-        return self._settings.tone_preservation
-
-    @tonePreservation.setter
-    def tonePreservation(self, val: float) -> None:
-        self._save_setting(tone_preservation=round(val, 2))
-
-    @Property(float, notify=settingsUpdated)
-    def faceSkinProtection(self) -> float:
-        return self._settings.face_skin_protection
-
-    @faceSkinProtection.setter
-    def faceSkinProtection(self, val: float) -> None:
-        self._save_setting(face_skin_protection=round(val, 2))
-
-    @Property(float, notify=settingsUpdated)
-    def grainPreservation(self) -> float:
-        return self._settings.grain_preservation
-
-    @grainPreservation.setter
-    def grainPreservation(self, val: float) -> None:
-        self._save_setting(grain_preservation=round(val, 2))
-
-    @Property(int, notify=settingsUpdated)
-    def maskFeather(self) -> int:
-        return self._settings.mask_feather
-
-    @maskFeather.setter
-    def maskFeather(self, val: int) -> None:
-        self._save_setting(mask_feather=int(val))
-
-    @Property(float, notify=settingsUpdated)
-    def shimmerSuppression(self) -> float:
-        return self._settings.shimmer_suppression
-
-    @shimmerSuppression.setter
-    def shimmerSuppression(self, val: float) -> None:
-        self._save_setting(shimmer_suppression=round(val, 2))
 
     # Independent Live-tab mirrors of the NR controls above. The Live tab
     # binds only these, so tuning or resetting Live never touches the
@@ -2429,6 +2438,14 @@ class AppBridge(QObject):
     def liveNrPasses(self, val: int) -> None:
         self._save_setting(live_nr_passes=int(val))
 
+    @Property(str, notify=settingsUpdated)
+    def liveOpticalFlowQuality(self) -> str:
+        return self._settings.live_nr_optical_flow_quality
+
+    @liveOpticalFlowQuality.setter
+    def liveOpticalFlowQuality(self, val: str) -> None:
+        self._save_setting(live_nr_optical_flow_quality=val)
+
     @Property(float, notify=settingsUpdated)
     def liveLocalToneStrength(self) -> float:
         return self._settings.live_local_tone_strength
@@ -2451,11 +2468,7 @@ class AppBridge(QObject):
 
     @liveSkinStructureStrength.setter
     def liveSkinStructureStrength(self, val: float) -> None:
-        val = round(val, 2)
-        auto_mask = self._settings.live_automatic_mask
-        if val > -1.0 and not auto_mask:
-            auto_mask = True
-        self._save_setting(live_skin_structure_strength=val, live_automatic_mask=auto_mask)
+        self._save_setting(live_skin_structure_strength=round(val, 2))
 
     @Property(bool, notify=settingsUpdated)
     def liveAutomaticMask(self) -> bool:
@@ -2464,54 +2477,6 @@ class AppBridge(QObject):
     @liveAutomaticMask.setter
     def liveAutomaticMask(self, val: bool) -> None:
         self._save_setting(live_automatic_mask=bool(val))
-
-    @Property(float, notify=settingsUpdated)
-    def liveNrColorStrength(self) -> float:
-        return self._settings.live_nr_color_strength
-
-    @liveNrColorStrength.setter
-    def liveNrColorStrength(self, val: float) -> None:
-        self._save_setting(live_nr_color_strength=round(val, 2))
-
-    @Property(float, notify=settingsUpdated)
-    def liveTonePreservation(self) -> float:
-        return self._settings.live_tone_preservation
-
-    @liveTonePreservation.setter
-    def liveTonePreservation(self, val: float) -> None:
-        self._save_setting(live_tone_preservation=round(val, 2))
-
-    @Property(float, notify=settingsUpdated)
-    def liveFaceSkinProtection(self) -> float:
-        return self._settings.live_face_skin_protection
-
-    @liveFaceSkinProtection.setter
-    def liveFaceSkinProtection(self, val: float) -> None:
-        self._save_setting(live_face_skin_protection=round(val, 2))
-
-    @Property(float, notify=settingsUpdated)
-    def liveGrainPreservation(self) -> float:
-        return self._settings.live_grain_preservation
-
-    @liveGrainPreservation.setter
-    def liveGrainPreservation(self, val: float) -> None:
-        self._save_setting(live_grain_preservation=round(val, 2))
-
-    @Property(int, notify=settingsUpdated)
-    def liveMaskFeather(self) -> int:
-        return self._settings.live_mask_feather
-
-    @liveMaskFeather.setter
-    def liveMaskFeather(self, val: int) -> None:
-        self._save_setting(live_mask_feather=int(val))
-
-    @Property(float, notify=settingsUpdated)
-    def liveShimmerSuppression(self) -> float:
-        return self._settings.live_shimmer_suppression
-
-    @liveShimmerSuppression.setter
-    def liveShimmerSuppression(self, val: float) -> None:
-        self._save_setting(live_shimmer_suppression=round(val, 2))
 
     @Property(str, notify=settingsUpdated)
     def customMaskStatus(self) -> str:
@@ -2733,6 +2698,14 @@ class AppBridge(QObject):
     def upscaleDlssPreset(self, val: str) -> None:
         self._save_setting(upscale_dlss_preset=val)
 
+    @Property(str, notify=settingsUpdated)
+    def upscaleOpticalFlowQuality(self) -> str:
+        return self._settings.upscale_optical_flow_quality
+
+    @upscaleOpticalFlowQuality.setter
+    def upscaleOpticalFlowQuality(self, val: str) -> None:
+        self._save_setting(upscale_optical_flow_quality=val)
+
     @Property(bool, notify=settingsUpdated)
     def upscaleVsrEnabled(self) -> bool:
         return self._settings.upscale_vsr_enabled
@@ -2924,6 +2897,14 @@ class AppBridge(QObject):
         self._save_setting(frame_interpolation_engine=val)
 
     @Property(str, notify=settingsUpdated)
+    def fiOpticalFlowQuality(self) -> str:
+        return self._settings.frame_interpolation_optical_flow_quality
+
+    @fiOpticalFlowQuality.setter
+    def fiOpticalFlowQuality(self, val: str) -> None:
+        self._save_setting(frame_interpolation_optical_flow_quality=val)
+
+    @Property(str, notify=settingsUpdated)
     def fiCodec(self) -> str:
         return self._settings.frame_interpolation_codec
 
@@ -2995,20 +2976,20 @@ class AppBridge(QObject):
 
     # Global Preferences
     @Property(str, notify=settingsUpdated)
-    def cacheMemoryMode(self) -> str:
-        return self._settings.cache_memory_mode
-
-    @cacheMemoryMode.setter
-    def cacheMemoryMode(self, val: str) -> None:
-        self._save_setting(cache_memory_mode=val)
-
-    @Property(str, notify=settingsUpdated)
-    def cacheCodec(self) -> str:
+    def cacheMode(self) -> str:
         return self._settings.cache_codec
 
-    @cacheCodec.setter
-    def cacheCodec(self, val: str) -> None:
+    @cacheMode.setter
+    def cacheMode(self, val: str) -> None:
         self._save_setting(cache_codec=val)
+
+    @Property(int, notify=settingsUpdated)
+    def cacheSizeGB(self) -> int:
+        return self._settings.cache_size_gb
+
+    @cacheSizeGB.setter
+    def cacheSizeGB(self, val: int) -> None:
+        self._save_setting(cache_size_gb=val)
 
     @Property(str, notify=settingsUpdated)
     def aiGpuUuid(self) -> str:
@@ -3129,10 +3110,6 @@ class AppBridge(QObject):
     # =========================================================================
     # Methods & Slots: Presets & Defaults
     # =========================================================================
-    @Slot()
-    def applyDetailOnly(self) -> None:
-        self._save_setting(nr_color_strength=0.0, tone_preservation=1.0)
-        self._log("Applied Detail-Only preset.")
 
     @Slot(str)
     def selectCustomMask(self, file_url_or_path: str) -> None:
@@ -3140,14 +3117,14 @@ class AppBridge(QObject):
         try:
             selection = inspect_nr_mask(path)
             self._save_setting(nr_mask=selection)
-            self._log(f"Custom NR Mask loaded: {path}")
+            self._log(f"NR Control Mask loaded: {path}")
         except Exception as exc:
             self._log(f"Error loading mask: {exc}")
 
     @Slot()
     def clearCustomMask(self) -> None:
         self._save_setting(nr_mask=None)
-        self._log("Custom NR Mask cleared.")
+        self._log("NR Control Mask cleared.")
 
     @Slot()
     def resetToDefaults(self) -> None:
@@ -3191,12 +3168,11 @@ class AppBridge(QObject):
         "coloring_mode", "color_match_source", "color_match_reference", "lut_path",
         "lut_reference_image",
         "lut_resolution", *LUT_ADJUSTMENT_RANGES,
-        "nr_style", "nr_intensity", "nr_passes",
+        "nr_style", "nr_intensity", "nr_passes", "nr_optical_flow_quality",
         "local_tone_strength", "local_structure_strength",
         "skin_structure_strength", "automatic_mask",
-        "nr_color_strength", "tone_preservation",
-        "face_skin_protection", "grain_preservation",
-        "shimmer_suppression", "mask_feather", "nr_mask",
+
+          "nr_mask",
         "upscaling_factor", "image_scaling_filter", "video_scaling_filter",
         "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
         "codec", "quality", "hdr_mode",
@@ -3207,12 +3183,12 @@ class AppBridge(QObject):
         "upscale_image_engine", "upscale_image_dlss_mode", "upscale_image_dlss_preset",
         "upscale_image_vsr_quality", "upscale_image_size_mode", "upscale_image_scale_factor",
         "upscale_image_width", "upscale_image_height", "upscale_image_aspect_lock",
-        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset",
+        "upscale_engine", "upscale_dlss_mode", "upscale_dlss_preset", "upscale_optical_flow_quality",
         "upscale_vsr_enabled", "upscale_vsr_quality", "upscale_size_mode", "upscale_scale_factor",
         "upscale_width", "upscale_height", "upscale_aspect_lock", "upscale_hdr_enabled",
         "upscale_hdr_contrast", "upscale_hdr_saturation", "upscale_hdr_middle_gray",
         "upscale_hdr_peak_luminance", "upscale_hdr_precision",
-        "frame_interpolation_target_fps", "frame_interpolation_engine",
+        "frame_interpolation_target_fps", "frame_interpolation_engine", "frame_interpolation_optical_flow_quality",
     )
     TAB_RESET_LABELS = {
         "neural-rendering": "Neural Rendering",
@@ -4152,8 +4128,22 @@ class AppBridge(QObject):
 
     def _setup_worker(self, worker: JobWorker, queue: BatchListModel, operation_id: int, context_key: str) -> None:
         self._active_worker = worker
+        self._export_context_key = context_key
         self._operation_state = BATCH_RUNNING
         self.operationStateChanged.emit()
+
+        def on_phase(values):
+            if operation_id != self._operation_id:
+                return
+            self._export_phase = dict(values)
+            queue.update_running_metrics(values)
+            self._export_paused = values.get("state") == "paused"
+            if self._export_paused:
+                self._export_pause_requested = True
+                self._status_message = UiMessage("Export paused; GPU memory released")
+                self.statusMessageChanged.emit()
+            self.exportPhaseChanged.emit()
+        worker.signals.renderPhase.connect(on_phase)
 
         def on_progress(fraction: float, message: str) -> None:
             if operation_id != self._operation_id:
@@ -4248,11 +4238,7 @@ class AppBridge(QObject):
             local_structure_strength=settings.local_structure_strength,
             skin_structure_strength=settings.skin_structure_strength,
             automatic_mask=settings.automatic_mask,
-            nr_color_strength=settings.nr_color_strength,
-            tone_preservation=settings.tone_preservation,
-            face_skin_protection=settings.face_skin_protection,
-            grain_preservation=settings.grain_preservation,
-            mask_feather=settings.mask_feather,
+
             nr_mask=settings.nr_mask,
             upscaling_factor=settings.upscaling_factor,
             scale_method=settings.nr_scale_method,
@@ -4279,16 +4265,12 @@ class AppBridge(QObject):
             nr_style=settings.nr_style,
             nr_intensity=settings.nr_intensity,
             nr_passes=settings.nr_passes,
+            nr_optical_flow_quality=settings.nr_optical_flow_quality,
             local_tone_strength=settings.local_tone_strength,
             local_structure_strength=settings.local_structure_strength,
             skin_structure_strength=settings.skin_structure_strength,
             automatic_mask=settings.automatic_mask,
-            nr_color_strength=settings.nr_color_strength,
-            tone_preservation=settings.tone_preservation,
-            face_skin_protection=settings.face_skin_protection,
-            grain_preservation=settings.grain_preservation,
-            shimmer_suppression=settings.shimmer_suppression,
-            mask_feather=settings.mask_feather,
+
             nr_mask=settings.nr_mask,
             upscaling_factor=settings.upscaling_factor,
             scale_method=settings.nr_scale_method,
@@ -4315,7 +4297,15 @@ class AppBridge(QObject):
                                     output_dir: Path | None, same_as_input: bool) -> JobWorker:
         opts = video_upscale_options_from_settings(settings)
         opts.validate(for_render=True)
-        return JobWorker(upscale_videos, paths, opts, output_dir=output_dir,
+        stages = []
+        if opts.engine == "DLSS" or opts.vsr_enabled:
+            stages.append("dlss_super_resolution" if opts.engine == "DLSS" else "super_resolution")
+        if opts.hdr_enabled:
+            stages.append("rtx_video_hdr")
+        pipeline = replace(settings, video_enabled_stages=tuple(stages),
+            codec=opts.codec, container=opts.container, quality=opts.quality, hdr_mode=opts.hdr_enabled,
+            video_rename_mode=opts.rename_mode, video_custom_suffix=opts.custom_suffix)
+        return JobWorker(render_pipeline_batch, paths, pipeline, "Video", output_dir=output_dir,
                          same_as_input=same_as_input)
 
     def _fi_batch_worker(self, paths: list[str], settings: UISettings,
@@ -4325,6 +4315,7 @@ class AppBridge(QObject):
             video_gpu_uuid=settings.video_gpu_uuid,
             target_fps=settings.frame_interpolation_target_fps,
             engine=settings.frame_interpolation_engine,
+            optical_flow_quality=settings.frame_interpolation_optical_flow_quality,
             codec=settings.frame_interpolation_codec,
             container=resolve_container(settings.frame_interpolation_codec, settings.frame_interpolation_container),
             quality=settings.frame_interpolation_quality,
@@ -4332,8 +4323,37 @@ class AppBridge(QObject):
             rename_mode=settings.frame_interpolation_rename_mode,
             custom_suffix=settings.frame_interpolation_custom_suffix,
         )
-        return JobWorker(interpolate_videos, paths, opts, output_dir=output_dir,
+        pipeline = replace(settings, video_enabled_stages=("frame_generation",),
+            codec=opts.codec, container=opts.container, quality=opts.quality, hdr_mode=opts.hdr_mode,
+            video_rename_mode=opts.rename_mode, video_custom_suffix=opts.custom_suffix)
+        return JobWorker(render_pipeline_batch, paths, pipeline, "Video", output_dir=output_dir,
                          same_as_input=same_as_input)
+
+    @Slot()
+    def pauseExport(self) -> None:
+        if self.canPauseExport and self._active_worker and not self._export_pause_requested:
+            self._export_pause_requested = True
+            self._active_worker.controller.pause()
+            self._status_message = UiMessage("Pausing export; releasing GPU workers…")
+            self.statusMessageChanged.emit()
+            self.exportPhaseChanged.emit()
+
+    @Slot()
+    def toggleExportPause(self) -> None:
+        if self._export_paused and self._active_worker:
+            self._export_pause_requested = self._export_paused = False
+            self._active_worker.controller.resume()
+            self._status_message = UiMessage("Resuming export from the last committed part…")
+            self.statusMessageChanged.emit()
+            self.exportPhaseChanged.emit()
+        elif not self._export_pause_requested:
+            self.pauseExport()
+
+    def suspendProcessing(self) -> None:
+        if self.canPauseExport:
+            self.pauseExport()
+        elif self._operation_state in {PREVIEW_PREPARING, PREVIEW_RUNNING} and self._active_worker:
+            self._active_worker.controller.stop()
 
     @Slot()
     def stopActiveBatch(self) -> None:
@@ -4707,13 +4727,15 @@ class AppBridge(QObject):
                     result_kind = "video_still" if clip_seconds is None else "video"
             elif context_key == "upscale-video":
                 opts = video_upscale_options_from_settings(settings)
+                stages = (["dlss_super_resolution" if opts.engine == "DLSS" else "super_resolution"]
+                          if opts.engine == "DLSS" or opts.vsr_enabled else [])
+                if opts.hdr_enabled:
+                    stages.append("rtx_video_hdr")
+                preview_settings = replace(settings, video_enabled_stages=tuple(stages), hdr_mode=opts.hdr_enabled)
                 def task(controller=None, progress=None):
-                    return preview_upscale_native(
-                        source, opts, one_frame=clip_seconds is None, progress=progress,
+                    return render_pipeline_preview(source, preview_settings, "Video", progress=progress,
                         controller=controller, output_dir=self._preview_cache,
-                        start_seconds=start_seconds, frame_index=frame_index,
-                        preview_seconds=clip_seconds,
-                    )
+                        start_seconds=start_seconds, clip_seconds=clip_seconds)
                 result_kind = "video_still" if clip_seconds is None else "video"
             elif context_key == "fi-video":
                 opts = FrameInterpolationOptions(
@@ -4721,18 +4743,18 @@ class AppBridge(QObject):
                     video_gpu_uuid=settings.video_gpu_uuid,
                     target_fps=settings.frame_interpolation_target_fps,
                     engine=settings.frame_interpolation_engine,
+                    optical_flow_quality=settings.frame_interpolation_optical_flow_quality,
                     codec=settings.frame_interpolation_codec,
                     container=resolve_container(settings.frame_interpolation_codec, settings.frame_interpolation_container),
                     quality=settings.frame_interpolation_quality,
                     hdr_mode=settings.frame_interpolation_hdr_mode,
                 )
                 def task(controller=None, progress=None):
-                    return preview_frame_interpolation_native(
-                        source, opts,
+                    return render_pipeline_preview(
+                        source, replace(settings, video_enabled_stages=("frame_generation",), hdr_mode=opts.hdr_mode), "Video",
                         progress=progress, output_dir=self._preview_cache,
                         controller=controller, start_seconds=start_seconds,
-                        frame_index=frame_index,
-                        preview_seconds=self._fi_preview_length_seconds(),
+                        clip_seconds=self._fi_preview_length_seconds(),
                     )
                 result_kind = "video"
             else:
@@ -4907,10 +4929,7 @@ class AppBridge(QObject):
         # In-tab player: prepare the embed container now (GUI thread) so the
         # session worker can hand its handle straight to MPV at launch time.
         # ``wid == 0`` degrades to a detached player window, never a failure.
-        ipc_pipe = (
-            f"\\\\.\\pipe\\dlss5-live-{time.strftime('%Y%m%d-%H%M%S')}"
-            f"-{os.getpid()}-{int(time.time() * 1000) % 100000:d}"
-        )
+        ipc_pipe = f"\\\\.\\pipe\\dlss5-live-{secrets.token_hex(16)}"
         wid = 0
         try:
             wid, _ = self._mpv_embed.prepare(ipc_pipe)
@@ -4930,16 +4949,12 @@ class AppBridge(QObject):
                 nr_style=settings.live_nr_style,
                 nr_intensity=settings.live_nr_intensity,
                 nr_passes=settings.live_nr_passes,
+                nr_optical_flow_quality=settings.live_nr_optical_flow_quality,
                 local_tone_strength=settings.live_local_tone_strength,
                 local_structure_strength=settings.live_local_structure_strength,
                 skin_structure_strength=settings.live_skin_structure_strength,
                 automatic_mask=settings.live_automatic_mask,
-                nr_color_strength=settings.live_nr_color_strength,
-                tone_preservation=settings.live_tone_preservation,
-                face_skin_protection=settings.live_face_skin_protection,
-                grain_preservation=settings.live_grain_preservation,
-                shimmer_suppression=settings.live_shimmer_suppression,
-                mask_feather=settings.live_mask_feather,
+
                 nr_mask=settings.nr_mask,
                 max_height=h if h in LIVE_MAX_HEIGHTS else 720,
                 upscaling_factor=settings.live_upscaling_factor,

@@ -4,10 +4,11 @@ from dataclasses import dataclass
 import os
 import math
 import re
+import time
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QAbstractListModel, QByteArray, QModelIndex, Property, Qt, Signal, Slot
+from PySide6.QtCore import QAbstractListModel, QByteArray, QModelIndex, Property, Qt, QTimer, Signal, Slot
 
 
 @dataclass
@@ -30,6 +31,11 @@ class BatchEntry:
     processing_total_frames: int = 0
     processing_fps: float = 0.0
     _frame_sample: tuple[str, int, float] | None = None
+    _structured_metrics: bool = False
+    _clock_origin: float | None = None
+    _paused_at: float | None = None
+    _paused_elapsed: float | None = None
+    _paused_seconds: float = 0.0
 
     @property
     def file_name(self) -> str:
@@ -38,9 +44,11 @@ class BatchEntry:
     @property
     def remaining_seconds(self) -> float:
         """Estimate the entire file job from job progress, never stage frame counters."""
-        if self.state != "Running" or self.elapsed_seconds < 1 or self.progress <= 0.01:
+        elapsed = (self._paused_elapsed if self._paused_elapsed is not None else
+                   self.elapsed_seconds) - self._paused_seconds
+        if self.state != "Running" or elapsed < 1 or self.progress <= 0:
             return -1.0
-        return self.elapsed_seconds * (1 - self.progress) / self.progress
+        return elapsed * (1 - self.progress) / self.progress
 
 
 class BatchListModel(QAbstractListModel):
@@ -78,6 +86,62 @@ class BatchListModel(QAbstractListModel):
         super().__init__(parent)
         self._entries: list[BatchEntry] = []
         self._selected_index = -1
+        self._progress_timer = QTimer(self)
+        self._progress_timer.setInterval(250)
+        self._progress_timer.timeout.connect(self._refresh_running_times)
+
+    @staticmethod
+    def _reset_processing(entry: BatchEntry) -> None:
+        entry.processed_frames = entry.processing_total_frames = 0
+        entry.processing_fps = 0.0
+        entry._frame_sample = None
+        entry._structured_metrics = False
+        entry._clock_origin = entry._paused_at = entry._paused_elapsed = None
+        entry._paused_seconds = 0.0
+
+    @staticmethod
+    def _advance_clock(entry: BatchEntry, now: float) -> None:
+        if entry._clock_origin is not None:
+            entry.elapsed_seconds = max(entry.elapsed_seconds, now - entry._clock_origin)
+
+    def _refresh_running_times(self) -> None:
+        now = time.monotonic()
+        running = False
+        for row, entry in enumerate(self._entries):
+            if entry.state != "Running":
+                continue
+            running = True
+            self._advance_clock(entry, now)
+            idx = self.index(row)
+            self.dataChanged.emit(idx, idx, [self.ElapsedSecondsRole, self.RemainingSecondsRole])
+        if not running:
+            self._progress_timer.stop()
+
+    def update_running_metrics(self, values: dict) -> None:
+        """Apply control-protocol telemetry without parsing the display message."""
+        now = time.monotonic()
+        for row, entry in enumerate(self._entries):
+            if entry.state != "Running":
+                continue
+            self._advance_clock(entry, now)
+            entry._structured_metrics = entry._structured_metrics or "frames" in values
+            state = values.get("state")
+            if state == "paused":
+                if entry._paused_at is None:
+                    entry._paused_at, entry._paused_elapsed = now, entry.elapsed_seconds
+            elif entry._paused_at is not None:
+                entry._paused_seconds += max(0.0, now - entry._paused_at)
+                entry._paused_at = entry._paused_elapsed = None
+            try:
+                fps = float(values.get("fps") or 0)
+            except (TypeError, ValueError):
+                fps = 0.0
+            entry.processing_fps = fps if state == "process" and math.isfinite(fps) and fps > 0 else 0.0
+            entry.processed_frames = max(0, int(values.get("frames") or 0))
+            entry.processing_total_frames = max(0, int(values.get("total_frames") or 0))
+            idx = self.index(row)
+            self.dataChanged.emit(idx, idx, [self.ElapsedSecondsRole, self.ProcessedFramesRole,
+                self.ProcessingTotalFramesRole, self.ProcessingFpsRole, self.RemainingSecondsRole])
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._entries)
@@ -320,7 +384,18 @@ class BatchListModel(QAbstractListModel):
             entry.output_path = output_path
         if math.isfinite(elapsed_seconds) and elapsed_seconds >= 0:
             entry.elapsed_seconds = max(entry.elapsed_seconds, elapsed_seconds)
-        counter = self._frame_counter.search(detail) if state == "Running" else None
+        if state == "Running":
+            now = time.monotonic()
+            if entry._clock_origin is None:
+                entry._clock_origin = now - entry.elapsed_seconds
+            self._advance_clock(entry, now)
+            if not self._progress_timer.isActive():
+                self._progress_timer.start()
+        else:
+            self._reset_processing(entry)
+            if not any(item.state == "Running" for item in self._entries):
+                self._progress_timer.stop()
+        counter = self._frame_counter.search(detail) if state == "Running" and not entry._structured_metrics else None
         if counter:
             current = int(counter.group(1).replace(",", ""))
             total = int((counter.group(2) or "0").replace(",", ""))
@@ -338,7 +413,7 @@ class BatchListModel(QAbstractListModel):
             # Repeated/invalid timestamps cannot measure a rate. Retain the
             # baseline so the next timed update includes all intervening frames.
             entry.processed_frames, entry.processing_total_frames = current, total
-        else:
+        elif not entry._structured_metrics:
             entry._frame_sample = None
             entry.processing_fps = 0.0
             entry.processed_frames = 0
@@ -368,9 +443,7 @@ class BatchListModel(QAbstractListModel):
                 entry.detail = ""
                 entry.output_path = ""
                 entry.elapsed_seconds = 0.0
-                entry.processed_frames = entry.processing_total_frames = 0
-                entry.processing_fps = 0.0
-                entry._frame_sample = None
+                self._reset_processing(entry)
                 idx = self.index(row)
                 self.dataChanged.emit(idx, idx, [self.StateRole, self.ProgressRole, self.DetailRole,
                                                 self.OutputPathRole, self.ElapsedSecondsRole, self.ProcessedFramesRole,
@@ -388,9 +461,8 @@ class BatchListModel(QAbstractListModel):
             e.detail = ""
             e.output_path = ""
             e.elapsed_seconds = 0.0
-            e.processed_frames = e.processing_total_frames = 0
-            e.processing_fps = 0.0
-            e._frame_sample = None
+            self._reset_processing(e)
+        self._progress_timer.stop()
         self.dataChanged.emit(self.index(0), self.index(len(self._entries) - 1),
                               [self.StateRole, self.ProgressRole, self.DetailRole,
                                self.OutputPathRole, self.ElapsedSecondsRole, self.ProcessedFramesRole,

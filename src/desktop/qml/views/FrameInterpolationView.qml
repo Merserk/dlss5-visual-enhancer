@@ -107,6 +107,15 @@ Item {
                                     onActivated: (v) => { if (appBridge) appBridge.fiEngine = v }
                                 }
 
+                                AppComboBox {
+                                    objectName: "fgOpticalFlowQuality"
+                                    width: parent.width
+                                    label: qsTranslate("App", "Optical Flow Quality")
+                                    model: appBridge ? appBridge.opticalFlowQualityChoices : ["High", "Medium", "Low"]
+                                    currentValue: appBridge ? appBridge.fiOpticalFlowQuality : "High"
+                                    onActivated: v => { if (appBridge) appBridge.fiOpticalFlowQuality = v; }
+                                }
+
                                 Text {
                                     width: parent.width
                                     text: appBridge ? appBridge.frameGenerationEstimate : ""

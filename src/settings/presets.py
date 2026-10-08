@@ -36,7 +36,6 @@ def _preset_name(value: str) -> str:
         raise ValueError("Preset name cannot contain control characters.")
     return name
 
-
 def preset_filename(name: str) -> str:
     """Return a portable JSON filename while preserving the display name in the file."""
     display_name = _preset_name(name)
@@ -50,7 +49,6 @@ def preset_filename(name: str) -> str:
     if stem.upper() in _WINDOWS_RESERVED_NAMES:
         stem += "_preset"
     return f"{stem}.json"
-
 
 def preset_document(name: str, settings: UISettings) -> dict[str, Any]:
     """Build the versioned user-facing preset document."""
@@ -67,7 +65,6 @@ def preset_document(name: str, settings: UISettings) -> dict[str, Any]:
         "settings": values,
     }
 
-
 def export_settings_preset(name: str, settings: UISettings) -> Path:
     """Write a validated preset to an isolated temporary download directory."""
     document = preset_document(name, settings)
@@ -80,7 +77,6 @@ def export_settings_preset(name: str, settings: UISettings) -> Path:
         encoding="utf-8",
     )
     return path.resolve()
-
 
 def _coerce_preset_value(field_name: str, value: Any, current: UISettings) -> Any:
     expected = getattr(current, field_name)
@@ -108,7 +104,6 @@ def _coerce_preset_value(field_name: str, value: Any, current: UISettings) -> An
             raise ValueError(f"Preset setting {field_name!r} must be text.")
         return value
     raise ValueError(f"Preset setting {field_name!r} has an unsupported type.")
-
 
 def import_settings_preset(
     path: str | os.PathLike[str], current: UISettings
@@ -145,6 +140,18 @@ def import_settings_preset(
     if not isinstance(imported, dict):
         raise ValueError("Preset settings must be a JSON object.")
 
+    if version < 31:
+        imported = dict(imported)
+        for key in ("nr_style", "live_nr_style"):
+            if key in imported:
+                imported[key] = {"Default": "Style 0", "Natural": "Style 1", "Cinematic": "Style 2"}.get(imported[key], imported[key])
+        for prefix in ("", "live_"):
+            for native_field in ("local_tone_strength", "local_structure_strength", "skin_structure_strength"):
+                key = prefix + native_field
+                value = imported.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+                    imported[key] = 1.0 if native_field == "skin_structure_strength" and value == -1.0 else min(1.0, max(0.0, value))
+
     known_names = {field.name for field in fields(UISettings)}
     changes = {
         key: _coerce_preset_value(key, value, current)
@@ -157,19 +164,19 @@ def import_settings_preset(
     if version == 1:
         # v1's DLSS model-preset field was never applied by feature 18. Ignore
         # it. (The retired GPU staging switch from old presets is filtered by
-        # known_names above; the runtime path is codec-driven now.)
+        # known_names above; all exports use separate model passes now.)
         changes.pop("dlss_model_preset", None)
-    if version < 3:
-        changes["nr_color_strength"] = DEFAULT_SETTINGS.nr_color_strength
-        changes["tone_preservation"] = DEFAULT_SETTINGS.tone_preservation
-        changes["mask_feather"] = DEFAULT_SETTINGS.mask_feather
-    if version < 4:
-        changes["face_skin_protection"] = DEFAULT_SETTINGS.face_skin_protection
-        changes["grain_preservation"] = DEFAULT_SETTINGS.grain_preservation
     if version < 5:
         changes["nr_passes"] = DEFAULT_SETTINGS.nr_passes
-    if version < 6:
-        changes["shimmer_suppression"] = DEFAULT_SETTINGS.shimmer_suppression
+    if version < 32:
+        # Earlier versions always used maximum-quality NVOFA. Preserve that
+        # behavior even when importing into a session currently set to Low.
+        changes["nr_optical_flow_quality"] = DEFAULT_SETTINGS.nr_optical_flow_quality
+        changes["live_nr_optical_flow_quality"] = DEFAULT_SETTINGS.live_nr_optical_flow_quality
+    if version < 33:
+        changes["upscale_optical_flow_quality"] = DEFAULT_SETTINGS.upscale_optical_flow_quality
+    if version < 34:
+        changes["frame_interpolation_optical_flow_quality"] = DEFAULT_SETTINGS.frame_interpolation_optical_flow_quality
     if version < 8:
         for key in (
             "nr_scale_method", "nr_dlss_mode", "nr_dlss_preset",
@@ -279,6 +286,11 @@ def import_settings_preset(
         changes["lut_reference_image"] = DEFAULT_SETTINGS.lut_reference_image
     if version < 27:
         changes["cache_codec"] = DEFAULT_SETTINGS.cache_codec
+    # Removed cache choices migrate even in presets from the current schema.
+    if changes.get("cache_codec") in {"FFV1", "ProRes Proxy"}:
+        changes["cache_codec"] = DEFAULT_SETTINGS.cache_codec
+    if version < 30 or "cache_size_gb" not in changes:
+        changes["cache_size_gb"] = DEFAULT_SETTINGS.cache_size_gb
     if version < 28:
         for key in GRAIN_FIELDS:
             changes[key] = getattr(DEFAULT_SETTINGS, key)
@@ -322,7 +334,6 @@ def import_settings_preset(
                 upscale_container=container_for_codec(merged.upscale_codec),
             )
     return name, _validate(merged)
-
 
 def export_settings_preset_to(
     name: str,

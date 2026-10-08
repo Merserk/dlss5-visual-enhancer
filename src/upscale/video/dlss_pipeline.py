@@ -66,7 +66,8 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
             temp_video = Path(work) / "encoded.mkv"
             update(.01, "Starting DLSS Super Resolution")
             dlss = DLSSSession(width, height, options.dlss_mode, options.dlss_preset,
-                               gpu_uuid=options.ai_gpu_uuid, even=True)
+                               gpu_uuid=options.ai_gpu_uuid, even=True,
+                               optical_flow_quality=options.optical_flow_quality)
             if (dlss.output_width, dlss.output_height) != (ow, oh):
                 raise RuntimeError("DLSS output sizing differs from the video encoder size.")
             if options.hdr_enabled:
@@ -248,7 +249,7 @@ def convert_video_dlss(source, options, *, controller, progress=None, output_dir
                 "rtx_video_hdr": bool(options.hdr_enabled),
                 "audio_streams": audio_info.get("streams", []),
                 "timings": timings,
-                "motion_backend": "gpu_lucas_kanade", **native_diagnostics,
+                **native_diagnostics,
                 "bridge_version": bridge_version,
             }
             output_file.publish()

@@ -178,7 +178,12 @@ def cleanup_old_caches(
 
     try:
         if JOBS.is_dir():
-            removed, freed = sweep_dir_by_age(JOBS, max_age_seconds)
+            from .rolling_cleanup import protected_rolling_names, stale_rolling_directories
+            for directory in stale_rolling_directories(JOBS):
+                freed_total += _remove_entry(directory)
+                removed_total += 1
+            removed, freed = sweep_dir_by_age(JOBS, max_age_seconds,
+                                             excluded_names=protected_rolling_names(JOBS))
             removed_total += removed
             freed_total += freed
     except Exception:

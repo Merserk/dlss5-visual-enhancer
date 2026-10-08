@@ -2,9 +2,8 @@ from __future__ import annotations
 
 """Persistent in-process CUDA bridge for RTX Video VSR and TrueHDR.
 
-The legacy D3D11 worker remains available as an explicit developer A/B probe,
-but production frames never fall back to it. Host callers cross PCIe once in
-each direction; CUDA video callers stay on the selected adapter through DLPack.
+Host callers cross PCIe once in each direction; CUDA video callers stay on
+the selected adapter through DLPack.
 """
 
 import collections
@@ -12,26 +11,22 @@ import ctypes
 import gc
 import json
 import queue
-import subprocess
 import threading
 import time
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from ...core.gpu_detection import detect_gpus
 from ...core.gpu_selection import resolve_ai_gpu
-from ...core.jobs import Cancelled, JobController, current_job_controller
-from ...core.neural_bridge import _DLPackPlane
+from ...core.jobs import Cancelled, JobController
+from ...core.cuda_dlpack import CudaDLPackPlane
 from ...core.ngx_runtime import NGX_RUNTIME_LOCK
-from ...core.paths import ROOT, RUNTIME
+from ...core.paths import RUNTIME
 from .models import UpscaleCapabilities, UpscaleOptions
 
 
 RUNTIME_DIR = RUNTIME / "rtx_video"
 BRIDGE = RUNTIME_DIR / "neuroframe_engine_upscaling.dll"
-WORKER = (ROOT / "native (dev)" / "Upscale" / "RTX Video" / "rtx_video" /
-          "build" / "legacy" / "rtx-video-worker.exe")
 BRIDGE_ABI_VERSION = 1
 MEMORY_HOST, MEMORY_CUDA = 1, 2
 FORMAT_RGBA8, FORMAT_R10, FORMAT_RGBA16F, FORMAT_NV12, FORMAT_P010, FORMAT_YUV422P10 = 1, 2, 3, 4, 5, 6
@@ -127,10 +122,8 @@ def gpu_luid(gpu: dict) -> str:
     return bytes(luid).hex()
 
 
-def runtime_files(*, legacy_probe: bool = False) -> None:
+def runtime_files() -> None:
     required = [BRIDGE, RUNTIME_DIR / "nvngx_vsr.dll", RUNTIME_DIR / "nvngx_truehdr.dll"]
-    if legacy_probe:
-        required.append(WORKER)
     for path in required:
         if not path.is_file():
             raise RuntimeError(f"RTX Video runtime is missing: {path}. Rebuild or restore the RTX Video runtime.")
@@ -214,7 +207,9 @@ class _BridgeManager:
             library = ctypes.WinDLL(str(BRIDGE))
         except OSError as exc:
             raise RTXVideoBridgeError(f"Could not load the RTX Video CUDA bridge: {exc}") from exc
+        library.rtxv_abi_version.argtypes = []
         library.rtxv_abi_version.restype = ctypes.c_uint32
+        library.rtxv_version.argtypes = []
         library.rtxv_version.restype = ctypes.c_char_p
         library.rtxv_init.argtypes = [ctypes.c_int, ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_int]
         library.rtxv_init.restype = ctypes.c_int
@@ -225,12 +220,15 @@ class _BridgeManager:
         library.rtxv_session_create.argtypes = [ctypes.POINTER(SessionDescriptorV1), ctypes.c_void_p, ctypes.c_int]
         library.rtxv_session_create.restype = ctypes.c_void_p
         library.rtxv_session_release.argtypes = [ctypes.c_void_p]
+        library.rtxv_session_release.restype = None
         library.rtxv_surface_acquire.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_int]
         library.rtxv_surface_acquire.restype = ctypes.c_void_p
         library.rtxv_surface_frame_desc.argtypes = [ctypes.c_void_p, ctypes.POINTER(FrameDescriptorV1)]
         library.rtxv_surface_frame_desc.restype = ctypes.c_int
         library.rtxv_surface_retain.argtypes = [ctypes.c_void_p]
+        library.rtxv_surface_retain.restype = None
         library.rtxv_surface_release.argtypes = [ctypes.c_void_p]
+        library.rtxv_surface_release.restype = None
         library.rtxv_process_frame_v1.argtypes = [
             ctypes.c_void_p, ctypes.POINTER(FrameDescriptorV1), ctypes.POINTER(FrameDescriptorV1),
             ctypes.POINTER(FrameResultV1), ctypes.c_void_p, ctypes.c_int,
@@ -343,32 +341,9 @@ def probe_capabilities(gpu_uuid: str = "auto", *, controller=None) -> UpscaleCap
     return UpscaleCapabilities(
         gpu=gpu, luid=gpu_luid(gpu), vsr=_feature_record(status, "vsr"),
         hdr=_feature_record(status, "hdr"), sdk_version="1.1.0",
-        worker_version="developer-probe-only",
         bridge_version=str(status.get("bridge_version") or "unknown"),
         bridge_status=status,
     )
-
-
-@lru_cache(maxsize=8)
-def probe_legacy_capabilities(luid: str) -> dict[str, Any]:
-    """Explicit developer-only D3D11 subprocess capability probe."""
-    runtime_files(legacy_probe=True)
-    controller = current_job_controller() or JobController()
-    process = subprocess.Popen(
-        [str(WORKER), "--probe", "--gpu-luid", luid], cwd=WORKER.parent,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    controller.register(process)
-    try:
-        stdout, stderr = process.communicate(timeout=90)
-    finally:
-        if process.poll() is None:
-            process.kill()
-        controller.unregister(process)
-    if process.returncode:
-        raise RuntimeError(stderr.decode("utf-8", "replace")[-3000:])
-    return json.loads(stdout)
 
 
 class RTXVideoCudaSurface:
@@ -398,12 +373,12 @@ class RTXVideoCudaSurface:
         descriptor = self.descriptor
         bits = 16 if descriptor.pixel_format == FORMAT_P010 else 8
         item_size = bits // 8
-        y_plane = _DLPackPlane(
+        y_plane = CudaDLPackPlane(
             pointer=int(descriptor.planes[0]), shape=(int(descriptor.height), int(descriptor.width)),
             strides=(int(descriptor.strides[0]) // item_size, 1), bits=bits,
             device_id=self.ordinal, retain=self.retain, release=self.release,
         )
-        uv_plane = _DLPackPlane(
+        uv_plane = CudaDLPackPlane(
             pointer=int(descriptor.planes[1]),
             shape=((int(descriptor.height) + 1) // 2, (int(descriptor.width) + 1) // 2, 2),
             strides=(int(descriptor.strides[1]) // item_size, 2, 1), bits=bits,
@@ -630,7 +605,7 @@ class RTXVideoSession:
         """Evaluate a CUDA input into packed host output for lossless A/B tests.
 
         Production video uses :meth:`process_cuda_frame`; this explicit test
-        route intentionally downloads the result so legacy and CUDA engines can
+        route intentionally downloads the result so host and CUDA processing can
         be compared before a lossy delivery encode.
         """
         self._check()

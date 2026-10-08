@@ -1,9 +1,4 @@
-"""Continuous video stages, a bounded encoded spool and one delivery encoder.
-
-GPU sessions and the interpolation timeline live for the entire source. Only
-the first stage is spooled; later stages exchange frames through bounded pipes,
-so a high-FPS or upscaled later stage cannot create a second full-video cache.
-"""
+"""Timestamped video stages and one delivery encoder for rolling exports."""
 from __future__ import annotations
 
 import itertools
@@ -31,18 +26,16 @@ from ..core.ffmpeg.preview import decode_timeline_frame
 from ..core.ffmpeg.nut import RawVideoPacketMuxer
 from ..core.ffmpeg.sharpening import sharpening_filter
 from ..core.ffmpeg.grain import GrainOptions, grain_filter
-from ..core.ffmpeg.vulkan import prepare_command
+from ..core.ffmpeg.vulkan import prepare_command, quote_filter_path
+from ..core.frame_process import spawn_frame_process
 from ..core.jobs import BoundedLogBuffer, Cancelled, active_job, drain_bounded_text
 from ..core.paths import FFMPEG
-from ..core.rolling_cache import CACHE_BYTES, RollingFrameCache
 from ..core.runtime import resolve_output_size
 from ..frame_interpolation.models import resolve_target_rate
 from ..settings.models import UISettings
 from .coloring import has_lut_adjustments, load_cube_lut, save_cube_lut
 
-
 FILTER_STAGES = {"coloring", "scale_method", "cas_sharpening", "grain"}
-
 
 class _Cancellation:
     def __init__(self, owner, stop):
@@ -50,7 +43,6 @@ class _Cancellation:
 
     def is_set(self):
         return self.stop.is_set() or self.owner.is_set()
-
 
 class _Control:
     def __init__(self, owner):
@@ -64,7 +56,7 @@ class _Control:
     def check(self):
         if self.cancel.is_set():
             raise Cancelled("Video processing stopped.")
-
+        self.owner.check()
 
 @dataclass(frozen=True)
 class VideoState:
@@ -88,9 +80,9 @@ class VideoState:
                 "fps": float(rate), "depth": 10, "hdr": hdr, "rotation": 0,
                 "pixel_format": "gbrp10le", "color_space": "gbr", "color_range": "pc"}
         if hdr != self.hdr:
-            meta.update(color_primaries="bt2020", color_transfer="smpte2084")
+            meta.update(color_primaries="bt2020" if hdr else "bt709",
+                        color_transfer="smpte2084" if hdr else "bt709")
         return VideoState(width, height, rate, 10, hdr, meta)
-
 
 def filter_groups(stages):
     groups = []
@@ -101,8 +93,7 @@ def filter_groups(stages):
             groups.append((stage,) if stage in FILTER_STAGES else stage)
     return groups
 
-
-def build_filter_group(stages, state, settings, directory, controller):
+def build_filter_group(stages, state, settings, directory, controller, *, grain_phase=0):
     filters = []
     for stage in stages:
         if stage == "scale_method":
@@ -117,7 +108,8 @@ def build_filter_group(stages, state, settings, directory, controller):
             else:
                 save_cube_lut(lut, settings.lut_path or None, settings, controller=controller)
             load_cube_lut(lut)
-            filters.append("libplacebo=lut=reference.cube:lut_type=native:deband=0:dithering=-1:format=gbrp10le")
+            filters.append("libplacebo=lut=" + quote_filter_path(lut.resolve()) +
+                           ":lut_type=native:deband=0:dithering=-1:format=gbrp10le")
             state = state.rgb()
         elif stage == "cas_sharpening":
             if settings.cas_sharpness:
@@ -126,7 +118,7 @@ def build_filter_group(stages, state, settings, directory, controller):
                 filters.append(sharpening_filter(settings.sharpening_method, settings.cas_sharpness, transfer))
             state = state.rgb()
         elif stage == "grain":
-            graph = grain_filter(GrainOptions.from_settings(settings), hdr=state.hdr)
+            graph = grain_filter(GrainOptions.from_settings(settings), hdr=state.hdr, frame_offset=grain_phase)
             if graph:
                 filters.append(graph)
             state = state.rgb()
@@ -135,11 +127,10 @@ def build_filter_group(stages, state, settings, directory, controller):
         filters.append("format=gbrp10le")
     return "ve_gpu," + ",".join(filters), state
 
-
 def _timing(frame, original):
     frame.pts, frame.time_base, frame.duration = original.pts, original.time_base, original.duration
+    frame.opaque = original.opaque
     return frame
-
 
 def _color_tags(meta, *, rgb=True):
     primary = meta.get("color_primaries")
@@ -150,7 +141,6 @@ def _color_tags(meta, *, rgb=True):
     if matrix in {"unknown", "unspecified", None, ""}:
         matrix = "bt2020nc" if meta.get("hdr") else "bt709"
     return f"setparams=colorspace={matrix}:range={'full' if rgb else 'limited'}:color_primaries={primary}:color_trc={transfer}"
-
 
 def _close_process(process, controller, log_thread=None):
     if process.poll() is None:
@@ -163,7 +153,6 @@ def _close_process(process, controller, log_thread=None):
         if pipe:
             with suppress(OSError):
                 pipe.close()
-
 
 def pipe_filter(frames, before, after, graph, controller, directory, *, pixel_format="gbrp10le", tag_output=True):
     """Persistent CLI filter; the input writer and output reader run together."""
@@ -185,7 +174,7 @@ def pipe_filter(frames, before, after, graph, controller, directory, *, pixel_fo
     command = prepare_command(command, selection=controller.ffmpeg_device,
                               dimensions=(after.width, after.height), input_format=first.format.name,
                               rate=str(before.rate), time_base=str(first.time_base))
-    process = subprocess.Popen(command, cwd=directory, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    process = spawn_frame_process(command, cwd=directory, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     controller.register(process)
     logs = BoundedLogBuffer(max_tail=60)
@@ -193,18 +182,31 @@ def pipe_filter(frames, before, after, graph, controller, directory, *, pixel_fo
     logger.start()
     failure = []
     written = [0]
+    import queue
+    timing_queue = queue.Queue(maxsize=16)
 
     def write():
+        nonlocal first
         muxer = None
         try:
             muxer = RawVideoPacketMuxer(process.stdin, width=first.width, height=first.height,
                                        rate=before.rate, time_base=first.time_base, pix_fmt=first.format.name)
-            for frame in itertools.chain((first,), frames):
+            geometry = first.width, first.height, first.format.name
+            sequence = itertools.chain((first,), frames)
+            first = None
+            for frame in sequence:
                 controller.check()
-                if (frame.width, frame.height, frame.format.name) != (first.width, first.height, first.format.name):
+                if (frame.width, frame.height, frame.format.name) != geometry:
                     raise ValueError("Filter input dimensions or sample format changed.")
                 pts = round(Fraction(frame.pts) * frame.time_base / muxer.time_base)
                 duration = round(Fraction(frame.duration or 0) * frame.time_base / muxer.time_base)
+                while True:
+                    controller.check()
+                    try:
+                        timing_queue.put((frame.pts, frame.time_base, frame.duration, frame.opaque), timeout=.05)
+                        break
+                    except queue.Full:
+                        continue
                 muxer.write(packed_frame(frame), pts, duration)
                 written[0] += 1
             muxer.close()
@@ -228,11 +230,13 @@ def pipe_filter(frames, before, after, graph, controller, directory, *, pixel_fo
     read = 0
     complete = False
     try:
-        container = av.open(_Reader(process.stdout), format="nut")
+        container = av.open(_Reader(process.stdout), format="nut", options={"probesize": "32", "analyzeduration": "0"})
         for frame in container.decode(video=0):
             controller.check()
             if frame.is_corrupt:
                 raise RuntimeError("A processing filter produced a corrupt frame.")
+            original_pts, original_base, original_duration, opaque = timing_queue.get(timeout=30)
+            frame.pts, frame.time_base, frame.duration, frame.opaque = original_pts, original_base, original_duration, opaque
             read += 1
             yield frame
         writer.join(timeout=30)
@@ -248,6 +252,8 @@ def pipe_filter(frames, before, after, graph, controller, directory, *, pixel_fo
             raise RuntimeError(f"Video filter emitted {read} frames for {written[0]} inputs.")
         complete = True
     except (av.error.FFmpegError, OSError) as exc:
+        if controller.cancel.is_set():
+            raise Cancelled("Video processing stopped.") from exc
         logger.join(timeout=1)
         if failure:
             raise failure[0] from exc
@@ -261,22 +267,26 @@ def pipe_filter(frames, before, after, graph, controller, directory, *, pixel_fo
         if container:
             container.close()
 
-
 def source_frames(source, state, controller, stats, *, pixel_format=None, video_filter=None, directory=None,
-                  cuda_device=None, rtx_metadata=None):
+                  cuda_device=None, rtx_metadata=None, resume=None):
     rotation = int(state.metadata.get("rotation") or 0)
     graph = {90: "transpose=clock", 180: "hflip,vflip", 270: "transpose=cclock"}.get(rotation, "")
     if video_filter is not None:
         graph = video_filter
-    origin = last = None
-    count = 0
+    cursor = resume if resume is not None else {}
+    origin, last = cursor.get("origin"), cursor.get("last")
+    count = cursor.get("count", 0)
+    absolute = cursor.get("absolute")
+    checkpoint = absolute
     decoded_frames = None
     if rtx_metadata is not None and cuda_device is not None:
         from ..upscale.video.media import open_rtx_decoder
         decoder, first, remaining, _ = open_rtx_decoder(source, rtx_metadata, cuda_device, controller)
         decoded_frames = itertools.chain((first,), remaining)
     elif cuda_device is None:
-        decoder = open_video_decoder(source, controller, pixel_format=pixel_format, video_filter=graph, cwd=directory)
+        decoder = open_video_decoder(source, controller, pixel_format=pixel_format, video_filter=graph, cwd=directory,
+                                     start_seconds=max(0.0, float(absolute or 0)), seek_timestamp=resume is not None,
+                                     gpu_threads=2 if resume is not None else None)
     else:
         from av.codec.hwaccel import HWAccel
         # Open FFmpeg's CUDA primary context before the neural session, as in
@@ -285,6 +295,9 @@ def source_frames(source, state, controller, stats, *, pixel_format=None, video_
                          options={"primary_ctx": "1"}, is_hw_owned=True)
         decoder = av.open(str(source), hwaccel=device)
         decoder.streams.video[0].thread_type = "AUTO"
+        if checkpoint is not None:
+            stream = decoder.streams.video[0]
+            decoder.seek(max(0, int(checkpoint / stream.time_base)), stream=stream, backward=True)
     with decoder:
         for frame in decoded_frames if decoded_frames is not None else decoder.decode(video=0):
             controller.check()
@@ -299,6 +312,11 @@ def source_frames(source, state, controller, stats, *, pixel_format=None, video_
                     pixels, format="rgba64le" if pixels.dtype == np.uint16 else "rgba"), frame)
             tb = frame.time_base or state.metadata["time_base"]
             stamp = Fraction(frame.pts) * tb if frame.pts is not None else Fraction(count, 1) / state.rate
+            if checkpoint is not None and stamp <= checkpoint:
+                # The resumed decoder starts before the checkpoint to retain
+                # reference pictures. Its preroll must not be owned twice.
+                continue
+            absolute = stamp
             if origin is None:
                 origin = stamp
             stamp -= origin
@@ -312,13 +330,13 @@ def source_frames(source, state, controller, stats, *, pixel_format=None, video_
             count += 1
             stats["source_frames"] = count
             stats["duration"] = stamp + Fraction(frame.duration) * tb
+            cursor.update(origin=origin, last=last, absolute=absolute, count=count)
             yield frame
     declared = int(state.metadata.get("frames") or 0)
     if not count or (declared and declared != count):
         raise RuntimeError(f"Decoded {count} source frames; metadata declares {declared}.")
 
-
-def neural_frames(frames, state, settings, controller):
+def neural_frames(frames, state, settings, controller, *, phase_origin=0):
     from ..core.gpu_selection import resolve_runtime_ai_gpu
     from ..core.runtime import DLSSFrameSession, prepare_runtime, resize_fit, resolve_native_settings, resolve_upscaling_mode
     from ..neural_rendering.video.guides import TemporalGuideGenerator
@@ -333,14 +351,16 @@ def neural_frames(frames, state, settings, controller):
     session = DLSSFrameSession(input_width=state.width, input_height=state.height,
                               output_width=state.width, output_height=state.height,
                               frame_count=None, warmup_frames=opts.warmup_frames, factor=factor, mode=mode,
-                              native_settings=resolve_native_settings(opts), composition_mask=opts.nr_mask,
+                              native_settings=resolve_native_settings(opts), control_mask=opts.nr_mask,
                               gpu=gpu, runtime_bundle=prepared.runtime_bundle, controller=controller,
                               cuda_video=True)
     guides = TemporalGuideGenerator(session.render_width, session.render_height)
     matrix, color_range = _matrix_code(state.metadata), _range_code(state.metadata)
     output = np.empty((state.height, state.width, 4), dtype=np.uint16 if state.depth > 8 else np.uint8)
     try:
-        for index, frame in enumerate(itertools.chain((first,), frames)):
+        sequence = itertools.chain((first,), frames)
+        first = None
+        for index, frame in enumerate(sequence, start=phase_origin):
             controller.check()
             if frame.format.name == "cuda":
                 score, reset = session.score_cuda_frame(frame, color_matrix=matrix, color_range=color_range)
@@ -354,7 +374,7 @@ def neural_frames(frames, state, settings, controller):
                 score, reset = guide.scene_score, guide.reset
                 prepared_frame, rotation = np.ascontiguousarray(rgba), 0
             # Return the final packed result for the cache and filters.
-            # Software decoding also keeps motion/stabilization on the GPU,
+            # Software decoding also keeps motion guidance on the GPU,
             # instead of selecting full-resolution CPU DIS and NumPy.
             processed, _ = session.process_frame_to_host(
                 index=index, frame=prepared_frame, reset=reset, scene_score=score, pts=frame.pts,
@@ -367,15 +387,15 @@ def neural_frames(frames, state, settings, controller):
     finally:
         session.close()
 
-
-def dlss_frames(frames, state, settings, controller):
+def dlss_frames(frames, state, settings, controller, *, phase_origin=0):
     from ..core.dlss_bridge import DLSSSession
     from ..neural_rendering.video.guides import TemporalGuideGenerator
     session = DLSSSession(state.width, state.height, settings.upscale_dlss_mode, settings.upscale_dlss_preset,
-                          gpu_uuid=settings.ai_gpu_uuid, even=True)
+                          gpu_uuid=settings.ai_gpu_uuid, even=True,
+                          optical_flow_quality=settings.upscale_optical_flow_quality)
     guides = TemporalGuideGenerator(state.width, state.height, cut_threshold=.10)
     try:
-        for index, frame in enumerate(frames):
+        for index, frame in enumerate(frames, start=phase_origin):
             controller.check()
             rgba = np.ascontiguousarray(ffmpeg.decoded_rgba(frame, state.depth))
             guide = guides.process(rgba)
@@ -383,7 +403,6 @@ def dlss_frames(frames, state, settings, controller):
             yield _timing(av.VideoFrame.from_ndarray(pixels, format="rgba64le"), frame)
     finally:
         session.close()
-
 
 def rtx_frames(frames, state, after, settings, stage, controller, directory, *, normalized_input=False):
     from ..upscale.video.host_pipeline import _PinnedFramePool
@@ -401,7 +420,9 @@ def rtx_frames(frames, state, after, settings, stage, controller, directory, *, 
     except StopIteration:
         return
     def complete_input():
+        nonlocal first
         yield first
+        first = None
         yield from incoming
     sequence = complete_input()
     cuda_input = first.format.name == "cuda"
@@ -452,17 +473,19 @@ def rtx_frames(frames, state, after, settings, stage, controller, directory, *, 
             finally:
                 slot.release()
             result.colorspace, result.color_range = 0, 2
+            result.opaque = frame.opaque
             result.color_primaries, result.color_trc = (9, 16) if after.hdr else (1, 1)
             yield result
     finally:
-        normalized.close()
-        sequence.close()
-        if pool:
-            pool.close(abort=controller.cancel.is_set())
-        session.close()
+        with ExitStack() as cleanup:
+            cleanup.callback(session.close)
+            if pool:
+                cleanup.callback(pool.close, abort=controller.cancel.is_set())
+            cleanup.callback(sequence.close)
+            cleanup.callback(normalized.close)
 
-
-def interpolation_frames(frames, state, settings, controller, directory):
+def interpolation_frames(frames, state, settings, controller, directory, *, window_end=None, last_window=True,
+                         window_descriptor=None, window_start=Fraction(0), window_max_end=None):
     from ..core.gpu_selection import detect_gpu
     from ..frame_interpolation.capabilities import probe_frame_interpolation_capabilities
     from ..frame_interpolation.native import DirectDLSSGSession, DLSSGCudaSurface
@@ -515,20 +538,32 @@ def interpolation_frames(frames, state, settings, controller, directory):
 
     # Online nearest-timestamp resampling. The true output count is determined
     # at source EOF rather than decoding the whole video in a preflight scan.
-    writer = NearestTimestampWriter(target, 2**63 - 1, emit)
+    bound = window_end or window_max_end
+    writer = NearestTimestampWriter(target, output_frame_count(bound, target) + 1 if bound is not None else 2**63 - 1, emit)
     last = None
     segment = 0
     end = Fraction(0)
+    items = []
+    item = frame = bridge = None
     try:
         for i in range(count):
-            session = DirectDLSSGSession(state.width, state.height, generated, controller, ordinal, hdr=state.hdr)
+            session = DirectDLSSGSession(state.width, state.height, generated, controller, ordinal, hdr=state.hdr,
+                                        optical_flow_quality=settings.frame_interpolation_optical_flow_quality)
             sessions.append(session)
             stages.append(DLSSGStage(session, generated, detect_source_cuts=i == 0,
                                     cuda_output=False, output_p010=state.hdr, colors=colors,
                                     preserve_source_rgb=i == 0))
         for index, frame in enumerate(frames):
             controller.check()
+            if window_descriptor is not None and Path(window_descriptor).is_file():
+                import json
+                window = json.loads(Path(window_descriptor).read_text(encoding="utf-8"))
+                writer.output_count = output_frame_count(Fraction(window["end"]), target) + int(not window["last"])
             stamp = Fraction(frame.pts) * frame.time_base
+            if last is None:
+                from ..core.rolling_cache import HISTORY_FRAMES
+                history_start = window_start - Fraction(HISTORY_FRAMES, 1) / state.rate
+                writer.next_index = max(0, math.ceil(stamp * target), math.ceil(history_start * target))
             if last is not None and (stamp <= last or stamp - last > Fraction(2, 1) / state.rate):
                 segment += 1
             last = stamp
@@ -538,54 +573,90 @@ def interpolation_frames(frames, state, settings, controller, directory):
             for stage in stages:
                 items = [produced for item in items for produced in stage.push(item)]
             for item in items:
-                writer.push(item)
-                while ready:
-                    yield ready.popleft()
-            del frame, items
-        if bool(state.metadata.get("cfr", True)) and last is not None:
+                for _ in writer.iter_push(item):
+                    while ready:
+                        yield ready.popleft()
+            frame = bridge = item = None
+            items = []
+        if window_descriptor is not None:
+            import json
+            window = json.loads(Path(window_descriptor).read_text(encoding="utf-8"))
+            window_end, last_window = Fraction(window["end"]), bool(window["last"])
+        if window_end is not None:
+            end = window_end
+        elif bool(state.metadata.get("cfr", True)) and last is not None:
             # Matroska's millisecond PTS/duration rounding can make an 18-frame
             # 30-FPS clip look like .601 s. Its CFR duration is exactly .600 s;
             # otherwise ceil(duration * target) introduces an extra last frame.
             end = Fraction(index + 1, 1) / state.rate
-        writer.output_count = output_frame_count(end, target)
-        writer.finish()
-        while ready:
-            yield ready.popleft()
+        writer.output_count = output_frame_count(end, target) + int(window_end is not None and not last_window)
+        for _ in writer.iter_finish():
+            while ready:
+                yield ready.popleft()
     finally:
         ready.clear()
-        for session in reversed(sessions):
-            session.close()
-        close = getattr(frames, "close", None)
-        if close:
-            close()
+        # The bridge deliberately defers destruction while a retained RGB
+        # surface exists. Return writer/stage history before closing sessions.
+        retained = [writer.previous, item, *items, *(stage.previous for stage in stages)]
+        surfaces = {}
+        for retained_frame in retained:
+            if retained_frame is not None:
+                for pixels in (retained_frame.bridge_frame, retained_frame.encode_frame):
+                    if isinstance(pixels, DLSSGCudaSurface):
+                        surfaces[id(pixels)] = pixels
+        writer.previous = None
+        for stage in stages:
+            stage.previous = None
+        items.clear()
+        item = frame = bridge = None
+        with ExitStack() as cleanup:
+            close = getattr(frames, "close", None)
+            if close:
+                cleanup.callback(close)
+            for session in sessions:
+                cleanup.callback(session.close, abort=controller.cancel.is_set())
+            for pixels in surfaces.values():
+                cleanup.callback(pixels.close)
 
-
-def native_stage(stage, frames, state, settings, controller, directory, *, normalized_input=False):
+def native_output_state(stage, state, settings):
     from .workflow import _video_upscale_stage_options, video_upscale_size
     after = state.rgb()
-    if stage == "neural_model":
-        transformed = neural_frames(frames, state, settings, controller)
-    elif stage == "dlss_super_resolution":
+    if stage == "dlss_super_resolution":
         from ..core.dlss_modes import dlss_output_size
         w, h = dlss_output_size(state.width, state.height, settings.upscale_dlss_mode, even=True)
         after = state.rgb(width=w, height=h)
-        transformed = dlss_frames(frames, state, settings, controller)
     elif stage in {"super_resolution", "rtx_video_hdr"}:
         w, h, _ = video_upscale_size(state.width, state.height, _video_upscale_stage_options(settings, stage))
         after = state.rgb(width=w, height=h, hdr=stage == "rtx_video_hdr")
+    elif stage == "frame_generation":
+        after = state.rgb(rate=resolve_target_rate(settings.frame_interpolation_target_fps))
+    elif stage != "neural_model":
+        raise ValueError(f"Unknown rolling processing stage: {stage}.")
+    return after
+
+def native_stage(stage, frames, state, settings, controller, directory, *, normalized_input=False,
+                 normalize_output=True, window_end=None, last_window=True, phase_origin=0, window_descriptor=None,
+                 window_start=Fraction(0), window_max_end=None):
+    after = native_output_state(stage, state, settings)
+    if stage == "neural_model":
+        transformed = neural_frames(frames, state, settings, controller, phase_origin=phase_origin)
+    elif stage == "dlss_super_resolution":
+        transformed = dlss_frames(frames, state, settings, controller, phase_origin=phase_origin)
+    elif stage in {"super_resolution", "rtx_video_hdr"}:
         transformed = rtx_frames(frames, state, after, settings, stage, controller, directory,
                                   normalized_input=normalized_input)
     elif stage == "frame_generation":
-        after = state.rgb(rate=resolve_target_rate(settings.frame_interpolation_target_fps))
-        transformed = interpolation_frames(frames, state, settings, controller, directory)
+        transformed = interpolation_frames(frames, state, settings, controller, directory,
+                                           window_end=window_end, last_window=last_window,
+                                           window_descriptor=window_descriptor, window_start=window_start,
+                                           window_max_end=window_max_end)
     else:
         raise ValueError(f"Unknown rolling processing stage: {stage}.")
-    if stage in {"super_resolution", "rtx_video_hdr"}:
+    if not normalize_output or stage in {"super_resolution", "rtx_video_hdr"}:
         return transformed, after
     # Other engines use the established RGB packing/clamping boundary.
     raw = after
     return pipe_filter(transformed, raw, after, "ve_gpu,format=gbrp10le", controller, directory), after
-
 
 def render_preview_frame(source: Path, settings: UISettings, controller,
                          start_seconds: float, stages, metadata: dict) -> np.ndarray:
@@ -629,11 +700,11 @@ def render_preview_frame(source: Path, settings: UISettings, controller,
         result = rendered[0].to_ndarray(format="rgba64le")
         return np.ascontiguousarray(result)
 
-
-def _encode(frames, state, source, destination, settings, controller, progress, stats):
+def _encode(frames, state, source, destination, settings, controller, progress, stats, *, video_filter="",
+            frame_progress=True):
     frames = iter(frames)
     first = next(frames)
-    output = OutputFile(destination)
+    output = None
     process = muxer = logger = None
     completed = False
     delivered = 0
@@ -657,8 +728,9 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
                "-f", "nut", "-i", "pipe:0",
                *(["-t", f"{duration:.9f}"] if duration > 0 else []), "-i", str(source),
                "-map", "0:v:0", "-map", "1:a?", "-map_metadata", "1", "-map_chapters", "1",
-               "-vf", tags, *codec_args, *audio.encoder_args(), "-fps_mode", "passthrough", "-enc_time_base:v", "demux",
-               str(output.temporary)]
+               "-vf", tags + ("," + video_filter if video_filter else ""), *codec_args, *audio.encoder_args(),
+               "-fps_mode", "passthrough", "-enc_time_base:v", "demux",
+               str(destination)]
     command = prepare_command(command, selection=settings.ffmpeg_device,
                               dimensions=(state.width, state.height), input_format=first.format.name,
                               rate=str(state.rate), time_base=str(first.time_base))
@@ -666,7 +738,11 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
     last_update = 0.0
     expected = max(1, duration * float(state.rate))
     try:
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+        # Capability/audio probes can be cancelled before encoding starts.
+        # Create the partial file only after that setup, inside its owner.
+        output = OutputFile(destination)
+        command[-1] = str(output.temporary)
+        process = spawn_frame_process(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         controller.register(process)
         logger = threading.Thread(target=drain_bounded_text, args=(process.stderr, logs), daemon=True)
@@ -680,7 +756,7 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
             muxer.write(packed_frame(frame), pts, frame_duration)
             delivered += 1
             now = time.perf_counter()
-            if progress and now - last_update >= .2:
+            if progress and frame_progress and now - last_update >= .2:
                 progress(min(.97, delivered / expected * .97), f"Processing video: {delivered:,} frames")
                 last_update = now
         muxer.close()
@@ -695,6 +771,7 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
             except subprocess.TimeoutExpired:
                 continue
         logger.join(timeout=2)
+        controller.check()
         if process.returncode:
             raise RuntimeError("Video export failed:\n" + "\n".join(logs.snapshot()))
         if progress:
@@ -710,6 +787,8 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
         stats.update(output_frames=delivered, encoder=selected)
         completed = True
     except (BrokenPipeError, OSError) as exc:
+        if controller.cancel.is_set():
+            raise Cancelled("Video processing stopped.") from exc
         if logger:
             logger.join(timeout=1)
         raise RuntimeError("Video export failed:\n" + "\n".join(logs.snapshot())) from exc
@@ -722,111 +801,14 @@ def _encode(frames, state, source, destination, settings, controller, progress, 
                 muxer.close()
         if process:
             _close_process(process, controller, logger)
-        output.cleanup()
+        if output:
+            output.cleanup()
         close = getattr(frames, "close", None)
         if close:
             close()
 
-
 def render_rolling_video(source: Path, settings: UISettings, destination: Path,
-                         controller, directory: Path, stages, progress=None, *, cache_limit=CACHE_BYTES):
-    from .workflow import _export_video
-    started = time.perf_counter()
-    control = _Control(controller)
-    meta = ffmpeg.probe_video(source, count_mode="metadata", controller=controller,
-                              inspect_timestamps="frame_generation" in stages)
-    state = VideoState.from_metadata(meta)
-    groups = filter_groups(stages)
-    def direct_progress(value, message):
-        if progress:
-            progress(min(.99, float(value)), message)
-    # Stateless-only workflows can be delivered in one CLI pass. No cache or
-    # extra decode is useful here, even when the user enables rolling mode.
-    if len(groups) == 1 and isinstance(groups[0], tuple):
-        graph, after = build_filter_group(groups[0], state, settings, directory, controller)
-        _export_video(source, source, destination, settings, controller, pipeline_hdr=after.hdr,
-                      progress=direct_progress, video_filter=graph, output_metadata=after.metadata,
-                      working_directory=directory, verify_output=True)
-        app_log.info("rolling-cache", f"direct src={source.name} elapsed={time.perf_counter()-started:.3f}s cache=0")
-        if progress:
-            progress(1.0, "Export complete")
-        return str(destination)
-    if not groups:
-        _export_video(source, source, destination, settings, controller, pipeline_hdr=state.hdr,
-                      progress=direct_progress, verify_output=True)
-        if progress:
-            progress(1.0, "Export complete")
-        return str(destination)
-    stats = {"source_metadata": meta}
-    cache = None
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with active_job(controller), ExitStack() as resources:
-        first_stage = groups[0]
-        decode_format = None
-        cuda_device = None
-        initial_filter = None
-        first_filtered_state = None
-        rtx_metadata = None
-        if isinstance(first_stage, tuple):
-            initial_filter, first_filtered_state = build_filter_group(first_stage, state, settings, directory, control)
-            rotation = int(state.metadata.get("rotation") or 0)
-            rotate = {90: "transpose=clock,", 180: "hflip,vflip,", 270: "transpose=cclock,"}.get(rotation, "")
-            initial_filter = rotate + initial_filter
-            decode_format = "gbrp10le"
-        elif first_stage in ("super_resolution", "rtx_video_hdr"):
-            from ..upscale.video.media import inspect_video, decode_filter
-            rtx_metadata = inspect_video(source, control, reject_hdr=True)
-            initial_filter, _ = decode_filter(rtx_metadata)
-            decode_format = "gbrp10le" if state.depth > 8 else "rgba"
-            from ..core.gpu_selection import detect_gpu, prefer_cuda_video
-            if prefer_cuda_video(settings.ffmpeg_device, settings.ai_gpu_uuid, settings.video_gpu_uuid):
-                cuda_device = int(detect_gpu(settings.ai_gpu_uuid)["cuda_ordinal"])
-            state = replace(state, width=rtx_metadata["width"], height=rtx_metadata["height"])
-        if first_stage in ("neural_model", "dlss_super_resolution"):
-            decode_format = "rgba64le" if state.depth > 8 else "rgba"
-            if first_stage == "neural_model" and state.metadata.get("pixel_format") in {
-                    "yuv420p", "yuvj420p", "nv12", "yuv420p10le", "p010", "p010le"}:
-                from ..core.gpu_selection import detect_gpu, prefer_cuda_video
-                if prefer_cuda_video(settings.ffmpeg_device, settings.ai_gpu_uuid, settings.video_gpu_uuid):
-                    gpu = detect_gpu(settings.ai_gpu_uuid)
-                    cuda_device = int(gpu.get("cuda_ordinal", gpu.get("index", 0)))
-        elif first_stage == "frame_generation":
-            decode_format = "p010le" if state.hdr else "rgba"
-        frames = source_frames(source, state, control, stats, pixel_format=decode_format,
-                               video_filter=initial_filter, directory=directory, cuda_device=cuda_device,
-                               rtx_metadata=rtx_metadata)
-        resources.callback(frames.close)
-        try:
-            for index, group in enumerate(groups):
-                before = state
-                if isinstance(group, tuple):
-                    if index == 0:
-                        state = first_filtered_state
-                    else:
-                        graph, state = build_filter_group(group, state, settings, directory, control)
-                        frames = pipe_filter(frames, before, state, graph, control, directory)
-                else:
-                    if index == 0 and group in ("super_resolution", "rtx_video_hdr"):
-                        frames, state = native_stage(group, frames, state, settings, control, directory,
-                                                     normalized_input=True)
-                    else:
-                        frames, state = native_stage(group, frames, state, settings, control, directory)
-                resources.callback(frames.close)
-                if index == 0 and len(groups) > 1:
-                    cache = RollingFrameCache(frames, directory / "rolling-cache", control,
-                                               limit=cache_limit, max_frames=max(1, math.ceil(float(state.rate) * 60)),
-                                               codec=settings.cache_codec)
-                    resources.callback(cache.close)
-                    frames = iter(cache)
-                    resources.callback(frames.close)
-            _encode(frames, state, source, destination, settings, control, progress, stats)
-        finally:
-            control.stop.set()
-            controller.terminate_processes()
-    app_log.info("rolling-cache", f"done src={source.name} elapsed={time.perf_counter()-started:.3f}s "
-                 f"source_frames={stats.get('source_frames')} output_frames={stats.get('output_frames')} "
-                 f"peak_bytes={cache.peak_bytes if cache else 0} limit={cache_limit} "
-                 f"cache_waits={cache.waits if cache else 0} codec={settings.cache_codec}")
-    if progress:
-        progress(1.0, "Export complete")
-    return str(destination)
+                         controller, directory: Path, stages, progress=None, *, cache_limit=None, window_frames=None):
+    from .rolling_passes import render_pass_video
+    return render_pass_video(source, settings, destination, controller, directory, stages, progress,
+                             cache_limit=cache_limit, window_frames=window_frames)

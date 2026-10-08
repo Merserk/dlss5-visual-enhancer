@@ -34,7 +34,6 @@ from .reports import (
     IncrementalImageArchive, record_image_result,
 )
 
-
 @dataclass(slots=True)
 class _OutputTask:
     index: int
@@ -56,7 +55,6 @@ class _OutputTask:
     has_transparency: bool
     timings: dict[str, float]
 
-
 def _validate_options(options: ImageConversionOptions) -> ImageConversionOptions:
     if options.scale_method not in {"Standard", "DLSS"}:
         raise ValueError("Unknown Neural Rendering scale method.")
@@ -76,7 +74,6 @@ def _validate_options(options: ImageConversionOptions) -> ImageConversionOptions
     resolve_upscaling_mode(options.upscaling_factor)
     return options
 
-
 def _output_path(source, output_format, stamp, index, rename_mode, custom_suffix, *, output_dir=None):
     safe_stem = source.stem.strip().rstrip(".") or "image"
     return (output_dir or OUTPUTS) / output_filename(
@@ -84,12 +81,10 @@ def _output_path(source, output_format, stamp, index, rename_mode, custom_suffix
         f"{safe_stem}_DLSS5_IMAGE_{stamp}-{index + 1:04d}",
     )
 
-
 def _timed_decode(path: Path) -> tuple[_DecodedImage, float]:
     started = time.monotonic()
     decoded = decode_image(path)
     return decoded, time.monotonic() - started
-
 
 def _finalize_output(
     task: _OutputTask,
@@ -188,7 +183,6 @@ def _finalize_output(
     finally:
         if output_file is not None:
             output_file.cleanup()
-
 
 def convert_images(
     input_paths: Iterable[str | os.PathLike[str]],
@@ -326,8 +320,9 @@ def convert_images(
                                 warmup_frames=options.warmup_frames,
                                 factor=factor,
                                 mode=mode,
-                                native_settings=native,
-                                composition_mask=options.nr_mask,
+                                native_settings={**native, "motion_mode": 0},
+                                still_image=True,
+                                control_mask=options.nr_mask,
                                 gpu=gpu,
                                 runtime_bundle=prepared.runtime_bundle,
                                 controller=controller,

@@ -41,7 +41,8 @@ class _DLSSVideoAdapter:
     def __init__(self, width, height, options, output_p010, controller, capabilities):
         from ...core.dlss_bridge import DLSSSession
         self.dlss = DLSSSession(width, height, options.dlss_mode, options.dlss_preset,
-                                gpu_uuid=options.ai_gpu_uuid, even=True)
+                                gpu_uuid=options.ai_gpu_uuid, even=True,
+                                optical_flow_quality=options.optical_flow_quality)
         self.options = options
         self.output_p010 = output_p010
         self.hdr = None
@@ -90,7 +91,7 @@ class _DLSSVideoAdapter:
     def structured_status(self, *, decode_backend, encode_backend):
         result = self.dlss.last_result
         status = {
-            "engine": "DLSS Super Resolution", "bridge_version": "DLSS ABI 1",
+            "engine": "DLSS Super Resolution", "bridge_version": self.dlss.bridge_version,
             "mode": self.options.dlss_mode, "preset": self.options.dlss_preset,
             "guide_estimated": True, "frames": self.dlss.frames,
             "media_pipeline": "source-anchored DLSS", "synthetic_jitter": False,
@@ -101,7 +102,6 @@ class _DLSSVideoAdapter:
                 self.dlss.width, self.dlss.height),
         }
         status.update(self.dlss.diagnostics())
-        status["motion_backend"] = "gpu_lucas_kanade"
         status["bridge_version"] = self.dlss.bridge_version
         if self.hdr is not None:
             status["rtx_video_hdr"] = self.hdr.structured_status(
@@ -380,8 +380,8 @@ def convert_video_cuda_nvenc(
             }
             if codec_name != "av1_nvenc":
                 encoder_options["tune"] = "hq"
+            encoder_options.update(ffmpeg.nvenc_rate_control_options(quality))
             if quality["mode"] == "constant-quality":
-                encoder_options["cq"] = "0"
                 output_stream.codec_context.bit_rate = 0
             else:
                 output_stream.codec_context.bit_rate = int(quality["target_bitrate_kbps"]) * 1000

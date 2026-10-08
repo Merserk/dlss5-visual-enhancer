@@ -13,13 +13,14 @@ Item {
     property int precision: 2
     property string unit: ""
     property bool enabled: true
+    property bool showValueControls: true
 
     signal valueModified(real newValue)
 
     implicitWidth: 260
     implicitHeight: 48
     opacity: enabled ? 1.0 : 0.45
-    activeFocusOnTab: false
+    activeFocusOnTab: enabled && !showValueControls
 
     function formatNumber(number) {
         // Normalize floating-point residue and negative zero in the readout.
@@ -48,7 +49,7 @@ Item {
         if (!numberInput.dirty) return
         var next = parseNumber(numberInput.text)
         numberInput.dirty = false
-        if (control.enabled && isFinite(next)) {
+        if (control.enabled && control.showValueControls && isFinite(next)) {
             next = Math.max(control.from, Math.min(control.to, next))
             // Manual values use the control's precision, without snapping to
             // the coarser step used for dragging or keyboard increments.
@@ -75,7 +76,7 @@ Item {
         else if (event.key === Qt.Key_End) { valueModified(to); event.accepted = true }
     }
 
-    // Top row: Label, Reset icon, and editable numeric readout.
+    // Top row: label and optional reset/numeric controls.
     Row {
         id: headerRow
         anchors.top: parent.top
@@ -85,7 +86,7 @@ Item {
 
         Text {
             id: labelText
-            width: Math.min(implicitWidth, Math.max(0, headerRow.width - valueDisplayRow.implicitWidth - 8))
+            width: Math.min(implicitWidth, Math.max(0, headerRow.width - (control.showValueControls ? valueDisplayRow.implicitWidth + 8 : 0)))
             text: control.label
             elide: Text.ElideRight
             font.family: Theme.fontFamily
@@ -96,12 +97,13 @@ Item {
 
         Item {
             // Spacer
-            width: Math.max(8, headerRow.width - labelText.width - valueDisplayRow.implicitWidth)
+            width: Math.max(8, headerRow.width - labelText.width - (control.showValueControls ? valueDisplayRow.implicitWidth : 0))
             height: 1
         }
 
         Row {
             id: valueDisplayRow
+            visible: control.showValueControls
             spacing: 6
             LayoutMirroring.enabled: false
             LayoutMirroring.childrenInherit: true
@@ -129,7 +131,7 @@ Item {
                 MouseArea {
                     id: resetArea
                     anchors.fill: parent
-                    enabled: control.enabled && resetButton.available
+                    enabled: control.enabled && control.showValueControls && resetButton.available
                     hoverEnabled: enabled
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
@@ -155,7 +157,7 @@ Item {
 
                     HoverHandler {
                         id: numberHover
-                        enabled: control.enabled
+                        enabled: control.enabled && control.showValueControls
                         cursorShape: Qt.IBeamCursor
                     }
 
@@ -166,8 +168,8 @@ Item {
                         anchors.fill: parent
                         anchors.leftMargin: 4
                         anchors.rightMargin: 4
-                        enabled: control.enabled
-                        activeFocusOnTab: control.enabled
+                        enabled: control.enabled && control.showValueControls
+                        activeFocusOnTab: enabled
                         font.family: Theme.monoFontFamily
                         font.pixelSize: Theme.fontSizeSmall
                         font.weight: Font.DemiBold
@@ -312,7 +314,7 @@ Item {
             }
 
             onDoubleClicked: {
-                if (control.enabled) {
+                if (control.enabled && control.showValueControls) {
                     control.valueModified(control.defaultValue)
                 }
             }

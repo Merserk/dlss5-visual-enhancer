@@ -15,17 +15,12 @@ RAW_EXTENSIONS = {
 @dataclass(slots=True)
 class ImageConversionOptions:
     ai_gpu_uuid: str = "auto"
-    nr_style: str = "Default"
+    nr_style: str = "Style 0"
     nr_intensity: float = 1.0
     nr_passes: int = 1
     local_tone_strength: float = 1.0
     local_structure_strength: float = 1.0
-    skin_structure_strength: float = -1.0
-    nr_color_strength: float = 1.0
-    tone_preservation: float = 0.0
-    face_skin_protection: float = 0.0
-    grain_preservation: float = 0.0
-    mask_feather: int = 0
+    skin_structure_strength: float = 1.0
     nr_mask: object | None = None
     upscaling_factor: float = 1.0
     scale_method: str = "Standard"
@@ -42,7 +37,6 @@ class ImageConversionOptions:
     def neural_options(self) -> "ImageConversionOptions":
         # Image already carries every shared neural-rendering field needed by core.runtime.
         return self
-
 
 @dataclass(slots=True)
 class ImageConversionResult:
@@ -66,12 +60,10 @@ class ImageConversionResult:
     warnings: list[str] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
 
-
 @dataclass(slots=True)
 class ImageConversionFailure:
     input_path: str
     error: str
-
 
 @dataclass(slots=True)
 class ImageBatchResult:

@@ -12,16 +12,16 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source>  -  1 frame</source>
-      <translation>  -  1 frame</translation>
+      <translation>  -  1 फ़्रेम</translation>
     </message>
     <message>
       <source>  -  f</source>
-      <translation>  -  f</translation>
+      <translation>  -  फ़्रेम </translation>
     </message>
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="620" />
       <source> f</source>
-      <translation> f</translation>
+      <translation> फ़्रेम </translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="154" />
@@ -35,7 +35,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source> input FPS</source>
-      <translation> input FPS</translation>
+      <translation> इनपुट FPS</translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="427" />
@@ -180,7 +180,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/NeuralModelControls.qml" line="263" />
       <location filename="../qml/controls/AppFilePicker.qml" line="12" />
       <location filename="../qml/views/LiveView.qml" line="408" />
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>All Files (*.*)</source>
       <translation>सभी फ़ाइलें (*.*)</translation>
     </message>
@@ -228,12 +228,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Applied to processing</source>
       <translation>प्रोसेसिंग पर लागू</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="22" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="131" />
-      <source>Apply Detail-Only Preset</source>
-      <translation>केवल विवरण प्रीसेट लागू करें</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/ColoringControls.qml" line="38" />
       <source>Apply LUT</source>
@@ -352,8 +347,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/views/SettingsView.qml" line="71" />
-      <source>Cache Memory</source>
-      <translation>कैश मेमोरी</translation>
+      <source>Cache Memory (Rolling Cache 10GB)</source>
+      <translation>कैश मेमोरी (रोलिंग कैश 10 GB)</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="149" />
@@ -514,11 +509,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Color Match</source>
       <translation>रंग मिलान</translation>
     </message>
-    <message>
-      <location filename="../qml/views/LiveView.qml" line="524" />
-      <source>Color Strength</source>
-      <translation>रंग की तीव्रता</translation>
-    </message>
+    
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="46" />
       <source>Coloring</source>
@@ -544,12 +535,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Completed with warnings: %1 completed, %2 failed.</source>
       <translation>चेतावनियों के साथ पूरा: %1 पूर्ण, %2 विफल।</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="10" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="120" />
-      <source>Composition &amp; Masking</source>
-      <translation>कंपोज़िशन और मास्किंग</translation>
-    </message>
+    
     <message>
       <source>Configure hardware assignment, preview behavior, native layout, and portable settings presets.</source>
       <translation>हार्डवेयर, पूर्वावलोकन, विंडो लेआउट और पोर्टेबल प्रीसेट कॉन्फ़िगर करें।</translation>
@@ -790,12 +776,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>निर्यात पथ</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>Export Preset JSON</source>
       <translation>JSON प्रीसेट निर्यात करें</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="114" />
+      <location filename="../qml/views/SettingsView.qml" line="103" />
       <source>Export Preset...</source>
       <translation>प्रीसेट निर्यात करें...</translation>
     </message>
@@ -821,13 +807,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Exposure</source>
       <translation>एक्सपोज़र</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="57" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="173" />
-      <location filename="../qml/views/LiveView.qml" line="526" />
-      <source>Face / Skin Protection</source>
-      <translation>चेहरा / त्वचा सुरक्षा</translation>
-    </message>
+    
     <message>
       <source>Factory reset restores all DLSS, upscale, interpolation, GPU, mask, and encoding settings. Window geometry remains a desktop preference.</source>
       <translation>फ़ैक्टरी रीसेट DLSS, अपस्केलिंग, इंटरपोलेशन, GPU, मास्क और एन्कोडिंग सेटिंग्स बहाल करता है। विंडो का आकार और स्थान डेस्कटॉप प्राथमिकता रहते हैं।</translation>
@@ -906,13 +886,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Grain Amount</source>
       <translation>ग्रेन की मात्रा</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="68" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="187" />
-      <location filename="../qml/views/LiveView.qml" line="527" />
-      <source>Grain Preservation</source>
-      <translation>ग्रेन संरक्षण</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/GrainControls.qml" line="50" />
       <source>Grain Seed</source>
@@ -1031,7 +1005,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>छवियाँ (*.png *.jpg *.jpeg *.webp *.tif *.tiff *.bmp *.avif *.heic *.heif *.svg *.dng *.cr2 *.nef *.arw)</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>Import Preset JSON</source>
       <translation>JSON प्रीसेट आयात करें</translation>
     </message>
@@ -1041,7 +1015,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>आयात विफल: %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="121" />
+      <location filename="../qml/views/SettingsView.qml" line="110" />
       <source>Import...</source>
       <translation>आयात करें...</translation>
     </message>
@@ -1108,8 +1082,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>JSON प्रीसेट</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>JSON Presets (*.json)</source>
       <translation>JSON प्रीसेट (*.json)</translation>
     </message>
@@ -1207,8 +1181,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="108" />
       <location filename="../qml/components/NeuralModelControls.qml" line="233" />
-      <source>Load Custom Mask...</source>
-      <translation>कस्टम मास्क लोड करें...</translation>
+      <source>Load Control Mask...</source>
+      <translation>नियंत्रण मास्क लोड करें...</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="3834" />
@@ -1263,17 +1237,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>MPV: %1 छूटे, %2 रीबफ़र, A/V सिंक %3 ms</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="128" />
+      <location filename="../qml/views/SettingsView.qml" line="117" />
       <source>Maintenance &amp; Defaults</source>
       <translation>रखरखाव और डिफ़ॉल्ट</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="79" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="201" />
-      <location filename="../qml/views/LiveView.qml" line="528" />
-      <source>Mask Feather</source>
-      <translation>मास्क किनारे नरम करें</translation>
-    </message>
+    
     <message>
       <source>Match Colors</source>
       <translation>रंग मिलाएँ</translation>
@@ -1362,12 +1330,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>NO OUTPUT</source>
       <translation>कोई आउटपुट नहीं</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="35" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="145" />
-      <source>NR Color Strength</source>
-      <translation>NR रंग की तीव्रता</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/NeuralModelControls.qml" line="25" />
       <location filename="../qml/views/LiveView.qml" line="479" />
@@ -1408,7 +1371,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="227" />
-      <location filename="../qml/views/SettingsView.qml" line="158" />
+      <location filename="../qml/views/SettingsView.qml" line="147" />
       <source>No</source>
       <translation>नहीं</translation>
     </message>
@@ -1455,7 +1418,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>ऑनलाइन स्ट्रीम URL</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="133" />
+      <location filename="../qml/views/SettingsView.qml" line="122" />
       <source>Open Logs</source>
       <translation>लॉग खोलें</translation>
     </message>
@@ -1631,7 +1594,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>प्रीसेट</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="109" />
+      <location filename="../qml/views/SettingsView.qml" line="98" />
       <source>Preset name (e.g. 4K Master)...</source>
       <translation>प्रीसेट का नाम (जैसे 4K Master)...</translation>
     </message>
@@ -1639,7 +1602,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MenuStrip.qml" line="210" />
       <location filename="../qml/views/FrameInterpolationView.qml" line="195" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="249" />
-      <location filename="../qml/views/SettingsView.qml" line="98" />
+      <location filename="../qml/views/SettingsView.qml" line="87" />
       <location filename="../qml/views/UpscaleView.qml" line="448" />
       <location filename="../qml/views/UpscaleView.qml" line="481" />
       <source>Preview</source>
@@ -1753,7 +1716,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>तैयार।</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="101" />
+      <location filename="../qml/views/SettingsView.qml" line="90" />
       <source>Realtime Preview</source>
       <translation>रीयलटाइम पूर्वावलोकन</translation>
     </message>
@@ -1829,12 +1792,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>%1 सेटिंग्स रीसेट करें</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="134" />
+      <location filename="../qml/views/SettingsView.qml" line="123" />
       <source>Reset All Settings to Defaults</source>
       <translation>सभी सेटिंग्स रीसेट करें</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="170" />
+      <location filename="../qml/views/SettingsView.qml" line="159" />
       <source>Reset all settings?</source>
       <translation>सभी सेटिंग्स रीसेट करें?</translation>
     </message>
@@ -1877,11 +1840,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/LiveView.qml" line="177" />
       <source>Resume</source>
       <translation>जारी रखें</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="88" />
-      <source>Rolling Cache (5 GB)</source>
-      <translation>रोलिंग कैश (5 GB)</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="2050" />
@@ -1981,8 +1939,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="137" />
       <location filename="../qml/components/NeuralModelControls.qml" line="262" />
-      <source>Select Custom NR Mask</source>
-      <translation>कस्टम NR मास्क चुनें</translation>
+      <source>Select NR Control Mask</source>
+      <translation>NR नियंत्रण मास्क चुनें</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="175" />
@@ -2074,7 +2032,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>सेटिंग्स</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="106" />
+      <location filename="../qml/views/SettingsView.qml" line="95" />
       <source>Settings Presets</source>
       <translation>सेटिंग्स प्रीसेट</translation>
     </message>
@@ -2098,12 +2056,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Sharpness</source>
       <translation>तीक्ष्णता</translation>
     </message>
-    <message>
-      <location filename="../qml/components/NeuralModelControls.qml" line="106" />
-      <location filename="../qml/views/LiveView.qml" line="490" />
-      <source>Shimmer Suppression</source>
-      <translation>झिलमिलाहट कम करें</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="952" />
       <location filename="../qml/components/MediaViewport.qml" line="1011" />
@@ -2162,11 +2115,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MediaViewport.qml" line="410" />
       <source>Split</source>
       <translation>विभाजित</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="89" />
-      <source>Stage by Stage</source>
-      <translation>चरण दर चरण</translation>
     </message>
     <message>
       <source>Standard</source>
@@ -2307,7 +2255,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>तृतीय-पक्ष लाइसेंस</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="175" />
+      <location filename="../qml/views/SettingsView.qml" line="164" />
       <source>This restores every processing setting and clears the custom mask. This cannot be undone unless you exported a preset.</source>
       <translation>इससे सभी प्रोसेसिंग सेटिंग्स बहाल होंगी और कस्टम मास्क मिट जाएगा। इसे वापस करने के लिए निर्यात किया हुआ प्रीसेट चाहिए।</translation>
     </message>
@@ -2331,13 +2279,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Tonal Response</source>
       <translation>टोनल प्रतिक्रिया</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="46" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="159" />
-      <location filename="../qml/views/LiveView.qml" line="525" />
-      <source>Tone Preservation</source>
-      <translation>टोन संरक्षण</translation>
-    </message>
+    
     <message>
       <source>Ultra</source>
       <translation>अल्ट्रा</translation>
@@ -2446,8 +2388,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>वीडियो निर्यात अगला चरण शुरू करने से पहले हर चरण पूरा करता है। पूरी लंबाई वाली मध्यवर्ती फ़ाइलों को काफ़ी डिस्क स्थान की ज़रूरत हो सकती है।</translation>
     </message>
     <message>
-      <source>Video exports use a lossless rolling disk cache of up to 5 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
-      <translation>वीडियो निर्यात में अधिकतम 5 GB का दोषरहित रोलिंग डिस्क कैश उपयोग होता है। उपयोग किया गया डेटा स्वतः हट जाता है। अंतिम आउटपुट के लिए अतिरिक्त डिस्क स्थान चाहिए।</translation>
+      <source>Video exports use a rolling disk cache of up to 10 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
+      <translation>वीडियो निर्यात में अधिकतम 10 GB का रोलिंग डिस्क कैश उपयोग होता है। उपयोग किया गया डेटा स्वतः हट जाता है। अंतिम आउटपुट के लिए अतिरिक्त डिस्क स्थान चाहिए।</translation>
     </message>
     <message>
       <location filename="../qml/components/MenuStrip.qml" line="83" />
@@ -2501,7 +2443,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="228" />
-      <location filename="../qml/views/SettingsView.qml" line="159" />
+      <location filename="../qml/views/SettingsView.qml" line="148" />
       <source>Yes</source>
       <translation>हाँ</translation>
     </message>
@@ -2565,6 +2507,291 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/AboutView.qml" line="38" />
       <source>© 2026 Merserk. NVIDIA, DLSS, and RTX are trademarks of NVIDIA Corporation.</source>
       <translation>© 2026 Merserk. NVIDIA, DLSS और RTX, NVIDIA Corporation के ट्रेडमार्क हैं।</translation>
+    </message>
+    <message>
+      <source>Fast lossless</source>
+      <translation>तेज़ दोषरहित</translation>
+    </message>
+    <message>
+      <source>Fast compressed</source>
+      <translation>तेज़ संपीड़ित</translation>
+    </message>
+    <message>
+      <source>Fast 8-bit RGB compression without color subsampling. HDR uses Fast lossless. Models run one at a time.</source>
+      <translation>रंग सबसैंपलिंग के बिना तेज़ 8-बिट RGB संपीड़न। HDR के लिए तेज़ दोषरहित विकल्प उपयोग होता है। मॉडल एक समय में एक चलते हैं।</translation>
+    </message>
+    <message>
+      <source>Lossless RAM cache with disk fallback. Models run one at a time.</source>
+      <translation>दोषरहित RAM कैश, आवश्यकता पर डिस्क का उपयोग। मॉडल एक-एक करके चलते हैं।</translation>
+    </message>
+    <message>
+      <source>Export paused; GPU memory released</source>
+      <translation>निर्यात रुका; GPU मेमोरी खाली की गई</translation>
+    </message>
+    <message>
+      <source>Part %1 · %2 · %3 FPS · %4 GB</source>
+      <translation>भाग %1 · %2 · %3 FPS · %4 GB</translation>
+    </message>
+    <message>
+      <source>Preroll: %1 frames</source>
+      <translation>पूर्व तैयारी: %1 फ़्रेम</translation>
+    </message>
+    <message>
+      <source>Pausing export; releasing GPU workers…</source>
+      <translation>निर्यात रोककर GPU प्रक्रियाएँ मुक्त की जा रही हैं…</translation>
+    </message>
+    <message>
+      <source>Resuming export from the last committed part…</source>
+      <translation>अंतिम पूर्ण भाग से निर्यात फिर शुरू हो रहा है…</translation>
+    </message>
+    <message>
+      <source>Loading model</source>
+      <translation>मॉडल लोड हो रहा है</translation>
+    </message>
+    <message>
+      <source>Flushing output</source>
+      <translation>आउटपुट पूरा हो रहा है</translation>
+    </message>
+    <message>
+      <source>Writing cache</source>
+      <translation>कैश लिखा जा रहा है</translation>
+    </message>
+    <message>
+      <source>Releasing worker</source>
+      <translation>प्रक्रिया मुक्त हो रही है</translation>
+    </message>
+    <message>
+      <source>Committing part</source>
+      <translation>भाग सुरक्षित हो रहा है</translation>
+    </message>
+    <message>
+      <source>Finalizing video</source>
+      <translation>वीडियो पूरा हो रहा है</translation>
+    </message>
+    <message>
+      <source>Startup %1 s · switch %2 s</source>
+      <translation>आरंभ %1 सेकंड · बदलाव %2 सेकंड</translation>
+    </message>
+    <message>
+      <source>Cache Memory (Rolling Cache)</source>
+      <translation>कैश मेमोरी (रोलिंग कैश)</translation>
+    </message>
+    <message>
+      <source>Cache size</source>
+      <translation>कैश का आकार</translation>
+    </message>
+    <message>
+      <source>%1 GB (Default)</source>
+      <translation>%1 GB (डिफ़ॉल्ट)</translation>
+    </message>
+    <message>
+      <source>Native precision</source>
+      <translation>मूल परिशुद्धता</translation>
+    </message>
+    <message>
+      <source>Compressed RGB (8-bit)</source>
+      <translation>संपीड़ित RGB (8-बिट)</translation>
+    </message>
+    <message>
+      <source>Control Mask replaces Automatic Mask. RGB channels control intensity, tone, and structure.</source>
+      <translation>कंट्रोल मास्क ऑटोमैटिक मास्क की जगह लेता है। RGB चैनल तीव्रता, टोन और संरचना को नियंत्रित करते हैं।</translation>
+    </message>
+    <message>
+      <location filename="../qml/components/BatchQueueDrawer.qml" line="307" />
+      <source>Processing Stage %1 of %2 (Part %3)</source>
+      <translation>चरण %1 / %2 प्रोसेस हो रहा है (भाग %3)</translation>
+    </message>
+    <message>
+      <source>Optical Flow Quality</source>
+      <translation>ऑप्टिकल फ़्लो गुणवत्ता</translation>
+    </message>
+    <message>
+      <source>%1 (Discrete GPU)</source>
+      <translation>%1 (समर्पित GPU)</translation>
+    </message>
+    <message>
+      <source>%1 (Integrated GPU)</source>
+      <translation>%1 (एकीकृत GPU)</translation>
+    </message>
+    <message>
+      <source>%1 fps target | %2 fps processing | %3 enhanced | %4 sampled out | %5s buffered</source>
+      <translation>लक्ष्य: %1 fps | प्रोसेसिंग: %2 fps | %3 फ़्रेम बेहतर बनाए गए | सैंपलिंग में %4 छोड़े गए | बफ़र में %5 सेकंड</translation>
+    </message>
+    <message>
+      <source>%1 · pass %2/%3</source>
+      <translation>%1 · पास %2/%3</translation>
+    </message>
+    <message>
+      <source>%1. GPU filters: %2.</source>
+      <translation>%1। GPU फ़िल्टर: %2।</translation>
+    </message>
+    <message>
+      <source>AI GPU selection: %1</source>
+      <translation>AI के लिए चुना गया GPU: %1</translation>
+    </message>
+    <message>
+      <source>Active: %1 — %2×%3.</source>
+      <translation>सक्रिय: %1 — %2×%3।</translation>
+    </message>
+    <message>
+      <source>Application: %1</source>
+      <translation>एप्लिकेशन: %1</translation>
+    </message>
+    <message>
+      <source>Applying; newer changes pending</source>
+      <translation>लागू किया जा रहा है; नए बदलाव लंबित हैं</translation>
+    </message>
+    <message>
+      <source>Available</source>
+      <translation>उपलब्ध</translation>
+    </message>
+    <message>
+      <source>Buffering: %1</source>
+      <translation>बफ़रिंग: %1</translation>
+    </message>
+    <message>
+      <source>CPU (Software decoding / encoding)</source>
+      <translation>CPU (सॉफ़्टवेयर डिकोडिंग / एन्कोडिंग)</translation>
+    </message>
+    <message>
+      <source>Config: %1</source>
+      <translation>कॉन्फ़िगरेशन: %1</translation>
+    </message>
+    <message>
+      <source>Failed: %1</source>
+      <translation>विफल: %1</translation>
+    </message>
+    <message>
+      <source>Finished processing: %1. Playback available until Stop.</source>
+      <translation>प्रोसेसिंग पूरी हुई: %1। रोकें दबाने तक प्लेबैक उपलब्ध है।</translation>
+    </message>
+    <message>
+      <source>Finished: %1. %2 frames enhanced.</source>
+      <translation>पूरा हुआ: %1। %2 फ़्रेम बेहतर बनाए गए।</translation>
+    </message>
+    <message>
+      <source>Logs: %1</source>
+      <translation>लॉग: %1</translation>
+    </message>
+    <message>
+      <source>Missing</source>
+      <translation>अनुपलब्ध</translation>
+    </message>
+    <message>
+      <source>Outputs: %1</source>
+      <translation>आउटपुट: %1</translation>
+    </message>
+    <message>
+      <source>Playing: %1</source>
+      <translation>चल रहा है: %1</translation>
+    </message>
+    <message>
+      <source>Preparing Neural Rendering: %1x%2 -&gt; %3x%4...</source>
+      <translation>Neural Rendering तैयार हो रहा है: %1x%2 -&gt; %3x%4...</translation>
+    </message>
+    <message>
+      <source>Probing %1...</source>
+      <translation>%1 की जाँच हो रही है...</translation>
+    </message>
+    <message>
+      <source>Processing finished or stopped; changes apply on the next Start.</source>
+      <translation>प्रोसेसिंग पूरी हो गई या रोक दी गई; बदलाव अगली बार शुरू करने पर लागू होंगे।</translation>
+    </message>
+    <message>
+      <source>Requested up to %1p; received %2.</source>
+      <translation>%1p तक माँगा गया; %2 प्राप्त हुआ।</translation>
+    </message>
+    <message>
+      <source>Runtime error: %1</source>
+      <translation>रनटाइम त्रुटि: %1</translation>
+    </message>
+    <message>
+      <source>Runtime state: %1</source>
+      <translation>रनटाइम स्थिति: %1</translation>
+    </message>
+    <message>
+      <source>Software codecs</source>
+      <translation>सॉफ़्टवेयर कोडेक</translation>
+    </message>
+    <message>
+      <source>Source quality selection applies to YouTube/Twitch pages; using the supplied source.</source>
+      <translation>स्रोत गुणवत्ता का चयन YouTube/Twitch पेजों पर लागू होता है; दिए गए स्रोत का उपयोग किया जा रहा है।</translation>
+    </message>
+    <message>
+      <source>Startup warning: %1</source>
+      <translation>शुरू करते समय चेतावनी: %1</translation>
+    </message>
+    <message>
+      <source>The resolved stream differs from the requested height.</source>
+      <translation>प्राप्त स्ट्रीम की ऊँचाई माँगी गई ऊँचाई से अलग है।</translation>
+    </message>
+    <message>
+      <source>Update failed; recovery failed</source>
+      <translation>अपडेट विफल हुआ; पुनर्प्राप्ति विफल हुई</translation>
+    </message>
+    <message>
+      <source>Update failed—previous settings restored</source>
+      <translation>अपडेट विफल हुआ — पिछली सेटिंग बहाल की गईं</translation>
+    </message>
+    <message>
+      <source>Video GPU selection: %1</source>
+      <translation>वीडियो के लिए चुना गया GPU: %1</translation>
+    </message>
+    <message>
+      <source>Vulkan codecs where supported; software fallback</source>
+      <translation>समर्थित होने पर Vulkan कोडेक; अन्यथा सॉफ़्टवेयर कोडेक</translation>
+    </message>
+    <message>
+      <source>Native DLSSG</source>
+      <translation>नेटिव DLSSG</translation>
+    </message>
+    <message>
+      <source>Cascade</source>
+      <translation>कैस्केड</translation>
+    </message>
+    <message>
+      <source>Area</source>
+      <translation>क्षेत्र औसत</translation>
+    </message>
+    <message>
+      <source>Bicubic</source>
+      <translation>बाइक्यूबिक</translation>
+    </message>
+    <message>
+      <source>Bilinear</source>
+      <translation>बिलीनियर</translation>
+    </message>
+    <message>
+      <source>Nearest</source>
+      <translation>निकटतम पड़ोसी</translation>
+    </message>
+    <message>
+      <source>FFV1 Lossless RGB 10-bit</source>
+      <translation>FFV1 बिना हानि वाला RGB, 10-बिट</translation>
+    </message>
+    <message>
+      <source>Ready</source>
+      <translation>तैयार</translation>
+    </message>
+    <message>
+      <source>Initializing</source>
+      <translation>आरंभ हो रहा है</translation>
+    </message>
+    <message>
+      <source>The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings.</source>
+      <translation>चुना गया FFmpeg/Vulkan GPU उपलब्ध नहीं है। सेटिंग में स्वचालित या कोई अन्य GPU चुनें।</translation>
+    </message>
+    <message>
+      <source>Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver.</source>
+      <translation>Vulkan से GPU फ़िल्टरिंग उपलब्ध नहीं है। AMD, Intel या NVIDIA का नया Vulkan ड्राइवर इंस्टॉल करें।</translation>
+    </message>
+    <message>
+      <source>%1: %2 (%3)</source>
+      <translation>%1: %2 (%3)</translation>
+    </message>
+    <message>
+      <source>Style %1</source>
+      <translation>शैली %1</translation>
     </message>
   </context>
 </TS>

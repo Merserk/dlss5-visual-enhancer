@@ -27,7 +27,7 @@ from ..core.paths import JOBS, OUTPUTS
 from ..core.runtime import prepare_runtime
 from ..upscale.video.cuda_transfer import CudaTransferPool
 from .capabilities import probe_frame_interpolation_capabilities
-from .models import FrameInterpolationOptions, FrameInterpolationResult
+from .models import FrameInterpolationOptions, FrameInterpolationResult, OPTICAL_FLOW_QUALITIES
 from .native import DLSSGCudaSurface, DirectDLSSGSession
 from .scheduler import choose_interpolation_plan, output_frame_count
 
@@ -90,10 +90,7 @@ def _encoder(options: FrameInterpolationOptions, codec: str, width: int, height:
             values["profile"] = "high"
         if name != "av1_nvenc":
             values["tune"] = "hq"
-        if quality["mode"] == "constant-quality":
-            values["cq"] = "0"
-            # Mirror the CLI's implicit 2 Mbps VBR target explicitly.
-            bitrate = 2_000_000 if cuda_input else 0
+        values.update(ffmpeg.nvenc_rate_control_options(quality))
         return _Encoder(name, name, "cuda" if cuda_input else ("p010le" if hdr else "nv12"),
                         cuda_input, values, bitrate)
     common = {"crf": "0"} if quality["mode"] == "constant-quality" else {}
@@ -108,7 +105,8 @@ def _encoder(options: FrameInterpolationOptions, codec: str, width: int, height:
         if not _codec_available(name):
             raise RuntimeError("No in-process CPU AV1 encoder is available.")
         values = ({"preset": "6"} if name == "libsvtav1" else {"cpu-used": "4"})
-        values.update(common)
+        if quality["mode"] == "constant-quality":
+            values.update(ffmpeg.software_max_quality_options(name))
         return _Encoder(name, name, "yuv420p10le" if hdr else "yuv420p", False, values, bitrate)
     if normalized == "ProRes Proxy":
         values = {"profile": "0"}
@@ -169,7 +167,7 @@ def _set_color_properties(context: Any, metadata: dict[str, Any], hdr: bool) -> 
     context.color_trc = {"bt709": 1, "bt470m": 4, "bt470bg": 5,
                          "smpte170m": 6, "smpte240m": 7, "linear": 8, "iec61966-2-1": 13,
                          "smpte2084": 16, "arib-std-b67": 18}.get(transfer, 2)
-    context.colorspace = {"bt709": 1, "fcc": 4, "bt470bg": 5,
+    context.colorspace = {"gbr": 0, "bt709": 1, "fcc": 4, "bt470bg": 5,
                           "smpte170m": 6, "smpte240m": 7, "bt2020nc": 9,
                           "bt2020c": 10}.get(matrix, 9 if hdr else 6)
     context.color_range = 2 if _range_code(metadata) else 1
@@ -312,6 +310,11 @@ class NearestTimestampWriter:
         self.next_index += 1
 
     def push(self, current: TimedFrame) -> None:
+        for _ in self.iter_push(current):
+            pass
+
+    def iter_push(self, current: TimedFrame):
+        """Emit lazily so long VFR holds cannot allocate an entire output burst."""
         if self.previous is None:
             self.previous = current
             return
@@ -325,13 +328,19 @@ class NearestTimestampWriter:
                 self.tie_late = not self.tie_late
             else:
                 break
+            yield None
         self.previous = current
 
     def finish(self) -> None:
+        for _ in self.iter_finish():
+            pass
+
+    def iter_finish(self):
         if self.previous is None:
             raise ValueError("The input video contains no decodable frames.")
         while self.next_index < self.output_count:
             self._write(self.previous, Fraction(self.next_index, 1) / self.target_rate)
+            yield None
 
 
 def _duration_fraction(metadata: dict, source_rate: Fraction, frames: int, *, cfr: bool) -> Fraction:
@@ -341,6 +350,8 @@ def _duration_fraction(metadata: dict, source_rate: Fraction, frames: int, *, cf
 
 
 def _validate(options: FrameInterpolationOptions) -> None:
+    if not isinstance(options.optical_flow_quality, str) or options.optical_flow_quality not in OPTICAL_FLOW_QUALITIES:
+        raise ValueError("Optical Flow Quality must be High, Medium, or Low.")
     _ = options.target_rate
     validate_rename(options.rename_mode, options.custom_suffix)
     ffmpeg.validate_codec_container(options.codec, options.container)
@@ -495,6 +506,10 @@ def interpolate_video(
                     output_stream.codec_context.qscale = True
                     output_stream.codec_context.global_quality = 3
                 _set_color_properties(output_stream.codec_context, metadata, effective_hdr)
+                if encoder.name == "prores_ks":
+                    # Generated RGB is full range, but ProRes delivery must
+                    # convert to limited YUV even when the source was full range.
+                    output_stream.codec_context.color_range = 1
                 if encoder.name == "ffv1":
                     output_stream.codec_context.colorspace = 0  # RGB, no YUV matrix.
                     output_stream.codec_context.color_range = 2  # Full range.
@@ -506,8 +521,9 @@ def interpolate_video(
                 for _ in range(session_count):
                     sessions.append(DirectDLSSGSession(
                         int(metadata["width"]), int(metadata["height"]), generated_count,
-                        controller, ai_ordinal, hdr=effective_hdr, video_color=True,
-                        chroma_location=metadata.get("chroma_location", "left")))
+                        controller, ai_ordinal, hdr=effective_hdr,
+                        chroma_location=metadata.get("chroma_location", "left"),
+                        optical_flow_quality=options.optical_flow_quality))
                 timings["session_initialization_seconds"] = time.perf_counter() - initialization_start
                 colors = {"color_matrix": _matrix_code(metadata, hdr=effective_hdr),
                           "color_range": _range_code(metadata),
@@ -595,7 +611,7 @@ def interpolate_video(
                         else:
                             yuv = frame.to_yuv_surface(
                                 color_matrix=colors["color_matrix"],
-                                color_range=colors["color_range"], p010=output_p010, video_color=True)
+                                color_range=colors["color_range"], p010=output_p010)
                             frame = yuv.to_av_frame()
                         timings["final_color_conversion_seconds"] = (
                             timings.get("final_color_conversion_seconds", 0.0) +

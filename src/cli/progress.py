@@ -41,6 +41,9 @@ class ConsoleProgress:
             elif update.state == "Running" and not self.quiet:
                 match = re.search(r"\bStage (\d+) of (\d+)\b", update.detail)
                 stage = f"Processing Stage {match[1]} of {match[2]}" if match else "Preparing"
+                part = re.search(r"\bPart (\d+)\b", update.detail)
+                if match and part:
+                    stage += f" (Part {part[1]})"
                 if self.current_index != update.index:
                     self._line(f"{number} {name}")
                     self.current_index = update.index

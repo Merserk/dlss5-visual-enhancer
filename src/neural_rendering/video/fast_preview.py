@@ -24,10 +24,8 @@ from ...core.runtime import (DLSSFrameSession, prepare_runtime,
                              resolve_native_settings, resolve_upscaling_mode)
 from .models import ConversionOptions
 
-
 class FastClipUnavailable(RuntimeError):
     """The source cannot use the exact-frame CUDA preview route."""
-
 
 def render_lossless_cuda_preview_clip(
     source: Path, options: ConversionOptions, metadata: dict, *,
@@ -117,7 +115,7 @@ def render_lossless_cuda_preview_clip(
                         frame_count=None, warmup_frames=options.warmup_frames,
                         factor=factor, mode=mode,
                         native_settings=resolve_native_settings(options),
-                        composition_mask=options.nr_mask, gpu=gpu,
+                        control_mask=options.nr_mask, gpu=gpu,
                         runtime_bundle=prepared.runtime_bundle,
                         controller=controller, cuda_video=True,
                     )

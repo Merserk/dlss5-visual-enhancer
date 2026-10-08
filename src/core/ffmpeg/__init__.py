@@ -1,7 +1,7 @@
 from .codecs import (
     AUTO_BITRATE_DIVISORS, CODEC_CHOICES, CONTAINER_CHOICES, ENCODING_QUALITIES, FIXED_QUALITY_CODECS, HDR_ALLOWED_CODECS,
     _base_codec, _is_hdr_allowed_codec, _is_nvenc_codec, _normalize_codec,
-    calculate_auto_bitrate_kbps, container_for_codec, containers_for_codec, hdr_mode_supported, resolve_container, resolve_encoding_quality,
+    calculate_auto_bitrate_kbps, container_for_codec, containers_for_codec, hdr_mode_supported, nvenc_rate_control_options, resolve_container, resolve_encoding_quality, software_max_quality_options,
     validate_codec_container,
 )
 from .audio import AudioPlan, plan_audio_streams
@@ -16,7 +16,7 @@ __all__ = [
     "ENCODING_QUALITIES", "FIXED_QUALITY_CODECS", "HDR_ALLOWED_CODECS",
     "RawVideoPacketMuxer", "calculate_auto_bitrate_kbps", "container_for_codec", "final_mux", "hdr_mode_supported",
     "plan_audio_streams", "prepare_mux_comment", "preview_frame_count", "probe_nvenc_codecs",
-    "probe_video", "resolve_encoding_quality",
+    "probe_video", "nvenc_rate_control_options", "resolve_encoding_quality", "software_max_quality_options",
     "resolve_video_gpu", "start_encoder",
     "validate_codec_container", "verify_mux_comment",
     "decoded_rgba", "output_video_depth",

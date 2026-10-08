@@ -96,10 +96,13 @@ def enable_dpi_awareness() -> str:
 
 
 def resolve_app_icon() -> Path | None:
-    """Locate the canonical app icon (native (dev)/icon.png). Never raises."""
+    """Locate the deployed multi-size Windows icon, with PNG fallbacks."""
     try:
         candidates = (
-            ROOT / "native (dev)" / "icon.png",
+            Path(__file__).resolve().parent / "app.ico",
+            ROOT / "app.ico",
+            ROOT / "native (dev)" / "ui" / "launcher (qt6)" / "app.ico",
+            ROOT / "native (dev)" / "assets" / "icon.png",
             ROOT / "icon.png",
             Path(__file__).resolve().parent / "icon.png",
         )
@@ -114,8 +117,59 @@ def resolve_app_icon() -> Path | None:
     return None
 
 
-APP_USER_MODEL_ID = "Merserk.VisualEnhancer.v10"
+# Keep the shell identity stable across releases and independent of the
+# obsolete v10 taskbar group, whose cached branding can survive icon updates.
+APP_USER_MODEL_ID = "Merserk.VisualEnhancer"
 APP_DISPLAY_NAME = "Visual Enhancer"
+
+
+def set_native_taskbar_icons(window) -> bool:
+    """Give Windows' window-class fallback the same icons as the Qt window."""
+    if sys.platform != "win32":
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                       ctypes.c_size_t, ctypes.c_ssize_t]
+        user32.SendMessageW.restype = ctypes.c_size_t
+        user32.CopyIcon.argtypes = [ctypes.c_void_p]
+        user32.CopyIcon.restype = ctypes.c_void_p
+        user32.SetClassLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                          ctypes.c_size_t]
+        user32.SetClassLongPtrW.restype = ctypes.c_size_t
+        user32.GetClassLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        user32.GetClassLongPtrW.restype = ctypes.c_size_t
+        user32.DestroyIcon.argtypes = [ctypes.c_void_p]
+        hwnd = int(window.winId())
+        owned = getattr(window, "_taskbar_class_icons", None)
+        if owned is None:
+            owned = []
+            for class_index, icon_size in ((-14, 1), (-34, 0)):
+                source = user32.SendMessageW(hwnd, 0x007F, icon_size, 0)
+                copied = user32.CopyIcon(source) if source else None
+                if not copied:
+                    for _, icon, _ in owned:
+                        user32.DestroyIcon(icon)
+                    return False
+                previous = user32.GetClassLongPtrW(hwnd, class_index)
+                owned.append((class_index, copied, previous))
+            window._taskbar_class_icons = owned
+
+            def release_icons() -> None:
+                for class_index, icon, previous in owned:
+                    if user32.GetClassLongPtrW(hwnd, class_index) == icon:
+                        user32.SetClassLongPtrW(hwnd, class_index, previous)
+                    user32.DestroyIcon(icon)
+                window._taskbar_class_icons = None
+
+            QGuiApplication.instance().aboutToQuit.connect(release_icons)
+        for class_index, icon, _ in owned:
+            user32.SetClassLongPtrW(hwnd, class_index, icon)
+            if user32.GetClassLongPtrW(hwnd, class_index) != icon:
+                return False
+        return True
+    except Exception:
+        return False
 
 
 def resolve_launcher_exe() -> Path | None:
@@ -181,14 +235,15 @@ def stamp_taskbar_relaunch(hwnd: int) -> bool:
             _fields_ = [("fmtid", _GUID), ("pid", ctypes.c_ulong)]
 
         class _PROPVARIANT(ctypes.Structure):
-            # 16 bytes: vt + reserved, then the value union. Only VT_LPWSTR
-            # is used here; SetValue copies the string synchronously.
+            # PROPVARIANT is 24 bytes on Win64: the union also contains
+            # counted arrays (a count plus an aligned pointer).
             _fields_ = [
                 ("vt", ctypes.c_ushort),
                 ("wReserved1", ctypes.c_ushort),
                 ("wReserved2", ctypes.c_ushort),
                 ("wReserved3", ctypes.c_ushort),
                 ("value", ctypes.c_void_p),
+                ("union_tail", ctypes.c_void_p),
             ]
 
         def _guid(s: str) -> _GUID:
@@ -238,10 +293,14 @@ def stamp_taskbar_relaunch(hwnd: int) -> bool:
 
             keepalive = []
             if launcher_str:
+                icon_path = resolve_app_icon()
+                icon_resource = ('"' + str(icon_path) + '",0'
+                                 if icon_path is not None and icon_path.suffix.lower() == ".ico"
+                                 else '"' + launcher_str + '",0')
                 for key, text in (
-                    (PKEY_RelaunchCommand, launcher_str),
+                    (PKEY_RelaunchCommand, '"' + launcher_str + '"'),
                     (PKEY_RelaunchDisplayName, APP_DISPLAY_NAME),
-                    (PKEY_RelaunchIconResource, launcher_str + ",0"),
+                    (PKEY_RelaunchIconResource, icon_resource),
                 ):
                     var, buf = _str_var(text)
                     keepalive.append(buf)
@@ -309,6 +368,9 @@ def launch_desktop() -> int:
 
     image_provider = PreviewImageProvider()
     bridge = AppBridge(image_provider)
+    from .export_power import ExportPowerFilter
+    export_power = ExportPowerFilter(bridge)
+    app.installNativeEventFilter(export_power)
     app.aboutToQuit.connect(bridge.shutdown)
     bridge.initializeRuntime()
     mark("runtime_ready" if bridge.runtimeState == "Ready" else "runtime_failed")
@@ -345,6 +407,7 @@ def launch_desktop() -> int:
     try:
         if icon_path is not None:
             root_window.setIcon(QIcon(str(icon_path)))
+            log_native_chrome(f"taskbar-class-icons={set_native_taskbar_icons(root_window)}")
     except Exception:
         pass
     try:

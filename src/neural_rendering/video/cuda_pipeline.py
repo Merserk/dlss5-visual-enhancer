@@ -33,13 +33,11 @@ from .guides import TemporalGuideGenerator
 from .models import ConversionOptions, ConversionResult
 from .sizing import resolve_native_settings, resolve_output_size, resolve_upscaling_mode
 
-
 _NVENC_CODEC = {
     "H.264 (NVIDIA NVENC)": "h264_nvenc",
     "H.265 (NVIDIA NVENC)": "hevc_nvenc",
     "AV1 (NVIDIA NVENC)": "av1_nvenc",
 }
-
 
 def _matrix_code(metadata: dict[str, Any]) -> int:
     value = str(metadata.get("color_space") or "").casefold()
@@ -49,10 +47,8 @@ def _matrix_code(metadata: dict[str, Any]) -> int:
         return 0
     return 1
 
-
 def _range_code(metadata: dict[str, Any]) -> int:
     return int(str(metadata.get("color_range") or "").casefold() in {"pc", "jpeg", "full"})
-
 
 def _set_color_properties(codec_context: Any, metadata: dict[str, Any], hdr: bool) -> None:
     fallback = 2 if hdr else 1
@@ -74,7 +70,6 @@ def _set_color_properties(codec_context: Any, metadata: dict[str, Any], hdr: boo
     codec_context.colorspace = colorspace
     codec_context.color_range = 2 if _range_code(metadata) else 1
 
-
 def _hdr_bitstream_filter(codec_name: str, metadata: dict[str, Any], preserve_hdr: bool) -> str | None:
     if not preserve_hdr or not metadata.get("hdr"):
         return None
@@ -90,11 +85,9 @@ def _hdr_bitstream_filter(codec_name: str, metadata: dict[str, Any], preserve_hd
                 f"transfer_characteristics={transfer}:matrix_coefficients={matrix}")
     return None
 
-
 def _check_cancel(controller: Any) -> None:
     if controller.cancel.is_set():
         raise Cancelled("Render stopped by user.")
-
 
 def _progress(
     callback: Callable[[float, str], None] | None, value: float, message: str
@@ -105,7 +98,6 @@ def _progress(
         callback(max(0.0, min(1.0, float(value))), message)
     except Exception:
         pass
-
 
 def convert_video_cuda_nvenc(
     source: Path,
@@ -255,8 +247,9 @@ def convert_video_cuda_nvenc(
                 encoder_options = {"preset": "p6", "rc": "vbr", "gpu": str(ordinal)}
                 if codec_name != "av1_nvenc":
                     encoder_options["tune"] = "hq"
+                encoder_options.update(ffmpeg.nvenc_rate_control_options(quality))
                 if quality["mode"] == "constant-quality":
-                    encoder_options["cq"] = "0"
+                    output_stream.codec_context.bit_rate = 0
                 else:
                     output_stream.codec_context.bit_rate = int(quality["target_bitrate_kbps"]) * 1000
                 output_stream.codec_context.options = encoder_options
@@ -280,7 +273,7 @@ def convert_video_cuda_nvenc(
                 factor=factor,
                 mode=mode,
                 native_settings=native,
-                composition_mask=options.nr_mask,
+                control_mask=options.nr_mask,
                 gpu=gpu,
                 runtime_bundle=runtime_bundle,
                 controller=controller,
@@ -506,7 +499,7 @@ def convert_video_cuda_nvenc(
                     dlss_session.last_result.render_width, dlss_session.last_result.render_height
                 ) != (input_width, input_height),
             }
-        temporal_timing = status.get("temporal_stabilization", {})
+        temporal_timing = status.get("temporal_guides", {})
         for field in (
             "gpu_copy_in_seconds", "gpu_ngx_seconds", "gpu_copy_out_seconds",
             "cuda_input_wait_seconds", "d3d12_wait_seconds", "optical_flow_seconds",

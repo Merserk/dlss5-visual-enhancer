@@ -4,24 +4,18 @@ from dataclasses import dataclass
 
 from ...core.runtime import NR_STYLES, UPSCALING_MODES
 
-
 @dataclass(slots=True)
 class ConversionOptions:
     ai_gpu_uuid: str = "auto"
     video_gpu_uuid: str = "auto"
     prefer_nvenc: bool = True
-    nr_style: str = "Default"
+    nr_style: str = "Style 0"
     nr_intensity: float = 1.0
     nr_passes: int = 1
+    nr_optical_flow_quality: str = "High"
     local_tone_strength: float = 1.0
     local_structure_strength: float = 1.0
-    skin_structure_strength: float = -1.0
-    nr_color_strength: float = 1.0
-    tone_preservation: float = 0.0
-    face_skin_protection: float = 0.0
-    grain_preservation: float = 0.0
-    shimmer_suppression: float = 0.70
-    mask_feather: int = 0
+    skin_structure_strength: float = 1.0
     nr_mask: object | None = None
     upscaling_factor: float = 1.0
     scale_method: str = "Standard"
@@ -58,13 +52,11 @@ class ConversionResult:
     memory_path: str = "host_cuda_d3d12_shared"
     bridge_status: dict | None = None
 
-
 @dataclass(slots=True)
 class VideoConversionSuccess:
     index: int
     input_path: str
     result: ConversionResult
-
 
 @dataclass(slots=True)
 class VideoConversionFailure:
@@ -72,7 +64,6 @@ class VideoConversionFailure:
     input_path: str
     error: str
     cancelled: bool = False
-
 
 @dataclass(slots=True)
 class VideoBatchResult:

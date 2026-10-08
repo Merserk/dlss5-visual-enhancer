@@ -68,28 +68,48 @@ Rectangle {
                 }
 
                 AppCard {
-                    width: cardColumn.width; title: qsTranslate("App", "Cache Memory"); collapsible: false
+                    width: cardColumn.width; title: qsTranslate("App", "Cache Memory (Rolling Cache)"); collapsible: false
                     Column {
                         width: parent.width; spacing: 10
                         AppComboBox {
-                            objectName: "cache-codec"
-                            width: parent.width; label: qsTranslate("App", "Codec")
+                            objectName: "cache-mode"
+                            width: parent.width; label: qsTranslate("App", "Mode")
                             model: [
-                                {label: "FFV1", value: "FFV1"},
-                                {label: "ProRes Proxy", value: "ProRes Proxy"}
+                                {label: qsTranslate("App", "Native precision"), value: "Fast lossless"},
+                                {label: qsTranslate("App", "Compressed RGB (8-bit)"), value: "Fast compressed"}
                             ]
-                            currentValue: appBridge ? appBridge.cacheCodec : "FFV1"
-                            onActivated: (v) => { if (appBridge) appBridge.cacheCodec = v }
+                            currentValue: appBridge ? appBridge.cacheMode : "Fast lossless"
+                            onActivated: (v) => { if (appBridge) appBridge.cacheMode = v }
                         }
-                        AppComboBox {
-                            objectName: "cache-memory-mode"
-                            width: parent.width
-                            model: [
-                                {label: qsTranslate("App", "Rolling Cache (5 GB)"), value: "rolling"},
-                                {label: qsTranslate("App", "Stage by Stage"), value: "stage"}
-                            ]
-                            currentValue: appBridge ? appBridge.cacheMemoryMode : "rolling"
-                            onActivated: (v) => { if (appBridge) appBridge.cacheMemoryMode = v }
+                        Column {
+                            width: parent.width; spacing: 2
+                            AppSlider {
+                                id: cacheSizeSlider
+                                objectName: "cache-size"
+                                width: parent.width; label: qsTranslate("App", "Cache size")
+                                from: 5; to: 30; stepSize: 5; precision: 0; defaultValue: 10; unit: "GB"
+                                showValueControls: false
+                                value: appBridge ? appBridge.cacheSizeGB : 10
+                                onValueModified: (v) => {
+                                    if (appBridge) appBridge.cacheSizeGB = Math.round(v / 5) * 5
+                                }
+                            }
+                            Item {
+                                width: parent.width; height: 18
+                                Repeater {
+                                    model: [5, 10, 15, 20, 25, 30]
+                                    Text {
+                                        required property int index
+                                        required property int modelData
+                                        objectName: "cache-size-stop-" + modelData
+                                        x: Math.max(0, Math.min(parent.width - width,
+                                            7 + index * (parent.width - 14) / 5 - width / 2))
+                                        text: modelData === 10 ? qsTranslate("App", "%1 GB (Default)").arg(modelData) : modelData + " GB"
+                                        color: cacheSizeSlider.value === modelData ? Theme.accent : Theme.textMuted
+                                        font.family: Theme.fontFamily; font.pixelSize: Theme.fontSizeSmall
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -470,7 +470,7 @@ Item {
                                     width: parent.width
                                     label: qsTranslate("App", "NR Style")
                                     model: appBridge ? appBridge.nrStyleChoices : []
-                                    currentValue: appBridge ? appBridge.liveNrStyle : "Default"
+                                    currentValue: appBridge ? appBridge.liveNrStyle : "Style 0"
                                     onActivated: (v) => { if (appBridge) appBridge.liveNrStyle = v }
                                 }
 
@@ -487,20 +487,9 @@ Item {
 
                                 AppSlider {
                                     width: parent.width
-                                    label: qsTranslate("App", "Shimmer Suppression")
-                                    from: 0.0
-                                    to: 1.0
-                                    stepSize: 0.05
-                                    defaultValue: 0.70
-                                    value: appBridge ? appBridge.liveShimmerSuppression : 0.70
-                                    onValueModified: (v) => { if (appBridge) appBridge.liveShimmerSuppression = v }
-                                }
-
-                                AppSlider {
-                                    width: parent.width
                                     label: qsTranslate("App", "Local Tone Strength")
                                     from: 0.0
-                                    to: 2.0
+                                    to: 1.0
                                     stepSize: 0.05
                                     defaultValue: 1.0
                                     value: appBridge ? appBridge.liveLocalToneStrength : 1.0
@@ -511,7 +500,7 @@ Item {
                                     width: parent.width
                                     label: qsTranslate("App", "Local Structure Strength")
                                     from: 0.0
-                                    to: 2.0
+                                    to: 1.0
                                     stepSize: 0.05
                                     defaultValue: 1.0
                                     value: appBridge ? appBridge.liveLocalStructureStrength : 1.0
@@ -519,13 +508,14 @@ Item {
                                 }
 
                                 AppSlider { width: parent.width; label: qsTranslate("App", "NR Passes"); from: 1; to: 4; stepSize: 1; precision: 0; defaultValue: 1; value: appBridge ? appBridge.liveNrPasses : 1; onValueModified: (v) => { if (appBridge) appBridge.liveNrPasses = Math.round(v) } }
-                                AppSlider { width: parent.width; label: qsTranslate("App", "Skin Structure"); from: -1; to: 2; stepSize: 0.05; defaultValue: -1; value: appBridge ? appBridge.liveSkinStructureStrength : -1; onValueModified: (v) => { if (appBridge) appBridge.liveSkinStructureStrength = v } }
-                                AppSwitch { label: qsTranslate("App", "Automatic Mask"); checked: appBridge ? appBridge.liveAutomaticMask : false; onToggled: (v) => { if (appBridge) appBridge.liveAutomaticMask = v } }
-                                AppSlider { width: parent.width; label: qsTranslate("App", "Color Strength"); from: 0; to: 1; stepSize: 0.05; defaultValue: 1; value: appBridge ? appBridge.liveNrColorStrength : 1; onValueModified: (v) => { if (appBridge) appBridge.liveNrColorStrength = v } }
-                                AppSlider { width: parent.width; label: qsTranslate("App", "Tone Preservation"); from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveTonePreservation : 0; onValueModified: (v) => { if (appBridge) appBridge.liveTonePreservation = v } }
-                                AppSlider { width: parent.width; label: qsTranslate("App", "Face / Skin Protection"); from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveFaceSkinProtection : 0; onValueModified: (v) => { if (appBridge) appBridge.liveFaceSkinProtection = v } }
-                                AppSlider { width: parent.width; label: qsTranslate("App", "Grain Preservation"); from: 0; to: 1; stepSize: 0.05; defaultValue: 0; value: appBridge ? appBridge.liveGrainPreservation : 0; onValueModified: (v) => { if (appBridge) appBridge.liveGrainPreservation = v } }
-                                AppSlider { width: parent.width; label: qsTranslate("App", "Mask Feather"); from: 0; to: 128; stepSize: 1; precision: 0; defaultValue: 0; value: appBridge ? appBridge.liveMaskFeather : 0; onValueModified: (v) => { if (appBridge) appBridge.liveMaskFeather = Math.round(v) } }
+                                AppSlider { width: parent.width; label: qsTranslate("App", "Skin Structure Strength"); enabled: appBridge ? appBridge.liveAutomaticMask && !appBridge.customMaskStatus : false; from: 0; to: 1; stepSize: 0.05; defaultValue: 1; value: appBridge ? appBridge.liveSkinStructureStrength : 1; onValueModified: (v) => { if (appBridge) appBridge.liveSkinStructureStrength = v } }
+                                AppSwitch { label: qsTranslate("App", "Automatic Mask"); enabled: appBridge ? !appBridge.customMaskStatus : true; checked: appBridge ? appBridge.liveAutomaticMask && !appBridge.customMaskStatus : false; onToggled: (v) => { if (appBridge) appBridge.liveAutomaticMask = v } }
+                                AppComboBox { objectName: "liveOpticalFlowQuality"; width: parent.width; label: qsTranslate("App", "Optical Flow Quality"); model: appBridge ? appBridge.opticalFlowQualityChoices : []; currentValue: appBridge ? appBridge.liveOpticalFlowQuality : "High"; onActivated: (v) => { if (appBridge) appBridge.liveOpticalFlowQuality = v } }
+
+
+
+
+
                                 AppComboBox { width: parent.width; dropUp: true; label: qsTranslate("App", "Live Scale"); model: appBridge ? appBridge.nrScaleChoices : []; currentValue: appBridge ? appBridge.liveUpscalingFactor : 1.0; onActivated: (v) => { if (appBridge) appBridge.liveUpscalingFactor = v } }
                             }
                         }

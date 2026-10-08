@@ -12,16 +12,16 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source>  -  1 frame</source>
-      <translation>  -  1 frame</translation>
+      <translation>  -  1フレーム</translation>
     </message>
     <message>
       <source>  -  f</source>
-      <translation>  -  f</translation>
+      <translation>  -  フレーム </translation>
     </message>
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="620" />
       <source> f</source>
-      <translation> f</translation>
+      <translation> フレーム </translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="154" />
@@ -35,7 +35,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source> input FPS</source>
-      <translation> input FPS</translation>
+      <translation> 入力FPS</translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="427" />
@@ -180,7 +180,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/NeuralModelControls.qml" line="263" />
       <location filename="../qml/controls/AppFilePicker.qml" line="12" />
       <location filename="../qml/views/LiveView.qml" line="408" />
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>All Files (*.*)</source>
       <translation>すべてのファイル (*.*)</translation>
     </message>
@@ -228,12 +228,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Applied to processing</source>
       <translation>処理に適用済み</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="22" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="131" />
-      <source>Apply Detail-Only Preset</source>
-      <translation>ディテールのみのプリセットを適用</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/ColoringControls.qml" line="38" />
       <source>Apply LUT</source>
@@ -352,8 +347,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/views/SettingsView.qml" line="71" />
-      <source>Cache Memory</source>
-      <translation>キャッシュメモリ</translation>
+      <source>Cache Memory (Rolling Cache 10GB)</source>
+      <translation>キャッシュメモリ（ローリングキャッシュ 10 GB）</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="149" />
@@ -514,11 +509,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Color Match</source>
       <translation>カラーマッチ</translation>
     </message>
-    <message>
-      <location filename="../qml/views/LiveView.qml" line="524" />
-      <source>Color Strength</source>
-      <translation>色の強度</translation>
-    </message>
+    
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="46" />
       <source>Coloring</source>
@@ -544,12 +535,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Completed with warnings: %1 completed, %2 failed.</source>
       <translation>警告付きで完了: %1件完了、%2件失敗。</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="10" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="120" />
-      <source>Composition &amp; Masking</source>
-      <translation>合成とマスク</translation>
-    </message>
+    
     <message>
       <source>Configure hardware assignment, preview behavior, native layout, and portable settings presets.</source>
       <translation>ハードウェアの割り当て、プレビュー、画面レイアウト、共有可能なプリセットを設定します。</translation>
@@ -790,12 +776,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>エクスポート先</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>Export Preset JSON</source>
       <translation>JSONプリセットをエクスポート</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="114" />
+      <location filename="../qml/views/SettingsView.qml" line="103" />
       <source>Export Preset...</source>
       <translation>プリセットをエクスポート...</translation>
     </message>
@@ -821,13 +807,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Exposure</source>
       <translation>露出</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="57" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="173" />
-      <location filename="../qml/views/LiveView.qml" line="526" />
-      <source>Face / Skin Protection</source>
-      <translation>顔 / 肌の保護</translation>
-    </message>
+    
     <message>
       <source>Factory reset restores all DLSS, upscale, interpolation, GPU, mask, and encoding settings. Window geometry remains a desktop preference.</source>
       <translation>DLSS、アップスケール、補間、GPU、マスク、エンコードの設定を初期値に戻します。ウィンドウのサイズと位置はデスクトップ設定として保持されます。</translation>
@@ -906,13 +886,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Grain Amount</source>
       <translation>粒状感の強さ</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="68" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="187" />
-      <location filename="../qml/views/LiveView.qml" line="527" />
-      <source>Grain Preservation</source>
-      <translation>粒状感の保持</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/GrainControls.qml" line="50" />
       <source>Grain Seed</source>
@@ -1031,7 +1005,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>画像 (*.png *.jpg *.jpeg *.webp *.tif *.tiff *.bmp *.avif *.heic *.heif *.svg *.dng *.cr2 *.nef *.arw)</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>Import Preset JSON</source>
       <translation>JSONプリセットをインポート</translation>
     </message>
@@ -1041,7 +1015,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>インポート失敗: %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="121" />
+      <location filename="../qml/views/SettingsView.qml" line="110" />
       <source>Import...</source>
       <translation>インポート...</translation>
     </message>
@@ -1108,8 +1082,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>JSONプリセット</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>JSON Presets (*.json)</source>
       <translation>JSONプリセット (*.json)</translation>
     </message>
@@ -1207,8 +1181,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="108" />
       <location filename="../qml/components/NeuralModelControls.qml" line="233" />
-      <source>Load Custom Mask...</source>
-      <translation>カスタムマスクを読み込む...</translation>
+      <source>Load Control Mask...</source>
+      <translation>制御マスクを読み込み...</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="3834" />
@@ -1263,17 +1237,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>MPV: ドロップ%1、再バッファー%2、A/V同期%3 ms</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="128" />
+      <location filename="../qml/views/SettingsView.qml" line="117" />
       <source>Maintenance &amp; Defaults</source>
       <translation>メンテナンスと初期設定</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="79" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="201" />
-      <location filename="../qml/views/LiveView.qml" line="528" />
-      <source>Mask Feather</source>
-      <translation>マスクのぼかし</translation>
-    </message>
+    
     <message>
       <source>Match Colors</source>
       <translation>色を合わせる</translation>
@@ -1362,12 +1330,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>NO OUTPUT</source>
       <translation>出力なし</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="35" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="145" />
-      <source>NR Color Strength</source>
-      <translation>NR 色の強度</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/NeuralModelControls.qml" line="25" />
       <location filename="../qml/views/LiveView.qml" line="479" />
@@ -1408,7 +1371,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="227" />
-      <location filename="../qml/views/SettingsView.qml" line="158" />
+      <location filename="../qml/views/SettingsView.qml" line="147" />
       <source>No</source>
       <translation>いいえ</translation>
     </message>
@@ -1455,7 +1418,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>オンラインストリームURL</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="133" />
+      <location filename="../qml/views/SettingsView.qml" line="122" />
       <source>Open Logs</source>
       <translation>ログを開く</translation>
     </message>
@@ -1631,7 +1594,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>プリセット</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="109" />
+      <location filename="../qml/views/SettingsView.qml" line="98" />
       <source>Preset name (e.g. 4K Master)...</source>
       <translation>プリセット名 (例: 4K Master)...</translation>
     </message>
@@ -1639,7 +1602,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MenuStrip.qml" line="210" />
       <location filename="../qml/views/FrameInterpolationView.qml" line="195" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="249" />
-      <location filename="../qml/views/SettingsView.qml" line="98" />
+      <location filename="../qml/views/SettingsView.qml" line="87" />
       <location filename="../qml/views/UpscaleView.qml" line="448" />
       <location filename="../qml/views/UpscaleView.qml" line="481" />
       <source>Preview</source>
@@ -1753,7 +1716,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>準備完了。</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="101" />
+      <location filename="../qml/views/SettingsView.qml" line="90" />
       <source>Realtime Preview</source>
       <translation>リアルタイムプレビュー</translation>
     </message>
@@ -1829,12 +1792,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>%1の設定をリセット</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="134" />
+      <location filename="../qml/views/SettingsView.qml" line="123" />
       <source>Reset All Settings to Defaults</source>
       <translation>すべての設定を初期値に戻す</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="170" />
+      <location filename="../qml/views/SettingsView.qml" line="159" />
       <source>Reset all settings?</source>
       <translation>すべての設定をリセットしますか？</translation>
     </message>
@@ -1877,11 +1840,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/LiveView.qml" line="177" />
       <source>Resume</source>
       <translation>再開</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="88" />
-      <source>Rolling Cache (5 GB)</source>
-      <translation>ローリングキャッシュ（5 GB）</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="2050" />
@@ -1981,8 +1939,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="137" />
       <location filename="../qml/components/NeuralModelControls.qml" line="262" />
-      <source>Select Custom NR Mask</source>
-      <translation>カスタムNRマスクを選択</translation>
+      <source>Select NR Control Mask</source>
+      <translation>NR 制御マスクを選択</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="175" />
@@ -2074,7 +2032,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>設定</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="106" />
+      <location filename="../qml/views/SettingsView.qml" line="95" />
       <source>Settings Presets</source>
       <translation>設定プリセット</translation>
     </message>
@@ -2098,12 +2056,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Sharpness</source>
       <translation>シャープネス</translation>
     </message>
-    <message>
-      <location filename="../qml/components/NeuralModelControls.qml" line="106" />
-      <location filename="../qml/views/LiveView.qml" line="490" />
-      <source>Shimmer Suppression</source>
-      <translation>ちらつき抑制</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="952" />
       <location filename="../qml/components/MediaViewport.qml" line="1011" />
@@ -2162,11 +2115,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MediaViewport.qml" line="410" />
       <source>Split</source>
       <translation>分割</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="89" />
-      <source>Stage by Stage</source>
-      <translation>ステージごと</translation>
     </message>
     <message>
       <source>Standard</source>
@@ -2307,7 +2255,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>サードパーティーライセンス</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="175" />
+      <location filename="../qml/views/SettingsView.qml" line="164" />
       <source>This restores every processing setting and clears the custom mask. This cannot be undone unless you exported a preset.</source>
       <translation>すべての処理設定を初期値に戻し、カスタムマスクを消去します。エクスポート済みのプリセットがない場合は元に戻せません。</translation>
     </message>
@@ -2331,13 +2279,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Tonal Response</source>
       <translation>階調応答</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="46" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="159" />
-      <location filename="../qml/views/LiveView.qml" line="525" />
-      <source>Tone Preservation</source>
-      <translation>トーン保持</translation>
-    </message>
+    
     <message>
       <source>Ultra</source>
       <translation>最高</translation>
@@ -2446,8 +2388,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>動画の書き出しでは、各ステージを完了してから次に進みます。動画全体の中間ファイルには多くのディスク容量が必要になる場合があります。</translation>
     </message>
     <message>
-      <source>Video exports use a lossless rolling disk cache of up to 5 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
-      <translation>動画の書き出しでは、最大5 GBのロスレスなローリングディスクキャッシュを使用します。使用済みデータは自動削除されます。最終出力には追加の空き容量が必要です。</translation>
+      <source>Video exports use a rolling disk cache of up to 10 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
+      <translation>動画の書き出しでは、最大10 GBのローリングディスクキャッシュを使用します。使用済みデータは自動削除されます。最終出力には追加の空き容量が必要です。</translation>
     </message>
     <message>
       <location filename="../qml/components/MenuStrip.qml" line="83" />
@@ -2501,7 +2443,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="228" />
-      <location filename="../qml/views/SettingsView.qml" line="159" />
+      <location filename="../qml/views/SettingsView.qml" line="148" />
       <source>Yes</source>
       <translation>はい</translation>
     </message>
@@ -2565,6 +2507,291 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/AboutView.qml" line="38" />
       <source>© 2026 Merserk. NVIDIA, DLSS, and RTX are trademarks of NVIDIA Corporation.</source>
       <translation>© 2026 Merserk。NVIDIA、DLSS、RTXはNVIDIA Corporationの商標です。</translation>
+    </message>
+    <message>
+      <source>Fast lossless</source>
+      <translation>高速ロスレス</translation>
+    </message>
+    <message>
+      <source>Fast compressed</source>
+      <translation>高速圧縮</translation>
+    </message>
+    <message>
+      <source>Fast 8-bit RGB compression without color subsampling. HDR uses Fast lossless. Models run one at a time.</source>
+      <translation>色のサブサンプリングを行わない高速8ビットRGB圧縮。HDRでは高速ロスレスを使用します。モデルは1つずつ実行されます。</translation>
+    </message>
+    <message>
+      <source>Lossless RAM cache with disk fallback. Models run one at a time.</source>
+      <translation>ディスクに退避可能なロスレスRAMキャッシュ。モデルは1つずつ実行されます。</translation>
+    </message>
+    <message>
+      <source>Export paused; GPU memory released</source>
+      <translation>書き出しを一時停止しました。GPUメモリは解放済みです</translation>
+    </message>
+    <message>
+      <source>Part %1 · %2 · %3 FPS · %4 GB</source>
+      <translation>パート %1 · %2 · %3 FPS · %4 GB</translation>
+    </message>
+    <message>
+      <source>Preroll: %1 frames</source>
+      <translation>プリロール: %1 フレーム</translation>
+    </message>
+    <message>
+      <source>Pausing export; releasing GPU workers…</source>
+      <translation>書き出しを一時停止し、GPUプロセスを解放中…</translation>
+    </message>
+    <message>
+      <source>Resuming export from the last committed part…</source>
+      <translation>最後に完了したパートから書き出しを再開中…</translation>
+    </message>
+    <message>
+      <source>Loading model</source>
+      <translation>モデルを読み込み中</translation>
+    </message>
+    <message>
+      <source>Flushing output</source>
+      <translation>出力を確定中</translation>
+    </message>
+    <message>
+      <source>Writing cache</source>
+      <translation>キャッシュを書き込み中</translation>
+    </message>
+    <message>
+      <source>Releasing worker</source>
+      <translation>プロセスを解放中</translation>
+    </message>
+    <message>
+      <source>Committing part</source>
+      <translation>パートを確定中</translation>
+    </message>
+    <message>
+      <source>Finalizing video</source>
+      <translation>動画を仕上げ中</translation>
+    </message>
+    <message>
+      <source>Startup %1 s · switch %2 s</source>
+      <translation>起動 %1 秒 · 切り替え %2 秒</translation>
+    </message>
+    <message>
+      <source>Cache Memory (Rolling Cache)</source>
+      <translation>キャッシュメモリ（ローリングキャッシュ）</translation>
+    </message>
+    <message>
+      <source>Cache size</source>
+      <translation>キャッシュサイズ</translation>
+    </message>
+    <message>
+      <source>%1 GB (Default)</source>
+      <translation>%1 GB（既定）</translation>
+    </message>
+    <message>
+      <source>Native precision</source>
+      <translation>ネイティブ精度</translation>
+    </message>
+    <message>
+      <source>Compressed RGB (8-bit)</source>
+      <translation>圧縮 RGB（8ビット）</translation>
+    </message>
+    <message>
+      <source>Control Mask replaces Automatic Mask. RGB channels control intensity, tone, and structure.</source>
+      <translation>コントロールマスクは自動マスクに代わって使用されます。RGBチャンネルで強度、トーン、構造を制御します。</translation>
+    </message>
+    <message>
+      <location filename="../qml/components/BatchQueueDrawer.qml" line="307" />
+      <source>Processing Stage %1 of %2 (Part %3)</source>
+      <translation>ステージ%1 / %2を処理中 (パート %3)</translation>
+    </message>
+    <message>
+      <source>Optical Flow Quality</source>
+      <translation>オプティカルフローの品質</translation>
+    </message>
+    <message>
+      <source>%1 (Discrete GPU)</source>
+      <translation>%1（独立GPU）</translation>
+    </message>
+    <message>
+      <source>%1 (Integrated GPU)</source>
+      <translation>%1（内蔵GPU）</translation>
+    </message>
+    <message>
+      <source>%1 fps target | %2 fps processing | %3 enhanced | %4 sampled out | %5s buffered</source>
+      <translation>目標：%1 fps | 処理：%2 fps | 強化済み：%3フレーム | サンプリングで除外：%4フレーム | バッファー：%5秒</translation>
+    </message>
+    <message>
+      <source>%1 · pass %2/%3</source>
+      <translation>%1 · パス %2/%3</translation>
+    </message>
+    <message>
+      <source>%1. GPU filters: %2.</source>
+      <translation>%1。GPUフィルター：%2。</translation>
+    </message>
+    <message>
+      <source>AI GPU selection: %1</source>
+      <translation>AI用GPUの選択：%1</translation>
+    </message>
+    <message>
+      <source>Active: %1 — %2×%3.</source>
+      <translation>有効：%1 — %2×%3。</translation>
+    </message>
+    <message>
+      <source>Application: %1</source>
+      <translation>アプリケーション：%1</translation>
+    </message>
+    <message>
+      <source>Applying; newer changes pending</source>
+      <translation>適用中：新しい変更が保留されています</translation>
+    </message>
+    <message>
+      <source>Available</source>
+      <translation>利用可能</translation>
+    </message>
+    <message>
+      <source>Buffering: %1</source>
+      <translation>バッファリング：%1</translation>
+    </message>
+    <message>
+      <source>CPU (Software decoding / encoding)</source>
+      <translation>CPU（ソフトウェアデコード／エンコード）</translation>
+    </message>
+    <message>
+      <source>Config: %1</source>
+      <translation>設定：%1</translation>
+    </message>
+    <message>
+      <source>Failed: %1</source>
+      <translation>失敗：%1</translation>
+    </message>
+    <message>
+      <source>Finished processing: %1. Playback available until Stop.</source>
+      <translation>処理完了：%1。「停止」を押すまで再生できます。</translation>
+    </message>
+    <message>
+      <source>Finished: %1. %2 frames enhanced.</source>
+      <translation>完了：%1。%2フレームを強化しました。</translation>
+    </message>
+    <message>
+      <source>Logs: %1</source>
+      <translation>ログ：%1</translation>
+    </message>
+    <message>
+      <source>Missing</source>
+      <translation>見つかりません</translation>
+    </message>
+    <message>
+      <source>Outputs: %1</source>
+      <translation>出力：%1</translation>
+    </message>
+    <message>
+      <source>Playing: %1</source>
+      <translation>再生中：%1</translation>
+    </message>
+    <message>
+      <source>Preparing Neural Rendering: %1x%2 -&gt; %3x%4...</source>
+      <translation>Neural Renderingを準備中：%1x%2 -&gt; %3x%4...</translation>
+    </message>
+    <message>
+      <source>Probing %1...</source>
+      <translation>%1を解析中...</translation>
+    </message>
+    <message>
+      <source>Processing finished or stopped; changes apply on the next Start.</source>
+      <translation>処理が完了または停止しました。変更は次回の開始時に適用されます。</translation>
+    </message>
+    <message>
+      <source>Requested up to %1p; received %2.</source>
+      <translation>最大%1pを要求しました。受信した解像度：%2。</translation>
+    </message>
+    <message>
+      <source>Runtime error: %1</source>
+      <translation>ランタイムエラー：%1</translation>
+    </message>
+    <message>
+      <source>Runtime state: %1</source>
+      <translation>ランタイムの状態：%1</translation>
+    </message>
+    <message>
+      <source>Software codecs</source>
+      <translation>ソフトウェアコーデック</translation>
+    </message>
+    <message>
+      <source>Source quality selection applies to YouTube/Twitch pages; using the supplied source.</source>
+      <translation>ソース品質の選択はYouTube／Twitchのページに適用されます。指定されたソースを使用します。</translation>
+    </message>
+    <message>
+      <source>Startup warning: %1</source>
+      <translation>起動時の警告：%1</translation>
+    </message>
+    <message>
+      <source>The resolved stream differs from the requested height.</source>
+      <translation>取得したストリームの高さが要求した高さと異なります。</translation>
+    </message>
+    <message>
+      <source>Update failed; recovery failed</source>
+      <translation>更新に失敗しました。復旧にも失敗しました</translation>
+    </message>
+    <message>
+      <source>Update failed—previous settings restored</source>
+      <translation>更新に失敗しました。以前の設定を復元しました</translation>
+    </message>
+    <message>
+      <source>Video GPU selection: %1</source>
+      <translation>動画用GPUの選択：%1</translation>
+    </message>
+    <message>
+      <source>Vulkan codecs where supported; software fallback</source>
+      <translation>対応している場合はVulkanコーデック、それ以外はソフトウェアコーデック</translation>
+    </message>
+    <message>
+      <source>Native DLSSG</source>
+      <translation>ネイティブDLSSG</translation>
+    </message>
+    <message>
+      <source>Cascade</source>
+      <translation>カスケード</translation>
+    </message>
+    <message>
+      <source>Area</source>
+      <translation>面積平均</translation>
+    </message>
+    <message>
+      <source>Bicubic</source>
+      <translation>バイキュービック</translation>
+    </message>
+    <message>
+      <source>Bilinear</source>
+      <translation>バイリニア</translation>
+    </message>
+    <message>
+      <source>Nearest</source>
+      <translation>最近傍</translation>
+    </message>
+    <message>
+      <source>FFV1 Lossless RGB 10-bit</source>
+      <translation>FFV1 可逆RGB 10ビット</translation>
+    </message>
+    <message>
+      <source>Ready</source>
+      <translation>準備完了</translation>
+    </message>
+    <message>
+      <source>Initializing</source>
+      <translation>初期化中</translation>
+    </message>
+    <message>
+      <source>The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings.</source>
+      <translation>選択したFFmpeg／Vulkan GPUは利用できません。設定で自動選択または別のGPUを選んでください。</translation>
+    </message>
+    <message>
+      <source>Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver.</source>
+      <translation>VulkanによるGPUフィルターは利用できません。AMD、Intel、NVIDIAの最新のVulkanドライバーをインストールしてください。</translation>
+    </message>
+    <message>
+      <source>%1: %2 (%3)</source>
+      <translation>%1: %2 (%3)</translation>
+    </message>
+    <message>
+      <source>Style %1</source>
+      <translation>スタイル %1</translation>
     </message>
   </context>
 </TS>

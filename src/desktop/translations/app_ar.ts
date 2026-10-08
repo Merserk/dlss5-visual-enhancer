@@ -12,16 +12,16 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source>  -  1 frame</source>
-      <translation>  -  1 frame</translation>
+      <translation>  -  إطار واحد</translation>
     </message>
     <message>
       <source>  -  f</source>
-      <translation>  -  f</translation>
+      <translation>  -  إطار </translation>
     </message>
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="620" />
       <source> f</source>
-      <translation> f</translation>
+      <translation> إطار </translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="154" />
@@ -35,7 +35,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <source> input FPS</source>
-      <translation> input FPS</translation>
+      <translation> معدل إطارات الإدخال</translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="427" />
@@ -180,7 +180,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/NeuralModelControls.qml" line="263" />
       <location filename="../qml/controls/AppFilePicker.qml" line="12" />
       <location filename="../qml/views/LiveView.qml" line="408" />
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>All Files (*.*)</source>
       <translation>جميع الملفات (*.*)</translation>
     </message>
@@ -228,12 +228,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Applied to processing</source>
       <translation>طُبق على المعالجة</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="22" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="131" />
-      <source>Apply Detail-Only Preset</source>
-      <translation>تطبيق إعداد التفاصيل فقط</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/ColoringControls.qml" line="38" />
       <source>Apply LUT</source>
@@ -352,8 +347,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/views/SettingsView.qml" line="71" />
-      <source>Cache Memory</source>
-      <translation>ذاكرة التخزين المؤقت</translation>
+      <source>Cache Memory (Rolling Cache 10GB)</source>
+      <translation>ذاكرة التخزين المؤقت (تخزين مؤقت متجدد بسعة 10 جيجابايت)</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="149" />
@@ -514,11 +509,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Color Match</source>
       <translation>مطابقة الألوان</translation>
     </message>
-    <message>
-      <location filename="../qml/views/LiveView.qml" line="524" />
-      <source>Color Strength</source>
-      <translation>قوة اللون</translation>
-    </message>
+    
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="46" />
       <source>Coloring</source>
@@ -544,12 +535,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Completed with warnings: %1 completed, %2 failed.</source>
       <translation>اكتمل مع تحذيرات: %1 مكتمل، %2 فشل.</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="10" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="120" />
-      <source>Composition &amp; Masking</source>
-      <translation>التركيب والأقنعة</translation>
-    </message>
+    
     <message>
       <source>Configure hardware assignment, preview behavior, native layout, and portable settings presets.</source>
       <translation>اضبط تخصيص العتاد وسلوك المعاينة وتخطيط الواجهة والإعدادات المسبقة القابلة للنقل.</translation>
@@ -790,12 +776,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>مسار التصدير</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>Export Preset JSON</source>
       <translation>تصدير إعداد مسبق JSON</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="114" />
+      <location filename="../qml/views/SettingsView.qml" line="103" />
       <source>Export Preset...</source>
       <translation>تصدير الإعداد المسبق...</translation>
     </message>
@@ -821,13 +807,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Exposure</source>
       <translation>التعريض</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="57" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="173" />
-      <location filename="../qml/views/LiveView.qml" line="526" />
-      <source>Face / Skin Protection</source>
-      <translation>حماية الوجه / البشرة</translation>
-    </message>
+    
     <message>
       <source>Factory reset restores all DLSS, upscale, interpolation, GPU, mask, and encoding settings. Window geometry remains a desktop preference.</source>
       <translation>تعيد استعادة المصنع جميع إعدادات DLSS والتكبير والاستيفاء وGPU والقناع والترميز. تبقى أبعاد النافذة ضمن تفضيلات سطح المكتب.</translation>
@@ -906,13 +886,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Grain Amount</source>
       <translation>شدة التحبب</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="68" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="187" />
-      <location filename="../qml/views/LiveView.qml" line="527" />
-      <source>Grain Preservation</source>
-      <translation>حفظ التحبب</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/GrainControls.qml" line="50" />
       <source>Grain Seed</source>
@@ -1031,7 +1005,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>صور (*.png *.jpg *.jpeg *.webp *.tif *.tiff *.bmp *.avif *.heic *.heif *.svg *.dng *.cr2 *.nef *.arw)</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>Import Preset JSON</source>
       <translation>استيراد إعداد مسبق JSON</translation>
     </message>
@@ -1041,7 +1015,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>فشل الاستيراد: %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="121" />
+      <location filename="../qml/views/SettingsView.qml" line="110" />
       <source>Import...</source>
       <translation>استيراد...</translation>
     </message>
@@ -1108,8 +1082,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>إعدادات مسبقة JSON</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>JSON Presets (*.json)</source>
       <translation>إعدادات مسبقة JSON (*.json)</translation>
     </message>
@@ -1207,8 +1181,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="108" />
       <location filename="../qml/components/NeuralModelControls.qml" line="233" />
-      <source>Load Custom Mask...</source>
-      <translation>تحميل قناع مخصص...</translation>
+      <source>Load Control Mask...</source>
+      <translation>تحميل قناع التحكم...</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="3834" />
@@ -1263,17 +1237,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>MPV: %1 مفقود، %2 إعادة تخزين، مزامنة A/V %3 ms</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="128" />
+      <location filename="../qml/views/SettingsView.qml" line="117" />
       <source>Maintenance &amp; Defaults</source>
       <translation>الصيانة والإعدادات الافتراضية</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="79" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="201" />
-      <location filename="../qml/views/LiveView.qml" line="528" />
-      <source>Mask Feather</source>
-      <translation>تنعيم حواف القناع</translation>
-    </message>
+    
     <message>
       <source>Match Colors</source>
       <translation>مطابقة الألوان</translation>
@@ -1362,12 +1330,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>NO OUTPUT</source>
       <translation>لا يوجد إخراج</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="35" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="145" />
-      <source>NR Color Strength</source>
-      <translation>NR قوة اللون</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/NeuralModelControls.qml" line="25" />
       <location filename="../qml/views/LiveView.qml" line="479" />
@@ -1408,7 +1371,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="227" />
-      <location filename="../qml/views/SettingsView.qml" line="158" />
+      <location filename="../qml/views/SettingsView.qml" line="147" />
       <source>No</source>
       <translation>لا</translation>
     </message>
@@ -1455,7 +1418,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>رابط البث عبر الإنترنت</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="133" />
+      <location filename="../qml/views/SettingsView.qml" line="122" />
       <source>Open Logs</source>
       <translation>فتح السجلات</translation>
     </message>
@@ -1631,7 +1594,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>إعداد مسبق</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="109" />
+      <location filename="../qml/views/SettingsView.qml" line="98" />
       <source>Preset name (e.g. 4K Master)...</source>
       <translation>اسم الإعداد المسبق (مثل 4K Master)...</translation>
     </message>
@@ -1639,7 +1602,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MenuStrip.qml" line="210" />
       <location filename="../qml/views/FrameInterpolationView.qml" line="195" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="249" />
-      <location filename="../qml/views/SettingsView.qml" line="98" />
+      <location filename="../qml/views/SettingsView.qml" line="87" />
       <location filename="../qml/views/UpscaleView.qml" line="448" />
       <location filename="../qml/views/UpscaleView.qml" line="481" />
       <source>Preview</source>
@@ -1753,7 +1716,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>جاهز.</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="101" />
+      <location filename="../qml/views/SettingsView.qml" line="90" />
       <source>Realtime Preview</source>
       <translation>معاينة فورية</translation>
     </message>
@@ -1829,12 +1792,12 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>استعادة إعدادات %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="134" />
+      <location filename="../qml/views/SettingsView.qml" line="123" />
       <source>Reset All Settings to Defaults</source>
       <translation>استعادة جميع الإعدادات الافتراضية</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="170" />
+      <location filename="../qml/views/SettingsView.qml" line="159" />
       <source>Reset all settings?</source>
       <translation>هل تريد استعادة جميع الإعدادات؟</translation>
     </message>
@@ -1877,11 +1840,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/LiveView.qml" line="177" />
       <source>Resume</source>
       <translation>استئناف</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="88" />
-      <source>Rolling Cache (5 GB)</source>
-      <translation>تخزين مؤقت متجدد (5 جيجابايت)</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="2050" />
@@ -1981,8 +1939,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="137" />
       <location filename="../qml/components/NeuralModelControls.qml" line="262" />
-      <source>Select Custom NR Mask</source>
-      <translation>اختيار قناع NR مخصص</translation>
+      <source>Select NR Control Mask</source>
+      <translation>اختيار قناع تحكم NR</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="175" />
@@ -2074,7 +2032,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>الإعدادات</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="106" />
+      <location filename="../qml/views/SettingsView.qml" line="95" />
       <source>Settings Presets</source>
       <translation>إعدادات مسبقة</translation>
     </message>
@@ -2098,12 +2056,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Sharpness</source>
       <translation>الحدة</translation>
     </message>
-    <message>
-      <location filename="../qml/components/NeuralModelControls.qml" line="106" />
-      <location filename="../qml/views/LiveView.qml" line="490" />
-      <source>Shimmer Suppression</source>
-      <translation>تقليل الوميض</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="952" />
       <location filename="../qml/components/MediaViewport.qml" line="1011" />
@@ -2162,11 +2115,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/components/MediaViewport.qml" line="410" />
       <source>Split</source>
       <translation>مقسّم</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="89" />
-      <source>Stage by Stage</source>
-      <translation>مرحلة بمرحلة</translation>
     </message>
     <message>
       <source>Standard</source>
@@ -2307,7 +2255,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>تراخيص الجهات الخارجية</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="175" />
+      <location filename="../qml/views/SettingsView.qml" line="164" />
       <source>This restores every processing setting and clears the custom mask. This cannot be undone unless you exported a preset.</source>
       <translation>سيؤدي هذا إلى استعادة جميع إعدادات المعالجة ومسح القناع المخصص. لا يمكن التراجع إلا إذا صدّرت إعدادًا مسبقًا.</translation>
     </message>
@@ -2331,13 +2279,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <source>Tonal Response</source>
       <translation>الاستجابة للدرجات اللونية</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="46" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="159" />
-      <location filename="../qml/views/LiveView.qml" line="525" />
-      <source>Tone Preservation</source>
-      <translation>حفظ الدرجة اللونية</translation>
-    </message>
+    
     <message>
       <source>Ultra</source>
       <translation>فائقة</translation>
@@ -2446,8 +2388,8 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>تُكمل صادرات الفيديو كل مرحلة قبل بدء المرحلة التالية. قد تتطلب الملفات الوسيطة بطول الفيديو الكامل مساحة كبيرة على القرص.</translation>
     </message>
     <message>
-      <source>Video exports use a lossless rolling disk cache of up to 5 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
-      <translation>تستخدم صادرات الفيديو تخزينًا مؤقتًا متجددًا على القرص دون فقدان الجودة بسعة تصل إلى 5 جيجابايت. تُحذف البيانات المستهلكة تلقائيًا. يحتاج الناتج النهائي إلى مساحة إضافية على القرص.</translation>
+      <source>Video exports use a rolling disk cache of up to 10 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
+      <translation>تستخدم صادرات الفيديو تخزينًا مؤقتًا متجددًا على القرص بسعة تصل إلى 10 جيجابايت. تُحذف البيانات المستهلكة تلقائيًا. يحتاج الناتج النهائي إلى مساحة إضافية على القرص.</translation>
     </message>
     <message>
       <location filename="../qml/components/MenuStrip.qml" line="83" />
@@ -2501,7 +2443,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
     <message>
       <location filename="../qml/Main.qml" line="228" />
-      <location filename="../qml/views/SettingsView.qml" line="159" />
+      <location filename="../qml/views/SettingsView.qml" line="148" />
       <source>Yes</source>
       <translation>نعم</translation>
     </message>
@@ -2565,6 +2507,291 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/AboutView.qml" line="38" />
       <source>© 2026 Merserk. NVIDIA, DLSS, and RTX are trademarks of NVIDIA Corporation.</source>
       <translation>© 2026 Merserk. NVIDIA وDLSS وRTX علامات تجارية لشركة NVIDIA Corporation.</translation>
+    </message>
+    <message>
+      <source>Fast lossless</source>
+      <translation>سريع دون فقدان</translation>
+    </message>
+    <message>
+      <source>Fast compressed</source>
+      <translation>ضغط سريع</translation>
+    </message>
+    <message>
+      <source>Fast 8-bit RGB compression without color subsampling. HDR uses Fast lossless. Models run one at a time.</source>
+      <translation>ضغط RGB سريع بعمق 8 بت دون اختزال الألوان. يستخدم HDR الخيار السريع بدون فقد. تعمل النماذج واحدًا في كل مرة.</translation>
+    </message>
+    <message>
+      <source>Lossless RAM cache with disk fallback. Models run one at a time.</source>
+      <translation>ذاكرة تخزين مؤقت دون فقدان في RAM مع استخدام القرص عند الحاجة. تعمل النماذج واحدًا تلو الآخر.</translation>
+    </message>
+    <message>
+      <source>Export paused; GPU memory released</source>
+      <translation>تم إيقاف التصدير مؤقتًا وتحرير ذاكرة GPU</translation>
+    </message>
+    <message>
+      <source>Part %1 · %2 · %3 FPS · %4 GB</source>
+      <translation>الجزء %1 · %2 · %3 FPS · %4 GB</translation>
+    </message>
+    <message>
+      <source>Preroll: %1 frames</source>
+      <translation>التهيئة: %1 إطار</translation>
+    </message>
+    <message>
+      <source>Pausing export; releasing GPU workers…</source>
+      <translation>جارٍ إيقاف التصدير مؤقتًا وتحرير عمليات GPU…</translation>
+    </message>
+    <message>
+      <source>Resuming export from the last committed part…</source>
+      <translation>جارٍ استئناف التصدير من آخر جزء مكتمل…</translation>
+    </message>
+    <message>
+      <source>Loading model</source>
+      <translation>جارٍ تحميل النموذج</translation>
+    </message>
+    <message>
+      <source>Flushing output</source>
+      <translation>جارٍ إكمال الإخراج</translation>
+    </message>
+    <message>
+      <source>Writing cache</source>
+      <translation>جارٍ كتابة التخزين المؤقت</translation>
+    </message>
+    <message>
+      <source>Releasing worker</source>
+      <translation>جارٍ تحرير العملية</translation>
+    </message>
+    <message>
+      <source>Committing part</source>
+      <translation>جارٍ تثبيت الجزء</translation>
+    </message>
+    <message>
+      <source>Finalizing video</source>
+      <translation>جارٍ إكمال الفيديو</translation>
+    </message>
+    <message>
+      <source>Startup %1 s · switch %2 s</source>
+      <translation>البدء %1 ث · التبديل %2 ث</translation>
+    </message>
+    <message>
+      <source>Cache Memory (Rolling Cache)</source>
+      <translation>ذاكرة التخزين المؤقت (تخزين مؤقت متجدد)</translation>
+    </message>
+    <message>
+      <source>Cache size</source>
+      <translation>حجم التخزين المؤقت</translation>
+    </message>
+    <message>
+      <source>%1 GB (Default)</source>
+      <translation>%1 جيجابايت (افتراضي)</translation>
+    </message>
+    <message>
+      <source>Native precision</source>
+      <translation>الدقة الأصلية</translation>
+    </message>
+    <message>
+      <source>Compressed RGB (8-bit)</source>
+      <translation>RGB مضغوط (8 بت)</translation>
+    </message>
+    <message>
+      <source>Control Mask replaces Automatic Mask. RGB channels control intensity, tone, and structure.</source>
+      <translation>يحل قناع التحكم محل القناع التلقائي. تتحكم قنوات RGB في الشدة ودرجة اللون والبنية.</translation>
+    </message>
+    <message>
+      <location filename="../qml/components/BatchQueueDrawer.qml" line="307" />
+      <source>Processing Stage %1 of %2 (Part %3)</source>
+      <translation>معالجة المرحلة %1 من %2 (الجزء %3)</translation>
+    </message>
+    <message>
+      <source>Optical Flow Quality</source>
+      <translation>جودة التدفق البصري</translation>
+    </message>
+    <message>
+      <source>%1 (Discrete GPU)</source>
+      <translation>%1 (وحدة معالجة رسومات منفصلة)</translation>
+    </message>
+    <message>
+      <source>%1 (Integrated GPU)</source>
+      <translation>%1 (وحدة معالجة رسومات مدمجة)</translation>
+    </message>
+    <message>
+      <source>%1 fps target | %2 fps processing | %3 enhanced | %4 sampled out | %5s buffered</source>
+      <translation>المعدل المستهدف: %1 إطار/ث | المعالجة: %2 إطار/ث | تم تحسين %3 | تم تخطي %4 أثناء أخذ العينات | %5 ثوانٍ في المخزن المؤقت</translation>
+    </message>
+    <message>
+      <source>%1 · pass %2/%3</source>
+      <translation>%1 · التمريرة %2/%3</translation>
+    </message>
+    <message>
+      <source>%1. GPU filters: %2.</source>
+      <translation>%1. مرشحات GPU: %2.</translation>
+    </message>
+    <message>
+      <source>AI GPU selection: %1</source>
+      <translation>وحدة معالجة الرسومات المختارة للذكاء الاصطناعي: %1</translation>
+    </message>
+    <message>
+      <source>Active: %1 — %2×%3.</source>
+      <translation>نشط: %1 — %2×%3.</translation>
+    </message>
+    <message>
+      <source>Application: %1</source>
+      <translation>التطبيق: %1</translation>
+    </message>
+    <message>
+      <source>Applying; newer changes pending</source>
+      <translation>جارٍ التطبيق؛ توجد تغييرات أحدث قيد الانتظار</translation>
+    </message>
+    <message>
+      <source>Available</source>
+      <translation>متوفر</translation>
+    </message>
+    <message>
+      <source>Buffering: %1</source>
+      <translation>التخزين المؤقت: %1</translation>
+    </message>
+    <message>
+      <source>CPU (Software decoding / encoding)</source>
+      <translation>CPU (فك ترميز / ترميز برمجي)</translation>
+    </message>
+    <message>
+      <source>Config: %1</source>
+      <translation>الإعدادات: %1</translation>
+    </message>
+    <message>
+      <source>Failed: %1</source>
+      <translation>فشل: %1</translation>
+    </message>
+    <message>
+      <source>Finished processing: %1. Playback available until Stop.</source>
+      <translation>اكتملت المعالجة: %1. يظل التشغيل متاحًا حتى الضغط على إيقاف.</translation>
+    </message>
+    <message>
+      <source>Finished: %1. %2 frames enhanced.</source>
+      <translation>اكتمل: %1. تم تحسين %2 إطارًا.</translation>
+    </message>
+    <message>
+      <source>Logs: %1</source>
+      <translation>السجلات: %1</translation>
+    </message>
+    <message>
+      <source>Missing</source>
+      <translation>غير موجود</translation>
+    </message>
+    <message>
+      <source>Outputs: %1</source>
+      <translation>المخرجات: %1</translation>
+    </message>
+    <message>
+      <source>Playing: %1</source>
+      <translation>التشغيل: %1</translation>
+    </message>
+    <message>
+      <source>Preparing Neural Rendering: %1x%2 -&gt; %3x%4...</source>
+      <translation>جارٍ إعداد Neural Rendering: %1x%2 -&gt; %3x%4...</translation>
+    </message>
+    <message>
+      <source>Probing %1...</source>
+      <translation>جارٍ فحص %1...</translation>
+    </message>
+    <message>
+      <source>Processing finished or stopped; changes apply on the next Start.</source>
+      <translation>اكتملت المعالجة أو توقفت؛ ستُطبَّق التغييرات عند التشغيل التالي.</translation>
+    </message>
+    <message>
+      <source>Requested up to %1p; received %2.</source>
+      <translation>طُلبت دقة تصل إلى %1p؛ تم استلام %2.</translation>
+    </message>
+    <message>
+      <source>Runtime error: %1</source>
+      <translation>خطأ وقت التشغيل: %1</translation>
+    </message>
+    <message>
+      <source>Runtime state: %1</source>
+      <translation>حالة وقت التشغيل: %1</translation>
+    </message>
+    <message>
+      <source>Software codecs</source>
+      <translation>برامج ترميز برمجية</translation>
+    </message>
+    <message>
+      <source>Source quality selection applies to YouTube/Twitch pages; using the supplied source.</source>
+      <translation>يُطبَّق اختيار جودة المصدر على صفحات YouTube/Twitch؛ يُستخدم المصدر المقدم.</translation>
+    </message>
+    <message>
+      <source>Startup warning: %1</source>
+      <translation>تحذير عند بدء التشغيل: %1</translation>
+    </message>
+    <message>
+      <source>The resolved stream differs from the requested height.</source>
+      <translation>يختلف ارتفاع البث الذي تم العثور عليه عن الارتفاع المطلوب.</translation>
+    </message>
+    <message>
+      <source>Update failed; recovery failed</source>
+      <translation>فشل التحديث؛ فشلت الاستعادة</translation>
+    </message>
+    <message>
+      <source>Update failed—previous settings restored</source>
+      <translation>فشل التحديث — تمت استعادة الإعدادات السابقة</translation>
+    </message>
+    <message>
+      <source>Video GPU selection: %1</source>
+      <translation>وحدة معالجة الرسومات المختارة للفيديو: %1</translation>
+    </message>
+    <message>
+      <source>Vulkan codecs where supported; software fallback</source>
+      <translation>برامج ترميز Vulkan حيثما كانت مدعومة؛ وإلا فبرامج ترميز برمجية</translation>
+    </message>
+    <message>
+      <source>Native DLSSG</source>
+      <translation>DLSSG الأصلي</translation>
+    </message>
+    <message>
+      <source>Cascade</source>
+      <translation>تسلسل</translation>
+    </message>
+    <message>
+      <source>Area</source>
+      <translation>متوسط المساحة</translation>
+    </message>
+    <message>
+      <source>Bicubic</source>
+      <translation>تكعيبي ثنائي</translation>
+    </message>
+    <message>
+      <source>Bilinear</source>
+      <translation>خطي ثنائي</translation>
+    </message>
+    <message>
+      <source>Nearest</source>
+      <translation>أقرب جار</translation>
+    </message>
+    <message>
+      <source>FFV1 Lossless RGB 10-bit</source>
+      <translation>FFV1 RGB دون فقدان، 10 بت</translation>
+    </message>
+    <message>
+      <source>Ready</source>
+      <translation>جاهز</translation>
+    </message>
+    <message>
+      <source>Initializing</source>
+      <translation>جارٍ التهيئة</translation>
+    </message>
+    <message>
+      <source>The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings.</source>
+      <translation>وحدة معالجة الرسومات المختارة لـ FFmpeg/Vulkan غير متوفرة. اختر الوضع التلقائي أو وحدة أخرى في الإعدادات.</translation>
+    </message>
+    <message>
+      <source>Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver.</source>
+      <translation>تصفية GPU عبر Vulkan غير متوفرة. ثبّت برنامج تشغيل Vulkan حديثًا من AMD أو Intel أو NVIDIA.</translation>
+    </message>
+    <message>
+      <source>%1: %2 (%3)</source>
+      <translation>%1: %2 (%3)</translation>
+    </message>
+    <message>
+      <source>Style %1</source>
+      <translation>النمط %1</translation>
     </message>
   </context>
 </TS>

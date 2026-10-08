@@ -313,7 +313,7 @@ from FidelityFX SDK 1.1.4, Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 License: MIT-style FidelityFX SDK license. The complete permission and
 disclaimer text is in `src/desktop/AMD-FidelityFX-CAS-LICENSE.txt` and the
-original SDK copy at `native (dev)/FidelityFX-SDK-v1.1.4/sdk/LICENSE.txt`.
+original SDK copy at `native (dev)/external/FidelityFX-SDK-v1.1.4/sdk/LICENSE.txt`.
 
 The CPU adaptation is used by the Neural Rendering image and video Sharpening stage.
 
@@ -326,7 +326,7 @@ adapted from NVIDIA Image Scaling SDK 1.0.3, Copyright (c) 2022 NVIDIA
 CORPORATION & AFFILIATES. The scaling algorithm is not used.
 
 License: MIT. The complete text is in `src/desktop/NVIDIA-NIS-LICENSE.txt` and
-the original SDK copy at `native (dev)/NVIDIAImageScaling/licence.txt`.
+the original SDK copy at `native (dev)/external/NVIDIAImageScaling/licence.txt`.
 
 The CPU adaptation is used by the Neural Rendering image and video Sharpening stage.
 
@@ -336,6 +336,14 @@ The CPU adaptation is used by the Neural Rendering image and video Sharpening st
 
 The app calls Microsoft Windows and Direct3D system APIs. System-provided
 components remain under Microsoft terms.
+
+The native GUI and CLI launchers use the Microsoft Visual C++ runtime.
+The app-local vcruntime140.dll is copied without modification from the
+installed Visual Studio x64 redistributable and retains its original
+Microsoft Authenticode signature. It remains governed by Microsoft's
+Visual Studio redistributable terms, not the Merserk source license.
+Redistribution information:
+https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files
 
 Third-party names and marks (including AMD, FidelityFX, NVIDIA, DLSS, RTX,
 GeForce, FFmpeg, Qt, Python, and others) are the property of their respective owners and are

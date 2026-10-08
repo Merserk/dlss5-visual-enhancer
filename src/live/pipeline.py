@@ -24,6 +24,7 @@ from ..core.jobs import BoundedLogBuffer, Cancelled, JobController, active_job, 
 from ..core import app_log
 from ..core.ffmpeg import chroma_location_code, decoded_rgba
 from ..core.paths import FFMPEG, LIVE_DIR
+from ..core.ui_messages import UiMessage, join_messages
 from ..core.runtime import (DLSSFrameSession, prepare_runtime, resolve_native_settings,
                             resolve_output_size, resolve_upscaling_mode, resize_fit,
                             rotate_frame, verify_feature_18)
@@ -41,11 +42,9 @@ _LOCK = threading.Lock()
 _CURRENT: LiveSession | None = None
 _LAST: LiveSessionInfo | None = None
 
-
 def _fit_height(width: int, height: int, max_height: int) -> tuple[int, int]:
     scale = min(1.0, max_height / height)
     return max(2, round(width * scale / 2) * 2), max(2, round(height * scale / 2) * 2)
-
 
 def validate_options(options: LiveOptions) -> None:
     if not options.source.strip():
@@ -65,11 +64,9 @@ def validate_options(options: LiveOptions) -> None:
     resolve_upscaling_mode(options.upscaling_factor)
     resolve_native_settings(options)
 
-
 def _redact(text: str) -> str:
     # Keep diagnostic errors, never store signed CDN query tokens.
     return re.sub(r"(https?://[^\s?]+)\?[^\s'\"]+", r"\1?<redacted>", text)
-
 
 class LiveSession(threading.Thread):
     """Bounded decode/scene reset -> feature 18 -> encode -> buffered playback."""
@@ -79,7 +76,7 @@ class LiveSession(threading.Thread):
         self.options = replace(options)
         self.effects = EffectUpdates(options)
         self.controller = JobController()
-        self.info = LiveSessionInfo(running=True, processing=True, status="Starting...")
+        self.info = LiveSessionInfo(running=True, processing=True, status=UiMessage("Starting..."))
         self._info_lock = threading.Lock()
         self._ready = threading.Event()
         self._produced = threading.Event()
@@ -122,7 +119,7 @@ class LiveSession(threading.Thread):
     def stop(self) -> None:
         self.effects.finish()
         if self.info.processing:
-            self._set(status="Stopping...")
+            self._set(status=UiMessage("Stopping..."))
         self.controller.stop()
 
     def _stage_error(self, stage: str, exc: Exception) -> None:
@@ -162,7 +159,7 @@ class LiveSession(threading.Thread):
                 # The replacement session keeps the current frame boundary.
                 native = DLSSFrameSession(**native_args, controller=deadline,
                                           native_settings=resolve_native_settings(settings),
-                                         composition_mask=settings.nr_mask)
+                                         control_mask=settings.nr_mask)
                 native.diagnostics.encode_backend = (
                     "nvenc" if self.info.encoder == "NVIDIA NVENC" else "cpu"
                 )
@@ -480,7 +477,7 @@ class LiveSession(threading.Thread):
             )
             native = DLSSFrameSession(
                 **native_args, native_settings=resolve_native_settings(self.options),
-                composition_mask=self.options.nr_mask,
+                control_mask=self.options.nr_mask,
                 controller=self.controller,
             )
             native.diagnostics.source_format = str(metadata["pixel_format"])
@@ -545,33 +542,12 @@ class LiveSession(threading.Thread):
 
                     def evaluate(settings, force_reset: bool):
                         resolved_settings = resolve_native_settings(settings)
-                        if (
-                            settings.nr_mask != native.composition_mask
-                            or int(resolved_settings["mask_feather"])
-                            != int(native.native_settings.get("mask_feather", 0))
-                        ):
-                            native.update_composition_mask(
-                                settings.nr_mask, int(resolved_settings["mask_feather"])
-                            )
+                        if settings.nr_mask != native.control_mask:
+                            native.update_control_mask(settings.nr_mask)
                         native.native_settings = resolved_settings
                         native.bridge_status["nr_passes"] = int(resolved_settings["nr_passes"])
                         native.bridge_status["allocated_feature_instances"] = int(
                             resolved_settings["nr_passes"]
-                        )
-                        native.bridge_status["composition"]["color_strength"] = float(
-                            resolved_settings["color_strength"]
-                        )
-                        native.bridge_status["composition"]["tone_preservation"] = float(
-                            resolved_settings["tone_preservation"]
-                        )
-                        native.bridge_status["composition"]["face_skin_protection"] = float(
-                            resolved_settings["face_skin_protection"]
-                        )
-                        native.bridge_status["composition"]["grain_preservation"] = float(
-                            resolved_settings["grain_preservation"]
-                        )
-                        native.bridge_status["temporal_stabilization"]["shimmer_suppression"] = float(
-                            resolved_settings["shimmer_suppression"]
                         )
                         evaluation_started = time.perf_counter()
                         values = dict(
@@ -753,11 +729,14 @@ class LiveSession(threading.Thread):
         position = (float(self._player_state.get("position", 0)) if self._mpv
                     else max(0, now - self._playback_started) if self._playback_started else 0)
         buffer = max(0, published - position)
-        status = (f"Playing: {self._title}" if self._player_attempted else f"Buffering: {self._title}")
+        status = (UiMessage("Playing: %1", self._title) if self._player_attempted
+                  else UiMessage("Buffering: %1", self._title))
         if finished:
-            status = f"Finished processing: {self._title}. Playback available until Stop."
-        status += (f"\n{info.target_fps:.2f} fps target | {info.effective_fps:.1f} fps processing | "
-                   f"{info.processed_frames} enhanced | {info.sampled_frames} sampled out | {buffer:.1f}s buffered")
+            status = UiMessage("Finished processing: %1. Playback available until Stop.", self._title)
+        status = join_messages([status, UiMessage(
+            "%1 fps target | %2 fps processing | %3 enhanced | %4 sampled out | %5s buffered",
+            f"{info.target_fps:.2f}", f"{info.effective_fps:.1f}", info.processed_frames,
+            info.sampled_frames, f"{buffer:.1f}")])
         self._set(status=status, segments=self._segment_count, buffer_seconds=buffer,
                   elapsed_seconds=now - self._started_at)
 
@@ -789,27 +768,28 @@ class LiveSession(threading.Thread):
 
     def _produce(self) -> None:
         options = self.options
-        self._set(status="Resolving source...")
+        self._set(status=UiMessage("Resolving source..."))
         resolved = resolve_source(options.source, options.max_height, self.controller,
                                   source_quality=options.source_quality)
         self._title = resolved.title
-        self._set(status=f"Probing {resolved.title}...")
+        self._set(status=UiMessage("Probing %1...", resolved.title))
         metadata = probe_source(resolved, self.controller, options.network_timeout)
         self._source_depth = int(metadata["depth"])
         source_size = f"{metadata['width']}x{metadata['height']}"
         source_limit = options.max_height if options.source_quality == "Auto" else int(options.source_quality)
-        source_note = (f"Requested up to {source_limit}p; received {source_size}."
+        source_note = (UiMessage("Requested up to %1p; received %2.", source_limit, source_size)
                        if resolved.kind in ("youtube", "twitch") else
-                       "Source quality selection applies to YouTube/Twitch pages; using the supplied source.")
+                       UiMessage("Source quality selection applies to YouTube/Twitch pages; using the supplied source."))
         if resolved.kind in ("youtube", "twitch") and metadata["height"] != source_limit:
-            source_note += " The resolved stream differs from the requested height."
+            source_note = join_messages([source_note,
+                UiMessage("The resolved stream differs from the requested height.")], " ")
         self._set(source_size=source_size, source_quality=options.source_quality, source_quality_note=source_note)
         self._rate = AdaptiveRate(metadata["rate"], options.target_fps)
         self._set(source_fps=float(metadata["rate"]), target_fps=self._rate.fps)
         in_w, in_h = _fit_height(metadata["width"], metadata["height"], options.max_height)
         factor, mode = resolve_upscaling_mode(options.upscaling_factor)
         out_w, out_h = resolve_output_size(in_w, in_h, factor)
-        self._set(status=f"Preparing Neural Rendering: {in_w}x{in_h} -> {out_w}x{out_h}...")
+        self._set(status=UiMessage("Preparing Neural Rendering: %1x%2 -> %3x%4...", in_w, in_h, out_w, out_h))
         prepared_runtime = prepare_runtime()
         ai_uuid, video_uuid = processing_gpu_settings()
         gpu = resolve_runtime_ai_gpu(prepared_runtime.gpus, prepared_runtime.runtime_bundle, ai_uuid)
@@ -843,7 +823,7 @@ class LiveSession(threading.Thread):
                 frame_count=None, warmup_frames=0, factor=factor, mode=mode,
                 gpu=gpu, runtime_bundle=prepared_runtime.runtime_bundle, cuda_video=True)
             native = DLSSFrameSession(**native_args, native_settings=resolve_native_settings(options),
-                                      composition_mask=options.nr_mask,
+                                      control_mask=options.nr_mask,
                                       controller=self.controller)
             native.diagnostics.encode_backend = "nvenc" if nvenc else "cpu"
             native.diagnostics.source_format = str(metadata["pixel_format"])
@@ -992,10 +972,10 @@ class LiveSession(threading.Thread):
                     if tail:
                         tails["mpv"] = tail
                 err_path = app_log.fail("live", f"live-{stamp}", error, tails)
-                self._set(report_path=str(err_path), status=f"Failed: {error}", failures=[error])
+                self._set(report_path=str(err_path), status=UiMessage("Failed: %1", error), failures=[error])
             else:
                 app_log.info("live", "cancelled")
-                self._set(status="Stopped.")
+                self._set(status=UiMessage("Stopped."))
         finally:
             self.effects.finish()
             self.controller.terminate_processes()
@@ -1011,10 +991,10 @@ class LiveSession(threading.Thread):
             self._set(running=False, processing=False, mpv_running=False, playlist_url="",
                       elapsed_seconds=time.monotonic() - started)
             if self._finished and not self.snapshot().failures:
-                self._set(status=f"Finished: {self._title}. {self.info.processed_frames} frames enhanced.")
+                self._set(status=UiMessage("Finished: %1. %2 frames enhanced.", self._title, self.info.processed_frames))
                 app_log.info("live", f"done frames={self.info.processed_frames} elapsed={self.info.elapsed_seconds:.0f}s")
             elif not self.snapshot().failures:
-                self._set(status="Stopped.")
+                self._set(status=UiMessage("Stopped."))
             self._write_report()
             if self._session_dir and not self.options.keep_files:
                 shutil.rmtree(self._session_dir, ignore_errors=True)
@@ -1025,7 +1005,6 @@ class LiveSession(threading.Thread):
                 _LAST = self.snapshot()
                 if _CURRENT is self:
                     _CURRENT = None
-
 
 def start_live_session(options: LiveOptions) -> LiveSessionInfo:
     try:
@@ -1044,7 +1023,6 @@ def start_live_session(options: LiveOptions) -> LiveSessionInfo:
     # Resolution, probe and native setup are cancellable background work.
     return session.snapshot()
 
-
 def stop_live_session(timeout: float | None = 3) -> LiveSessionInfo:
     with _LOCK:
         session = _CURRENT
@@ -1054,24 +1032,20 @@ def stop_live_session(timeout: float | None = 3) -> LiveSessionInfo:
     session.join(timeout=timeout)
     return session.snapshot()
 
-
 def update_live_effects(settings) -> bool:
     """Called in shared-settings commit order; enqueue only, never do GPU work."""
     with _LOCK:
         session = _CURRENT
     return session.request_effects(settings) if session is not None else False
 
-
 def is_live_running() -> bool:
     with _LOCK:
         return _CURRENT is not None and _CURRENT.is_alive()
-
 
 def live_status() -> LiveSessionInfo:
     with _LOCK:
         session, last = _CURRENT, _LAST
     return session.snapshot() if session else replace(last, failures=list(last.failures)) if last else LiveSessionInfo()
-
 
 def sweep_stale_live_dirs() -> int:
     """Keep diagnostics and other running app instances' playback intact."""
@@ -1114,13 +1088,11 @@ def sweep_stale_live_dirs() -> int:
         removed += not child.exists()
     return removed
 
-
 def _shutdown() -> None:
     with _LOCK:
         session = _CURRENT
     if session:
         session.stop()
         session.join(timeout=5)
-
 
 atexit.register(_shutdown)

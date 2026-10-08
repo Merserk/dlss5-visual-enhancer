@@ -1,41 +1,38 @@
-"""Video intermediate formats selected by Cache Memory settings."""
+"""Rolling-cache modes and fixed lossless intermediates for file-only previews."""
 from __future__ import annotations
 
 
-CACHE_VIDEO_CODECS = ("FFV1", "ProRes Proxy")
+CACHE_MODES = ("Fast lossless", "Fast compressed")
+CACHE_SIZE_CHOICES_GB = (5, 10, 15, 20, 25, 30)
+DEFAULT_CACHE_SIZE_GB = 10
+
+
+def validate_cache_mode(selection: str) -> str:
+    if selection not in CACHE_MODES:
+        raise ValueError("Cache Memory mode must be Fast lossless or Fast compressed.")
+    return selection
+
+
+def cache_size_bytes(size_gb: int) -> int:
+    """Resolve an allowed per-part size in decimal GB, without allocating it."""
+    if isinstance(size_gb, bool) or not isinstance(size_gb, int) or size_gb not in CACHE_SIZE_CHOICES_GB:
+        raise ValueError("Cache size must be 5, 10, 15, 20, 25 or 30 GB.")
+    return size_gb * 1_000_000_000
 
 
 def cache_video_format(selection: str) -> tuple[str, str, str]:
-    """Return the encoder's public codec name, container, and file suffix."""
-    if selection == "FFV1":
-        return "FFV1 Lossless RGB 10-bit", "MKV", ".mkv"
-    if selection == "ProRes Proxy":
-        return "ProRes Proxy", "MOV", ".mov"
-    raise ValueError(f"Unknown cache video codec: {selection!r}.")
+    """Return the fixed preview format; export caches use frame blocks."""
+    validate_cache_mode(selection)
+    return "FFV1 Lossless RGB 10-bit", "MKV", ".mkv"
 
 
 def cache_ffmpeg_args(selection: str, metadata: dict) -> list[str]:
-    """Encode a stage intermediate, preserving HDR signaling through ProRes."""
-    if selection == "FFV1":
-        args = ["-c:v", "ffv1", "-level", "3", "-pix_fmt", "gbrp10le"]
-        for key, flag in (("color_primaries", "-color_primaries"),
-                          ("color_transfer", "-color_trc")):
-            value = metadata.get(key)
-            if value and value not in {"unknown", "unspecified"}:
-                args.extend((flag, "0" if value == "gbr" else str(value)))
-        return [*args, "-color_range", "pc"]
-    if selection != "ProRes Proxy":
-        raise ValueError(f"Unknown cache video codec: {selection!r}.")
-    hdr = bool(metadata.get("hdr"))
-    primaries = metadata.get("color_primaries")
-    transfer = metadata.get("color_transfer")
-    matrix = metadata.get("color_space")
-    if primaries in {None, "", "unknown", "unspecified", "gbr"}:
-        primaries = "bt2020" if hdr else "bt709"
-    if transfer in {None, "", "unknown", "unspecified", "gbr"}:
-        transfer = "smpte2084" if hdr else "bt709"
-    if matrix in {None, "", "unknown", "unspecified", "gbr"}:
-        matrix = "bt2020nc" if hdr else "bt709"
-    return ["-c:v", "prores_ks", "-profile:v", "0", "-pix_fmt", "yuv422p10le",
-            "-color_primaries", str(primaries), "-color_trc", str(transfer),
-            "-colorspace", str(matrix), "-color_range", "tv"]
+    """Encode a lossless file-only preview, independently of the export mode."""
+    validate_cache_mode(selection)
+    args = ["-c:v", "ffv1", "-level", "3", "-pix_fmt", "gbrp10le"]
+    for key, flag in (("color_primaries", "-color_primaries"),
+                      ("color_transfer", "-color_trc")):
+        value = metadata.get(key)
+        if value and value not in {"unknown", "unspecified"}:
+            args.extend((flag, "0" if value == "gbr" else str(value)))
+    return [*args, "-color_range", "pc"]

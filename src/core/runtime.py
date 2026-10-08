@@ -29,7 +29,7 @@ from .neural_bridge import (
     FORMAT_NV12,
     FORMAT_P010,
 )
-from .nr_composition import mask_report, mask_selection, prepare_nr_mask
+from .nr_control_mask import mask_report, mask_selection, prepare_nr_mask
 from .paths import (
     DLSSNR_BRIDGE,
     DLSSNR_DIR,
@@ -40,11 +40,10 @@ from .paths import (
     RUNTIME,
 )
 
-
 NR_STYLES = {
-    "Default": 0,
-    "Natural": 1,
-    "Cinematic": 2,
+    "Style 0": 0,
+    "Style 1": 1,
+    "Style 2": 2,
 }
 
 # Feature 18 is evaluated at the final neural dimensions. Scaling below 1x is
@@ -64,7 +63,6 @@ UPSCALING_CHOICES = tuple(
     (mode["label"], factor) for factor, mode in UPSCALING_MODES.items()
 )
 
-
 def resolve_upscaling_mode(raw_factor: float) -> tuple[float, dict[str, str | int]]:
     try:
         factor = float(raw_factor)
@@ -77,10 +75,8 @@ def resolve_upscaling_mode(raw_factor: float) -> tuple[float, dict[str, str | in
             return supported, mode
     raise ValueError("Scale must be one of: Source, 200%, 175%, 150%, 125%, 75%, 50%, 25%.")
 
-
 def _nearest_even(value: float) -> int:
     return max(2, int(math.floor(value / 2.0 + 0.5)) * 2)
-
 
 def resolve_output_size(width: int, height: int, factor: float) -> tuple[int, int]:
     factor, _ = resolve_upscaling_mode(factor)
@@ -93,72 +89,43 @@ def resolve_output_size(width: int, height: int, factor: float) -> tuple[int, in
         )
     return output_width, output_height
 
+OPTICAL_FLOW_QUALITIES = ("High", "Medium", "Low")
+
 
 def resolve_native_settings(options: Any) -> dict[str, int | float | bool]:
     try:
         style = NR_STYLES[options.nr_style]
-    except KeyError as exc:
-        raise ValueError(
-            f"Unknown NR Style: {options.nr_style!r}. Choose one of: {', '.join(NR_STYLES)}."
-        ) from exc
-
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"Unknown NR Style: {options.nr_style!r}. Choose one of: {', '.join(NR_STYLES)}.") from exc
     controls = {
-        "NR Intensity": (options.nr_intensity, 0.0, 2.0),
-        "Local Tone Strength": (options.local_tone_strength, 0.0, 2.0),
-        "Local Structure Strength": (options.local_structure_strength, 0.0, 2.0),
-        "Skin Structure Strength": (options.skin_structure_strength, -1.0, 2.0),
-        "NR Color Strength": (options.nr_color_strength, 0.0, 1.0),
-        "Tone Preservation": (options.tone_preservation, 0.0, 1.0),
-        "Face/Skin Protection": (options.face_skin_protection, 0.0, 1.0),
-        "Grain Preservation": (options.grain_preservation, 0.0, 1.0),
-        "Shimmer Suppression": (getattr(options, "shimmer_suppression", 0.0), 0.0, 1.0),
+        "intensity": ("NR Intensity", options.nr_intensity, 0.0, 2.0),
+        "local_tone": ("Local Tone Strength", options.local_tone_strength, 0.0, 1.0),
+        "local_structure": ("Local Structure Strength", options.local_structure_strength, 0.0, 1.0),
+        "skin_structure": ("Skin Structure Strength", options.skin_structure_strength, 0.0, 1.0),
     }
-    validated: dict[str, float] = {}
-    for label, (raw_value, minimum, maximum) in controls.items():
+    validated = {}
+    for key, (label, raw, minimum, maximum) in controls.items():
+        if isinstance(raw, bool):
+            raise ValueError(f"{label} must be a finite number between {minimum:g} and {maximum:g}.")
         try:
-            value = float(raw_value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"{label} must be a number between {minimum:g} and {maximum:g}."
-            ) from exc
+            value = float(raw)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"{label} must be a finite number between {minimum:g} and {maximum:g}.") from exc
         if not math.isfinite(value) or not minimum <= value <= maximum:
             raise ValueError(f"{label} must be between {minimum:g} and {maximum:g}.")
-        validated[label] = value
-
+        validated[key] = value
     if not isinstance(options.automatic_mask, bool):
         raise ValueError("Automatic Mask must be a boolean value.")
-    mask_feather = getattr(options, "mask_feather", 0)
-    if isinstance(mask_feather, bool) or int(mask_feather) != mask_feather:
-        raise ValueError("Mask Feather must be an integer from 0 to 128.")
-    if not 0 <= int(mask_feather) <= 128:
-        raise ValueError("Mask Feather must be between 0 and 128 pixels.")
-    nr_passes = getattr(options, "nr_passes", 1)
-    if isinstance(nr_passes, bool) or not isinstance(nr_passes, int):
+    passes = getattr(options, "nr_passes", 1)
+    if isinstance(passes, bool) or not isinstance(passes, int) or not 1 <= passes <= 4:
         raise ValueError("NR Passes must be an integer from 1 to 4.")
-    if not 1 <= nr_passes <= 4:
-        raise ValueError("NR Passes must be between 1 and 4.")
-
-    # NR uses one GPU Lucas-Kanade backend for every boundary. Keep the old
-    # ABI field for compatibility; NVOFA belongs to Frame Interpolation.
-    return {
-        "profile": 0,
-        "style": style,
-        "auto_mask": int(options.automatic_mask),
-        "intensity": validated["NR Intensity"],
-        "nr_passes": nr_passes,
-        "local_tone": validated["Local Tone Strength"],
-        "local_structure": validated["Local Structure Strength"],
-        "skin_structure": validated["Skin Structure Strength"],
-        "color_strength": validated["NR Color Strength"],
-        "tone_preservation": validated["Tone Preservation"],
-        "face_skin_protection": validated["Face/Skin Protection"],
-        "grain_preservation": validated["Grain Preservation"],
-        "shimmer_suppression": validated["Shimmer Suppression"],
-        "prefer_nvof": False,
-        "mask_feather": int(mask_feather),
-        "gpu_mode": True,
-    }
-
+    flow_quality = getattr(options, "nr_optical_flow_quality", "High")
+    if not isinstance(flow_quality, str) or flow_quality not in OPTICAL_FLOW_QUALITIES:
+        raise ValueError("Optical Flow Quality must be High, Medium, or Low.")
+    return {"style": style, "auto_mask": int(options.automatic_mask and not getattr(options, "nr_mask", None)),
+            "nr_passes": passes, "native_intensity": min(1.0, validated["intensity"]),
+            "optical_flow_quality": OPTICAL_FLOW_QUALITIES.index(flow_quality),
+            "gpu_mode": True, **validated}
 
 def inspect_runtime_bundle(
     bridge_path: Path | None = None,
@@ -181,13 +148,11 @@ def inspect_runtime_bundle(
         },
     }
 
-
 def validate_gpu_runtime(
     gpu: dict[str, Any], bundle: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     del gpu
     return bundle or inspect_runtime_bundle()
-
 
 def write_failure_report(
     *,
@@ -223,12 +188,10 @@ def write_failure_report(
         tails or None,
     )
 
-
 def resize_fit(rgba: np.ndarray, width: int, height: int, *,
                interpolation: str = "Lanczos4", controller=None) -> np.ndarray:
     from .ffmpeg.filters import resize_fit as vulkan_resize
     return vulkan_resize(rgba, width, height, interpolation=interpolation, controller=controller)
-
 
 def rotate_frame(frame: np.ndarray, rotation: int, *, controller=None) -> np.ndarray:
     if rotation not in (90, 180, 270):
@@ -240,7 +203,6 @@ def rotate_frame(frame: np.ndarray, rotation: int, *, controller=None) -> np.nda
     graph = libplacebo(f"rotate={rotation // 90}:w={width}:h={height}")
     return filter_array(frame, graph, width=width, height=height, controller=controller)
 
-
 def validate_runtime_files() -> None:
     required = [FFMPEG, FFPROBE, DLSSNR_BRIDGE, NEURAL_RUNTIME]
     missing = [str(path) for path in required if not path.is_file()]
@@ -248,7 +210,6 @@ def validate_runtime_files() -> None:
         raise RuntimeError(
             "The Neural Rendering runtime is incomplete:\n" + "\n".join(missing)
         )
-
 
 class DLSSFrameSession:
     """Virtual feature-18 render session running on the shared system bridge."""
@@ -269,7 +230,8 @@ class DLSSFrameSession:
         runtime_bundle: dict[str, Any],
         controller: JobController,
         cuda_video: bool = False,
-        composition_mask: object | None = None,
+        still_image: bool = False,
+        control_mask: object | None = None,
     ) -> None:
         del input_width, input_height, warmup_frames
         if frame_count is not None and (
@@ -289,8 +251,9 @@ class DLSSFrameSession:
         self.closed = False
         self.factor = factor
         self.mode = mode
-        self.native_settings = native_settings
-        self.composition_mask = mask_selection(composition_mask)
+        self.still_image = bool(still_image)
+        self.native_settings = {**native_settings, "motion_mode": 0 if self.still_image else 1}
+        self.control_mask = mask_selection(control_mask)
         self.gpu = gpu
         self.runtime_bundle = runtime_bundle
         self.output_width = int(output_width)
@@ -309,7 +272,6 @@ class DLSSFrameSession:
             "output_transfer_seconds": 0.0,
             "output_conversion_seconds": 0.0,
             "optical_flow_seconds": 0.0,
-            "stabilization_seconds": 0.0,
         }
         if native_settings.get("gpu_mode", True) is not True:
             raise ValueError("Neural Rendering requires CUDA/D3D12 GPU processing.")
@@ -326,41 +288,9 @@ class DLSSFrameSession:
         self._output_float = (
             None if self._input_float is None else np.empty_like(self._input_float)
         )
-        self._shimmer_suppression = float(
-            native_settings.get("shimmer_suppression", 0.0)
-        )
-        self._host_stabilizer_enabled = bool(
-            not self.cuda_video
-            and self._input_float is not None
-            and self._shimmer_suppression > 0.0
-        )
-        self._host_flow = (
-            cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
-            if self._host_stabilizer_enabled
-            else None
-        )
-        if self._host_stabilizer_enabled:
-            host_y, host_x = np.mgrid[
-                0:self.output_height, 0:self.output_width
-            ].astype(np.float32)
-            self._host_grid_x: np.ndarray | None = host_x
-            self._host_grid_y: np.ndarray | None = host_y
-        else:
-            self._host_grid_x = None
-            self._host_grid_y = None
-        self._host_previous_source: np.ndarray | None = None
-        self._host_previous_residual: np.ndarray | None = None
-        self._host_stabilized_frames = 0
-        # Host-output paths stabilize the final composed residual.  Suppress
-        # the earlier native residual blend there to avoid filtering twice;
-        # depth/motion remain bound to every NGX evaluation.
-        self._host_bridge_settings = dict(native_settings)
-        if self._host_stabilizer_enabled:
-            self._host_bridge_settings["shimmer_suppression"] = 0.0
         self._cuda_buffers: CudaFrameBuffers | None = None
         self._mask_host = prepare_nr_mask(
-            self.composition_mask, self.output_width, self.output_height,
-            int(native_settings.get("mask_feather", 0)),
+            self.control_mask, self.output_width, self.output_height,
         )
         self._cuda_mask: CudaMaskBuffer | None = None
         self._logs: list[str] = []
@@ -376,29 +306,8 @@ class DLSSFrameSession:
             "resize_method": "none" if factor == 1.0 else "lanczos",
             "nr_passes": int(native_settings.get("nr_passes", 1)),
             "allocated_feature_instances": int(native_settings.get("nr_passes", 1)),
-            "composition": {
-                "color_strength": float(native_settings.get("color_strength", 1.0)),
-                "tone_preservation": float(native_settings.get("tone_preservation", 0.0)),
-                "face_skin_protection": float(native_settings.get("face_skin_protection", 0.0)),
-                "grain_preservation": float(native_settings.get("grain_preservation", 0.0)),
-                "mask": mask_report(self.composition_mask, int(native_settings.get("mask_feather", 0))),
-                "cuda_mask_uploads": 0,
-                "cuda_mask_upload_bytes": 0,
-            },
-            "temporal_stabilization": {
-                "shimmer_suppression": float(native_settings.get("shimmer_suppression", 0.0)),
-                "motion_backend": "initializing",
-                "motion_fallback": "bundled_gpu_lucas_kanade",
-                "depth_bound": False,
-                "motion_bound": False,
-                "optical_flow_seconds": 0.0,
-                "stabilization_seconds": 0.0,
-                "stabilizer_backend": (
-                    "host_final_composed_residual"
-                    if self._host_stabilizer_enabled
-                    else "native_gpu_residual"
-                ),
-            },
+            "native_control_mask": mask_report(self.control_mask),
+            "temporal_guides": {"motion_backend": "initializing", "depth_bound": False, "motion_bound": False},
         }
         BRIDGE_MANAGER.open_session()
         self._manager_open = True
@@ -411,10 +320,6 @@ class DLSSFrameSession:
                 )
             if self._mask_host is not None:
                 self._cuda_mask = BRIDGE_MANAGER.create_cuda_mask(self._mask_host)
-                self.bridge_status["composition"]["cuda_mask_uploads"] = 1
-                self.bridge_status["composition"]["cuda_mask_upload_bytes"] = int(
-                    self._cuda_mask.byte_count
-                )
             self._logs.append(
                 json.dumps(
                     {"event": "session_open", **self.bridge_status},
@@ -432,7 +337,7 @@ class DLSSFrameSession:
                 with contextlib.suppress(Exception):
                     self._cuda_buffers.close()
                 self._cuda_buffers = None
-            BRIDGE_MANAGER.close_session()
+            BRIDGE_MANAGER.close_session(discard=True)
             self._manager_open = False
             raise
 
@@ -449,7 +354,7 @@ class DLSSFrameSession:
         return 0
 
     def structured_status(self) -> dict[str, Any]:
-        temporal = dict(self.bridge_status.get("temporal_stabilization", {}))
+        temporal = dict(self.bridge_status.get("temporal_guides", {}))
         current_temporal = BRIDGE_MANAGER.temporal_status()
         if current_temporal and (
             bool(current_temporal.get("depth_bound"))
@@ -457,43 +362,18 @@ class DLSSFrameSession:
         ):
             self._temporal_status_cache = current_temporal
         temporal.update(self._temporal_status_cache)
-        if self._host_stabilizer_enabled:
-            temporal["stabilizer_backend"] = "host_final_composed_residual"
-            temporal["optical_flow_seconds"] = float(
-                self.process_timings.get("optical_flow_seconds", 0.0)
-            )
-            temporal["stabilization_seconds"] = float(
-                self.process_timings.get("stabilization_seconds", 0.0)
-            )
-        else:
-            temporal["optical_flow_seconds"] = float(
-                temporal.get("optical_flow_seconds", 0.0)
-            )
-            temporal["stabilization_seconds"] = float(
-                temporal.get("stabilization_seconds", 0.0)
-            )
         if self.diagnostics.frames:
             # The native feature is released at the final logical-session
             # boundary, so retain deterministic counters even when a report is
             # assembled after close.
             temporal["motion_backend"] = temporal.get("motion_backend") if (
                 temporal.get("motion_frames", 0)
-            ) else "gpu_lucas_kanade"
+            ) else ("static_image" if self.still_image else "nvidia_nvofa")
             temporal["motion_frames"] = max(
                 int(temporal.get("motion_frames", 0)), self.diagnostics.frames
             )
             temporal["reset_frames"] = max(
                 int(temporal.get("reset_frames", 0)), self.diagnostics.scene_resets + 1
-            )
-            temporal["stabilized_frames"] = max(
-                int(temporal.get("stabilized_frames", 0)),
-                self._host_stabilized_frames
-                if self._host_stabilizer_enabled
-                else (
-                    self.diagnostics.frames
-                    if float(self.native_settings.get("shimmer_suppression", 0.0)) > 0
-                    else 0
-                ),
             )
             temporal["depth_bound"] = True
             temporal["motion_bound"] = True
@@ -501,36 +381,17 @@ class DLSSFrameSession:
             **self.bridge_status,
             **self.diagnostics.as_dict(),
             "gpu_memory": self._vram_status or self._vram_tracker.snapshot(),
-            "temporal_stabilization": temporal,
+            "temporal_guides": temporal,
         }
 
-    def update_composition_mask(self, selection: object | None, feather: int) -> None:
-        """Prepare a replacement mask completely before swapping it at a frame boundary."""
+    def update_control_mask(self, selection: object | None) -> None:
+        """Swap the native mask resource at a frame boundary."""
         selected = mask_selection(selection)
-        prepared = prepare_nr_mask(
-            selected, self.output_width, self.output_height, int(feather)
-        )
-        replacement = None
-        if prepared is not None:
-            replacement = BRIDGE_MANAGER.create_cuda_mask(prepared)
+        prepared = prepare_nr_mask(selected, self.output_width, self.output_height)
+        replacement = None if prepared is None else BRIDGE_MANAGER.create_cuda_mask(prepared)
         previous = self._cuda_mask
-        composition = self.bridge_status.get("composition", {})
-        cuda_uploads = int(composition.get("cuda_mask_uploads", 0))
-        cuda_upload_bytes = int(composition.get("cuda_mask_upload_bytes", 0))
-        self._mask_host = prepared
-        self._cuda_mask = replacement
-        self.composition_mask = selected
-        self.bridge_status["composition"] = {
-            "color_strength": float(self.native_settings.get("color_strength", 1.0)),
-            "tone_preservation": float(self.native_settings.get("tone_preservation", 0.0)),
-            "face_skin_protection": float(self.native_settings.get("face_skin_protection", 0.0)),
-            "grain_preservation": float(self.native_settings.get("grain_preservation", 0.0)),
-            "mask": mask_report(selected, int(feather)),
-            "cuda_mask_uploads": cuda_uploads + int(replacement is not None),
-            "cuda_mask_upload_bytes": cuda_upload_bytes + (
-                int(replacement.byte_count) if replacement is not None else 0
-            ),
-        }
+        self._mask_host, self._cuda_mask, self.control_mask = prepared, replacement, selected
+        self.bridge_status["native_control_mask"] = mask_report(selected)
         if previous is not None:
             previous.close()
 
@@ -538,85 +399,6 @@ class DLSSFrameSession:
         current = BRIDGE_MANAGER.temporal_status()
         if current:
             self._temporal_status_cache = current
-
-    def _stabilize_host_composition(self, *, reset: bool) -> None:
-        """Stabilize model-created detail after all composition controls."""
-        if not self._host_stabilizer_enabled:
-            return
-        assert self._input_float is not None and self._output_float is not None
-        current_source = self._input_float
-        current_residual = self._output_float - current_source
-        if reset or self._host_previous_source is None or self._host_previous_residual is None:
-            self._host_previous_source = current_source.copy()
-            self._host_previous_residual = current_residual.copy()
-            return
-
-        flow_started = time.perf_counter()
-        previous_gray = cv2.cvtColor(
-            np.clip(self._host_previous_source * 255.0, 0.0, 255.0).astype(np.uint8),
-            cv2.COLOR_RGB2GRAY,
-        )
-        current_gray = cv2.cvtColor(
-            np.clip(current_source * 255.0, 0.0, 255.0).astype(np.uint8),
-            cv2.COLOR_RGB2GRAY,
-        )
-        assert self._host_flow is not None
-        # DIS directly estimates the requested current -> previous field.
-        flow = self._host_flow.calc(current_gray, previous_gray, None)
-        self.process_timings["optical_flow_seconds"] += time.perf_counter() - flow_started
-
-        stabilization_started = time.perf_counter()
-        height, width = current_gray.shape
-        assert self._host_grid_x is not None and self._host_grid_y is not None
-        map_x = self._host_grid_x + flow[..., 0]
-        map_y = self._host_grid_y + flow[..., 1]
-        valid = (
-            (map_x >= 0.0) & (map_y >= 0.0)
-            & (map_x <= float(width - 1)) & (map_y <= float(height - 1))
-        )
-        warped_source = cv2.remap(
-            self._host_previous_source,
-            map_x,
-            map_y,
-            cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_CONSTANT,
-        )
-        warped_residual = cv2.remap(
-            self._host_previous_residual,
-            map_x,
-            map_y,
-            cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_CONSTANT,
-        )
-
-        luma_weights = np.array((0.2126, 0.7152, 0.0722), dtype=np.float32)
-        luma_disagreement = np.abs(
-            np.sum((current_source - warped_source) * luma_weights, axis=2)
-        )
-        confidence = np.clip((0.10 - luma_disagreement) / 0.08, 0.0, 1.0)
-        confidence *= valid
-
-        # Clamp reprojected history to the current residual's 3x3 envelope.
-        kernel = np.ones((3, 3), dtype=np.uint8)
-        neighborhood_low = cv2.erode(current_residual, kernel)
-        neighborhood_high = cv2.dilate(current_residual, kernel)
-        np.clip(
-            warped_residual,
-            neighborhood_low,
-            neighborhood_high,
-            out=warped_residual,
-        )
-        weight = (self._shimmer_suppression * confidence)[..., None]
-        stabilized_residual = current_residual * (1.0 - weight) + warped_residual * weight
-        np.add(current_source, stabilized_residual, out=self._output_float)
-        np.clip(self._output_float, 0.0, 1.0, out=self._output_float)
-
-        self._host_previous_source = current_source.copy()
-        self._host_previous_residual = stabilized_residual.copy()
-        self._host_stabilized_frames += 1
-        self.process_timings["stabilization_seconds"] += (
-            time.perf_counter() - stabilization_started
-        )
 
     def process(
         self,
@@ -668,7 +450,7 @@ class DLSSFrameSession:
             self._input_float,
             self._output_float,
             self._cuda_buffers,
-            self._host_bridge_settings,
+            {**self.native_settings, "motion_mode": 0 if self.still_image else 1},
             bool(reset),
             self._mask_host,
             self._cuda_mask,
@@ -676,8 +458,6 @@ class DLSSFrameSession:
         self.process_timings["input_transfer_seconds"] += upload
         self.process_timings["evaluation_wait_seconds"] += evaluate
         self.process_timings["output_transfer_seconds"] += download
-
-        self._stabilize_host_composition(reset=bool(reset))
 
         started = time.perf_counter()
         np.multiply(
@@ -737,6 +517,7 @@ class DLSSFrameSession:
         rotation: int = 0,
         chroma_location: int = 1,
         output_buffer: np.ndarray | None = None,
+        async_transfer: bool = False,
     ) -> tuple[np.ndarray, int]:
         """Use the native video evaluator for CUDA frames or software RGBA."""
         if self.controller.cancel.is_set():
@@ -759,7 +540,7 @@ class DLSSFrameSession:
         result, elapsed = BRIDGE_MANAGER.process_video_to_host_frame(
             frame,
             output,
-            settings=self.native_settings,
+            settings={**self.native_settings, "motion_mode": 0 if self.still_image else 1},
             mask=self._mask_host,
             cuda_mask=self._cuda_mask,
             reset=reset,
@@ -768,6 +549,7 @@ class DLSSFrameSession:
             color_range=color_range,
             rotation=rotation,
             chroma_location=chroma_location,
+            async_transfer=async_transfer,
         )
         self.process_timings["evaluation_wait_seconds"] += elapsed
         self.diagnostics.decode_backend = "software" if isinstance(frame, np.ndarray) else "nvdec"
@@ -796,7 +578,7 @@ class DLSSFrameSession:
         }, sort_keys=True, separators=(",", ":")))
         if len(self._logs) > 500:
             del self._logs[: len(self._logs) - 500]
-        return output, int(result["timestamp"])
+        return output, int(result["cache_token"] if async_transfer else result["timestamp"])
 
     process_cuda_frame_to_host = process_frame_to_host
 
@@ -837,7 +619,7 @@ class DLSSFrameSession:
                 output_width=self.output_width,
                 output_height=self.output_height,
                 output_format=output_format,
-                settings=self.native_settings,
+                settings={**self.native_settings, "motion_mode": 0 if self.still_image else 1},
                 mask=self._mask_host,
                 cuda_mask=self._cuda_mask,
                 reset=reset,
@@ -858,7 +640,7 @@ class DLSSFrameSession:
             output, result, elapsed = BRIDGE_MANAGER.process_host_to_cuda_video_frame(
                 rgba,
                 output_format=output_format,
-                settings=self.native_settings,
+                settings={**self.native_settings, "motion_mode": 0 if self.still_image else 1},
                 mask=self._mask_host,
                 cuda_mask=self._cuda_mask,
                 reset=reset,
@@ -927,28 +709,37 @@ class DLSSFrameSession:
         self.completed_frames = self._processed_frames
         self._close_resources()
 
-    def _close_resources(self) -> None:
+    def _close_resources(self, *, discard: bool = False) -> None:
         if self.closed:
             return
-        self._vram_tracker.close()
-        self._vram_status = self._vram_tracker.snapshot()
-        if self._cuda_buffers is not None:
-            self._cuda_buffers.close()
-            self._cuda_buffers = None
-        if self._cuda_mask is not None:
-            self._cuda_mask.close()
-            self._cuda_mask = None
-        if self._manager_open:
-            current_temporal = BRIDGE_MANAGER.temporal_status()
-            if current_temporal:
-                self._temporal_status_cache = current_temporal
-            BRIDGE_MANAGER.close_session()
-            self._manager_open = False
         self.closed = True
+        from contextlib import ExitStack
+        buffers, self._cuda_buffers = self._cuda_buffers, None
+        mask, self._cuda_mask = self._cuda_mask, None
+        manager_open, self._manager_open = self._manager_open, False
+        # Every owner must be released even if diagnostics or a CUDA buffer's
+        # cleanup fails. Mark closed first so abort/close remain idempotent.
+        def close_tracker():
+            try:
+                self._vram_tracker.close()
+            finally:
+                self._vram_status = self._vram_tracker.snapshot()
+
+        with ExitStack() as cleanup:
+            if manager_open:
+                cleanup.callback(BRIDGE_MANAGER.close_session, discard=discard)
+            if mask is not None:
+                cleanup.callback(mask.close)
+            if buffers is not None:
+                cleanup.callback(buffers.close)
+            cleanup.callback(close_tracker)
+            if manager_open:
+                current_temporal = BRIDGE_MANAGER.temporal_status()
+                if current_temporal:
+                    self._temporal_status_cache = current_temporal
 
     def abort(self) -> None:
-        self._close_resources()
-
+        self._close_resources(discard=True)
 
 def verify_feature_18(
     bridge_logs: list[str], bridge_status: dict[str, Any] | str | None = None
@@ -970,7 +761,6 @@ def verify_feature_18(
         "evidence": list(bridge_logs[-20:]),
     }
 
-
 @dataclass(slots=True)
 class PreparedRuntime:
     gpu: dict[str, Any]
@@ -988,10 +778,8 @@ class PreparedRuntime:
             except (BufferError, OSError):
                 pass
 
-
 _PREPARE_LOCK = threading.Lock()
 _PREPARED: PreparedRuntime | None = None
-
 
 def _warm_mapping(path: Path) -> mmap.mmap | None:
     if not path.is_file() or path.stat().st_size == 0:
@@ -1006,7 +794,6 @@ def _warm_mapping(path: Path) -> mmap.mmap | None:
     checksum ^= mapping[-1]
     del checksum
     return mapping
-
 
 def _encoder_inventory() -> dict[str, bool]:
     result = subprocess.run(
@@ -1027,7 +814,6 @@ def _encoder_inventory() -> dict[str, bool]:
         "prores_ks": "prores_ks" in output,
         "ffv1": "ffv1" in output,
     }
-
 
 def prepare_runtime() -> PreparedRuntime:
     global _PREPARED
@@ -1062,7 +848,7 @@ def prepare_runtime() -> PreparedRuntime:
             for mapping in mappings:
                 mapping.close()
             raise
-        for path in optional_paths:
+        for path in (() if os.environ.get("VE_STAGE_WORKER") else optional_paths):
             try:
                 mapping = _warm_mapping(path)
                 if mapping is not None:
@@ -1080,7 +866,6 @@ def prepare_runtime() -> PreparedRuntime:
             _mappings=mappings,
         )
         return _PREPARED
-
 
 def close_prepared_runtime() -> None:
     global _PREPARED

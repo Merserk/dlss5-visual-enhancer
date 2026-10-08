@@ -18,6 +18,7 @@ from ...core.ffmpeg.frames import open_video_decoder, VideoOutput
 import numpy as np
 
 from ...core import app_log, ffmpeg
+from ...core.ffmpeg.codecs import _prores_color_metadata
 from ...core.dlss_modes import validate_dlss
 from ...core.gpu_selection import resolve_runtime_ai_gpu
 from ...core.jobs import Cancelled, active_job
@@ -35,11 +36,9 @@ from .sizing import resolve_native_settings, resolve_output_size, resolve_upscal
 validate_codec_container = ffmpeg.validate_codec_container
 _BATCH_CONTEXT = threading.local()
 
-
 def uses_nvenc_frame_boundary(codec: str) -> bool:
     """Keep decoded and encoded frames on CUDA when NVENC is selected."""
     return ffmpeg._is_nvenc_codec(codec)
-
 
 def _preferred_neural_codec(source: Path, options: ConversionOptions,
                             prepared_runtime, controller) -> ConversionOptions:
@@ -91,7 +90,6 @@ def _validate_preview_options(
     if preview_seconds is not None and preview_frames is not None:
         raise ValueError("Choose either a timed preview or a frame preview, not both.")
     return preview_seconds, preview_frames
-
 
 def convert_video(
     input_path: str | os.PathLike[str],
@@ -239,6 +237,9 @@ def convert_video(
                 for field in ("color_space", "color_primaries", "color_transfer"):
                     if output_color_metadata.get(field) in (None, "", "unknown", "unspecified"):
                         output_color_metadata[field] = "bt709"
+            if options.codec in {"ProRes Proxy", "ProRes HQ"}:
+                output_color_metadata = _prores_color_metadata(
+                    output_color_metadata, hdr_mode=effective_hdr)
             if options.codec == "FFV1 Lossless RGB 10-bit":
                 # The FFV1 branch carries full-range GBR samples. Container
                 # metadata must describe that output, not the source YUV range.
@@ -363,7 +364,7 @@ def convert_video(
             encoder_setup_thread.start()
             preopened_decoder = None
             # A host output/cache codec still uses the native GPU video
-            # evaluator, including motion and final-residual stabilization.
+            # evaluator, including the native depth and motion inputs.
             session_started = time.perf_counter()
             session = DLSSFrameSession(
                 input_width=output_width if dlss_session else input_width,
@@ -375,7 +376,7 @@ def convert_video(
                 factor=factor,
                 mode=mode,
                 native_settings=native,
-                composition_mask=options.nr_mask,
+                control_mask=options.nr_mask,
                 gpu=gpu,
                 runtime_bundle=runtime_bundle,
                 controller=controller,

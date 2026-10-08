@@ -245,6 +245,7 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                 }
 
                                 AppCheckBox {
+                                    objectName: "upscaleAspectLock"
                                     label: qsTranslate("App", "Lock Aspect Ratio")
                                     visible: !appBridge || (root.isImage ? appBridge.upscaleImageEngine : appBridge.upscaleEngine) !== "DLSS"
                                     checked: root.isImage ? (appBridge ? appBridge.upscaleImageAspectLock : true) : (appBridge ? appBridge.upscaleAspectLock : true)
@@ -254,6 +255,16 @@ model: appBridge ? appBridge.vsrQualityChoices : []
                                             else appBridge.upscaleAspectLock = c
                                         }
                                     }
+                                }
+
+                                AppComboBox {
+                                    objectName: "srOpticalFlowQuality"
+                                    width: parent.width
+                                    label: qsTranslate("App", "Optical Flow Quality")
+                                    visible: !root.isImage && appBridge && appBridge.upscaleEngine === "DLSS"
+                                    model: appBridge ? appBridge.opticalFlowQualityChoices : ["High", "Medium", "Low"]
+                                    currentValue: appBridge ? appBridge.upscaleOpticalFlowQuality : "High"
+                                    onActivated: (v) => { if (appBridge) appBridge.upscaleOpticalFlowQuality = v }
                                 }
 
                                 Text {

@@ -15,7 +15,8 @@ from types import SimpleNamespace
 import av
 import numpy as np
 
-from ..jobs import BoundedLogBuffer, Cancelled, drain_bounded_text
+from ..jobs import BoundedLogBuffer, Cancelled, drain_bounded_text, use_job_controller
+from ..frame_process import spawn_frame_process
 from ..paths import FFMPEG
 from .nut import RawVideoPacketMuxer
 from .vulkan import prepare_command, stream_info
@@ -31,14 +32,21 @@ class _Reader:
 
 class VideoDecoder:
     def __init__(self, source, controller, *, pixel_format: str | None = None,
-                 selection=None, video_filter="", cwd=None, start_seconds: float = 0.0):
+                 selection=None, video_filter="", cwd=None, start_seconds: float = 0.0, preserve_samples=False,
+                 threads=None, gpu_threads=None, seek_timestamp=False):
         self.controller, self.container = controller, None
+        if controller.cancel.is_set():
+            raise Cancelled("Render stopped by user.")
         if not math.isfinite(start_seconds) or start_seconds < 0:
             raise ValueError("Decoder start time must be positive and finite.")
+        for count in (threads, gpu_threads):
+            if count is not None and int(count) < 1:
+                raise ValueError("Decoder thread count must be positive.")
         aligned = max(0.0, start_seconds - .002)
         fast = max(0.0, aligned - 2.0)
-        accurate = max(0.0, aligned - fast)
-        info = stream_info(source)
+        accurate = 0.0 if seek_timestamp else max(0.0, aligned - fast)
+        with use_job_controller(controller):
+            info = stream_info(source)
         if pixel_format is None:
             source_format = info.get("pix_fmt", "yuv420p")
             # Keep the original layout when Vulkan can represent it. Conversion
@@ -56,16 +64,40 @@ class VideoDecoder:
             if value and value not in {"unknown", "unspecified"}:
                 color_options.extend((flag, value))
         command = [str(FFMPEG), "-v", "warning", "-xerror", "-copyts", "-noautorotate",
-                   *(["-ss", f"{fast:.6f}"] if start_seconds > 0 else []),
+                   *(["-threads", str(int(threads))] if threads is not None else []),
+                   # Rolling resumes discard preroll through their saved PTS.
+                   # Keep it here: the bundled FFmpeg's accurate input trim can
+                   # add a nonzero container start time to an absolute seek.
+                   *([*(["-seek_timestamp", "1", "-noaccurate_seek"] if seek_timestamp else []), "-ss", f"{fast:.6f}"]
+                     if start_seconds > 0 else []),
                    "-i", str(source),
-                   *(["-ss", f"{accurate:.6f}"] if start_seconds > 0 else []),
+                   *(["-ss", f"{accurate:.6f}"] if accurate > 0 else []),
                    "-map", "0:v:0", "-an", "-sn", "-dn", "-c:v", "rawvideo",
                    *(["-vf", video_filter] if video_filter else []),
                    "-pix_fmt", pixel_format, *color_options, "-fps_mode", "passthrough", "-enc_time_base", "demux",
                    "-f", "nut", "-write_index", "0", "pipe:1"]
-        command = prepare_command(command, selection=selection or getattr(controller, "ffmpeg_device", None))
+        with use_job_controller(controller):
+            command = prepare_command(command, selection=selection or getattr(controller, "ffmpeg_device", None))
+        self.decode_backend = "Vulkan" if "-hwaccel" in command and command[command.index("-hwaccel") + 1] == "vulkan" else "software"
+        if gpu_threads is not None and self.decode_backend == "Vulkan":
+            # Bound hardware frame contexts without restricting software
+            # fallback's CPU parallelism. Decoder threads are input options.
+            input_index = command.index("-i")
+            if "-threads" in command[:input_index]:
+                command[command.index("-threads") + 1] = str(int(gpu_threads))
+            else:
+                command[input_index:input_index] = ["-threads", str(int(gpu_threads))]
+        exact_rgb10 = (preserve_samples and not video_filter and info.get("codec_name") == "ffv1" and
+                       info.get("pix_fmt") == "gbrp10le")
+        if exact_rgb10 and self.decode_backend == "Vulkan" and pixel_format in {"gbrp10le", "rgba", "rgba64le"}:
+            # Vulkan FFV1 returns a packed X2BGR10 surface. scale_vulkan packs
+            # the requested host layout without libplacebo's repeated UNORM
+            # quantization. A same-depth RGB10 cache round trip stays exact.
+            command[command.index("-vf") + 1] = f"scale_vulkan=format={pixel_format},hwdownload,format={pixel_format}"
+        elif exact_rgb10 and pixel_format == "gbrp10le":
+            command[command.index("-vf") + 1] = "null"
         self.logs = BoundedLogBuffer(max_tail=60)
-        self.process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        self.process = spawn_frame_process(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, cwd=cwd,
                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         controller.register(self.process)
@@ -84,6 +116,8 @@ class VideoDecoder:
             stream.codec_context.pix_fmt = pixel_format
         except BaseException:
             self.close()
+            if controller.cancel.is_set():
+                raise Cancelled("Render stopped by user.")
             raise RuntimeError("FFmpeg decoder failed:\n" + "\n".join(self.logs.snapshot()))
 
     @property
@@ -120,10 +154,12 @@ class VideoDecoder:
 
 
 def open_video_decoder(source, controller, *, pixel_format=None, selection=None,
-                       video_filter="", cwd=None, start_seconds=0.0):
+                       video_filter="", cwd=None, start_seconds=0.0, preserve_samples=False, threads=None, gpu_threads=None,
+                       seek_timestamp=False):
     return VideoDecoder(source, controller, pixel_format=pixel_format,
                         selection=selection, video_filter=video_filter, cwd=cwd,
-                        start_seconds=start_seconds)
+                        start_seconds=start_seconds, preserve_samples=preserve_samples, threads=threads, gpu_threads=gpu_threads,
+                        seek_timestamp=seek_timestamp)
 
 
 def packed_frame(frame) -> np.ndarray:
@@ -192,7 +228,7 @@ class VideoOutput:
         command = prepare_command(command, selection=self.selection, dimensions=(s.width, s.height), input_format=frame.format.name,
                                   rate=str(s.rate), time_base=str(ctx.time_base or s.time_base or frame.time_base))
         self.actual_encoder = command[command.index("-c:v") + 1]
-        self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+        self.process = spawn_frame_process(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                         stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.controller.register(self.process)
         self.thread = threading.Thread(target=drain_bounded_text, args=(self.process.stderr, self.logs), daemon=True)

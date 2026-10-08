@@ -12,7 +12,7 @@ from typing import Any, Iterator
 
 import av
 
-from ...core.neural_bridge import _DLPackPlane
+from ...core.cuda_dlpack import CudaDLPackPlane
 from ...core.jobs import Cancelled
 
 
@@ -143,7 +143,7 @@ class _TransferSurface:
 
     def to_av_frame(self) -> av.VideoFrame:
         item_size = self.bits // 8
-        y = _DLPackPlane(
+        y = CudaDLPackPlane(
             pointer=self.pointer,
             shape=(self.height, self.width),
             strides=(self.stride // item_size, 1),
@@ -152,7 +152,7 @@ class _TransferSurface:
             retain=self.retain,
             release=self.release,
         )
-        uv = _DLPackPlane(
+        uv = CudaDLPackPlane(
             pointer=self.pointer + self.stride * self.height,
             shape=((self.height + 1) // 2, (self.width + 1) // 2, 2),
             strides=(self.stride // item_size, 2, 1),

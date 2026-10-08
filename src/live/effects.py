@@ -9,11 +9,11 @@ from dataclasses import dataclass, fields
 
 from ..core.jobs import Cancelled, JobController
 from ..core.runtime import resolve_native_settings
-from ..core.nr_composition import mask_selection, report_options
+from ..core.nr_control_mask import mask_selection, report_options
+from ..core.ui_messages import UiMessage
 
 EFFECT_DEBOUNCE_SECONDS = 0.5
 EFFECT_REPLACEMENT_TIMEOUT = 15.0
-
 
 @dataclass(frozen=True, slots=True)
 class EffectSettings:
@@ -23,14 +23,9 @@ class EffectSettings:
     local_tone_strength: float
     local_structure_strength: float
     skin_structure_strength: float
-    nr_color_strength: float
-    tone_preservation: float
-    face_skin_protection: float
-    grain_preservation: float
-    shimmer_suppression: float
-    mask_feather: int
     nr_mask: object | None
     automatic_mask: bool
+    nr_optical_flow_quality: str = "High"
 
     @classmethod
     def from_options(cls, options) -> EffectSettings:
@@ -40,14 +35,12 @@ class EffectSettings:
         resolve_native_settings(result)
         return result
 
-
 @dataclass(frozen=True, slots=True)
 class EffectRequest:
     revision: int
     settings: EffectSettings
     requested_at: float
     due_at: float
-
 
 class EffectUpdates:
     """One pending update per session; no timer thread or FIFO of slider edits."""
@@ -60,7 +53,7 @@ class EffectUpdates:
         self._pending: EffectRequest | None = None
         self._applying: EffectRequest | None = None
         self._accepting = True
-        self._status = "Initial settings"
+        self._status = UiMessage("Initial settings")
         self._error = ""
         self._applied_at_pts: int | None = None
         self._successes = self._failures = 0
@@ -73,7 +66,7 @@ class EffectUpdates:
                 return False
             self.requested = settings
             if not self._accepting:
-                self._status = "Processing finished or stopped; changes apply on the next Start."
+                self._status = UiMessage("Processing finished or stopped; changes apply on the next Start.")
                 return False
             self._revision += 1
             if settings == self.applied and self._applying is None:
@@ -104,14 +97,14 @@ class EffectUpdates:
             self._error = error
             if error:
                 self._failures += 1
-                self._status = ("Update failed—previous settings restored" if restored
-                                else "Update failed; recovery failed")
+                self._status = (UiMessage("Update failed—previous settings restored") if restored
+                                else UiMessage("Update failed; recovery failed"))
             else:
                 self.applied = request.settings
                 self.applied_revision = request.revision
                 self._applied_at_pts = pts
                 self._successes += 1
-                self._status = "Applied to processing"
+                self._status = UiMessage("Applied to processing")
             # An edit back to A while A->B was failing needs no second restart.
             if self._pending and self._pending.settings == self.applied:
                 self._pending = None
@@ -120,16 +113,16 @@ class EffectUpdates:
         with self._lock:
             self._accepting = False
             if self._pending or self._applying:
-                self._status = "Processing finished or stopped; changes apply on the next Start."
+                self._status = UiMessage("Processing finished or stopped; changes apply on the next Start.")
             self._pending = None
 
     def snapshot(self) -> dict:
         with self._lock:
             status = self._status
             if self._accepting and self._applying:
-                status = "Applying" + ("; newer changes pending" if self._pending else "")
+                status = UiMessage("Applying; newer changes pending") if self._pending else UiMessage("Applying")
             elif self._accepting and self._pending:
-                status = "Pending"
+                status = UiMessage("Pending")
             return {"effects_status": status, "effects_error": self._error,
                     "pending_revision": self._pending.revision if self._pending else None,
                     "applied_revision": self.applied_revision, "applied_at_pts": self._applied_at_pts,
@@ -141,7 +134,6 @@ class EffectUpdates:
                     "requested": report_options(self.requested), "requests": self._revision,
                     "applied_count": self._successes, "failed_count": self._failures,
                     "history": list(self._history)}
-
 
 class NativeDeadline(JobController):
     """Bound an effect-session replacement; Stop still cancels the whole job."""

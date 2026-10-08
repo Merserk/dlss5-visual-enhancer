@@ -12,16 +12,16 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
     </message>
     <message>
       <source>  -  1 frame</source>
-      <translation>  -  1 frame</translation>
+      <translation>  -  1 klatka</translation>
     </message>
     <message>
       <source>  -  f</source>
-      <translation>  -  f</translation>
+      <translation>  -  klatka </translation>
     </message>
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="620" />
       <source> f</source>
-      <translation> f</translation>
+      <translation> klatka </translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="154" />
@@ -35,7 +35,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
     </message>
     <message>
       <source> input FPS</source>
-      <translation> input FPS</translation>
+      <translation> wejściowe kl./s</translation>
     </message>
     <message>
       <location filename="../qml/components/BatchQueueDrawer.qml" line="427" />
@@ -180,7 +180,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <location filename="../qml/components/NeuralModelControls.qml" line="263" />
       <location filename="../qml/controls/AppFilePicker.qml" line="12" />
       <location filename="../qml/views/LiveView.qml" line="408" />
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>All Files (*.*)</source>
       <translation>Wszystkie pliki (*.*)</translation>
     </message>
@@ -228,12 +228,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>Applied to processing</source>
       <translation>Zastosowano do przetwarzania</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="22" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="131" />
-      <source>Apply Detail-Only Preset</source>
-      <translation>Zastosuj ustawienia tylko szczegółów</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/ColoringControls.qml" line="38" />
       <source>Apply LUT</source>
@@ -352,8 +347,8 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
     </message>
     <message>
       <location filename="../qml/views/SettingsView.qml" line="71" />
-      <source>Cache Memory</source>
-      <translation>Pamięć podręczna</translation>
+      <source>Cache Memory (Rolling Cache 10GB)</source>
+      <translation>Pamięć podręczna (cache rotacyjny 10 GB)</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="149" />
@@ -514,11 +509,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>Color Match</source>
       <translation>Dopasowanie kolorów</translation>
     </message>
-    <message>
-      <location filename="../qml/views/LiveView.qml" line="524" />
-      <source>Color Strength</source>
-      <translation>Siła koloru</translation>
-    </message>
+    
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="46" />
       <source>Coloring</source>
@@ -544,12 +535,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>Completed with warnings: %1 completed, %2 failed.</source>
       <translation>Ukończono z ostrzeżeniami: %1 gotowych, %2 błędów.</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="10" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="120" />
-      <source>Composition &amp; Masking</source>
-      <translation>Kompozycja i maskowanie</translation>
-    </message>
+    
     <message>
       <source>Configure hardware assignment, preview behavior, native layout, and portable settings presets.</source>
       <translation>Skonfiguruj sprzęt, podgląd, układ okna i przenośne ustawienia wstępne.</translation>
@@ -790,12 +776,12 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Ścieżka eksportu</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>Export Preset JSON</source>
       <translation>Eksportuj ustawienia JSON</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="114" />
+      <location filename="../qml/views/SettingsView.qml" line="103" />
       <source>Export Preset...</source>
       <translation>Eksportuj ustawienia...</translation>
     </message>
@@ -821,13 +807,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>Exposure</source>
       <translation>Ekspozycja</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="57" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="173" />
-      <location filename="../qml/views/LiveView.qml" line="526" />
-      <source>Face / Skin Protection</source>
-      <translation>Ochrona twarzy / skóry</translation>
-    </message>
+    
     <message>
       <source>Factory reset restores all DLSS, upscale, interpolation, GPU, mask, and encoding settings. Window geometry remains a desktop preference.</source>
       <translation>Reset przywraca ustawienia DLSS, skalowania, interpolacji, GPU, maski i kodowania. Rozmiar i położenie okna pozostają preferencją pulpitu.</translation>
@@ -906,13 +886,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>Grain Amount</source>
       <translation>Intensywność ziarna</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="68" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="187" />
-      <location filename="../qml/views/LiveView.qml" line="527" />
-      <source>Grain Preservation</source>
-      <translation>Zachowanie ziarna</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/GrainControls.qml" line="50" />
       <source>Grain Seed</source>
@@ -1031,7 +1005,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Obrazy (*.png *.jpg *.jpeg *.webp *.tif *.tiff *.bmp *.avif *.heic *.heif *.svg *.dng *.cr2 *.nef *.arw)</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
       <source>Import Preset JSON</source>
       <translation>Importuj ustawienia JSON</translation>
     </message>
@@ -1041,7 +1015,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Import nieudany: %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="121" />
+      <location filename="../qml/views/SettingsView.qml" line="110" />
       <source>Import...</source>
       <translation>Importuj...</translation>
     </message>
@@ -1108,8 +1082,8 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Ustawienia JSON</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="143" />
-      <location filename="../qml/views/SettingsView.qml" line="147" />
+      <location filename="../qml/views/SettingsView.qml" line="132" />
+      <location filename="../qml/views/SettingsView.qml" line="136" />
       <source>JSON Presets (*.json)</source>
       <translation>Ustawienia JSON (*.json)</translation>
     </message>
@@ -1207,8 +1181,8 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="108" />
       <location filename="../qml/components/NeuralModelControls.qml" line="233" />
-      <source>Load Custom Mask...</source>
-      <translation>Wczytaj własną maskę...</translation>
+      <source>Load Control Mask...</source>
+      <translation>Wczytaj maskę sterującą...</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="3834" />
@@ -1263,17 +1237,11 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>MPV: %1 odrzuconych, %2 buforowań, synchronizacja A/V %3 ms</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="128" />
+      <location filename="../qml/views/SettingsView.qml" line="117" />
       <source>Maintenance &amp; Defaults</source>
       <translation>Konserwacja i ustawienia domyślne</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="79" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="201" />
-      <location filename="../qml/views/LiveView.qml" line="528" />
-      <source>Mask Feather</source>
-      <translation>Zmiękczenie maski</translation>
-    </message>
+    
     <message>
       <source>Match Colors</source>
       <translation>Dopasuj kolory</translation>
@@ -1362,12 +1330,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>NO OUTPUT</source>
       <translation>BRAK WYJŚCIA</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="35" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="145" />
-      <source>NR Color Strength</source>
-      <translation>NR Siła koloru</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/NeuralModelControls.qml" line="25" />
       <location filename="../qml/views/LiveView.qml" line="479" />
@@ -1408,7 +1371,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
     </message>
     <message>
       <location filename="../qml/Main.qml" line="227" />
-      <location filename="../qml/views/SettingsView.qml" line="158" />
+      <location filename="../qml/views/SettingsView.qml" line="147" />
       <source>No</source>
       <translation>Nie</translation>
     </message>
@@ -1455,7 +1418,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Adres transmisji online</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="133" />
+      <location filename="../qml/views/SettingsView.qml" line="122" />
       <source>Open Logs</source>
       <translation>Otwórz dzienniki</translation>
     </message>
@@ -1631,7 +1594,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Ustawienia wstępne</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="109" />
+      <location filename="../qml/views/SettingsView.qml" line="98" />
       <source>Preset name (e.g. 4K Master)...</source>
       <translation>Nazwa ustawień (np. 4K Master)...</translation>
     </message>
@@ -1639,7 +1602,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <location filename="../qml/components/MenuStrip.qml" line="210" />
       <location filename="../qml/views/FrameInterpolationView.qml" line="195" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="249" />
-      <location filename="../qml/views/SettingsView.qml" line="98" />
+      <location filename="../qml/views/SettingsView.qml" line="87" />
       <location filename="../qml/views/UpscaleView.qml" line="448" />
       <location filename="../qml/views/UpscaleView.qml" line="481" />
       <source>Preview</source>
@@ -1753,7 +1716,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Gotowe.</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="101" />
+      <location filename="../qml/views/SettingsView.qml" line="90" />
       <source>Realtime Preview</source>
       <translation>Podgląd w czasie rzeczywistym</translation>
     </message>
@@ -1829,12 +1792,12 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Resetuj ustawienia %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="134" />
+      <location filename="../qml/views/SettingsView.qml" line="123" />
       <source>Reset All Settings to Defaults</source>
       <translation>Przywróć wszystkie ustawienia domyślne</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="170" />
+      <location filename="../qml/views/SettingsView.qml" line="159" />
       <source>Reset all settings?</source>
       <translation>Zresetować wszystkie ustawienia?</translation>
     </message>
@@ -1877,11 +1840,6 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <location filename="../qml/views/LiveView.qml" line="177" />
       <source>Resume</source>
       <translation>Wznów</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="88" />
-      <source>Rolling Cache (5 GB)</source>
-      <translation>Cache rotacyjny (5 GB)</translation>
     </message>
     <message>
       <location filename="../bridge.py" line="2050" />
@@ -1981,8 +1939,8 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
     <message>
       <location filename="../qml/components/CompositionCard.qml" line="137" />
       <location filename="../qml/components/NeuralModelControls.qml" line="262" />
-      <source>Select Custom NR Mask</source>
-      <translation>Wybierz własną maskę NR</translation>
+      <source>Select NR Control Mask</source>
+      <translation>Wybierz maskę sterującą NR</translation>
     </message>
     <message>
       <location filename="../qml/components/ExportDialog.qml" line="175" />
@@ -2074,7 +2032,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Ustawienia</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="106" />
+      <location filename="../qml/views/SettingsView.qml" line="95" />
       <source>Settings Presets</source>
       <translation>Ustawienia wstępne</translation>
     </message>
@@ -2098,12 +2056,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>Sharpness</source>
       <translation>Ostrość</translation>
     </message>
-    <message>
-      <location filename="../qml/components/NeuralModelControls.qml" line="106" />
-      <location filename="../qml/views/LiveView.qml" line="490" />
-      <source>Shimmer Suppression</source>
-      <translation>Redukcja migotania</translation>
-    </message>
+    
     <message>
       <location filename="../qml/components/MediaViewport.qml" line="952" />
       <location filename="../qml/components/MediaViewport.qml" line="1011" />
@@ -2162,11 +2115,6 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <location filename="../qml/components/MediaViewport.qml" line="410" />
       <source>Split</source>
       <translation>Podział</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/SettingsView.qml" line="89" />
-      <source>Stage by Stage</source>
-      <translation>Etap po etapie</translation>
     </message>
     <message>
       <source>Standard</source>
@@ -2307,7 +2255,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Licencje stron trzecich</translation>
     </message>
     <message>
-      <location filename="../qml/views/SettingsView.qml" line="175" />
+      <location filename="../qml/views/SettingsView.qml" line="164" />
       <source>This restores every processing setting and clears the custom mask. This cannot be undone unless you exported a preset.</source>
       <translation>Przywraca wszystkie ustawienia przetwarzania i usuwa własną maskę. Cofnięcie wymaga wyeksportowanych ustawień.</translation>
     </message>
@@ -2331,13 +2279,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <source>Tonal Response</source>
       <translation>Reakcja tonalna</translation>
     </message>
-    <message>
-      <location filename="../qml/components/CompositionCard.qml" line="46" />
-      <location filename="../qml/components/NeuralModelControls.qml" line="159" />
-      <location filename="../qml/views/LiveView.qml" line="525" />
-      <source>Tone Preservation</source>
-      <translation>Zachowanie tonów</translation>
-    </message>
+    
     <message>
       <source>Ultra</source>
       <translation>Ultra</translation>
@@ -2446,8 +2388,8 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <translation>Eksport wideo kończy każdy etap przed rozpoczęciem następnego. Pliki pośrednie o pełnej długości mogą wymagać dużo miejsca na dysku.</translation>
     </message>
     <message>
-      <source>Video exports use a lossless rolling disk cache of up to 5 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
-      <translation>Eksport wideo używa bezstratnej rotacyjnej pamięci podręcznej na dysku do 5 GB. Zużyte dane są usuwane automatycznie. Plik wynikowy wymaga dodatkowego miejsca.</translation>
+      <source>Video exports use a rolling disk cache of up to 10 GB. Consumed data is removed automatically. Final output needs additional disk space.</source>
+      <translation>Eksport wideo używa rotacyjnej pamięci podręcznej na dysku do 10 GB. Zużyte dane są usuwane automatycznie. Plik wynikowy wymaga dodatkowego miejsca.</translation>
     </message>
     <message>
       <location filename="../qml/components/MenuStrip.qml" line="83" />
@@ -2501,7 +2443,7 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
     </message>
     <message>
       <location filename="../qml/Main.qml" line="228" />
-      <location filename="../qml/views/SettingsView.qml" line="159" />
+      <location filename="../qml/views/SettingsView.qml" line="148" />
       <source>Yes</source>
       <translation>Tak</translation>
     </message>
@@ -2565,6 +2507,291 @@ Wyświetlono klatkę. Użyj &lt; &gt; lub otwórz plik zewnętrznie.</translatio
       <location filename="../qml/views/AboutView.qml" line="38" />
       <source>© 2026 Merserk. NVIDIA, DLSS, and RTX are trademarks of NVIDIA Corporation.</source>
       <translation>© 2026 Merserk. NVIDIA, DLSS i RTX są znakami towarowymi NVIDIA Corporation.</translation>
+    </message>
+    <message>
+      <source>Fast lossless</source>
+      <translation>Szybki bezstratny</translation>
+    </message>
+    <message>
+      <source>Fast compressed</source>
+      <translation>Szybka kompresja</translation>
+    </message>
+    <message>
+      <source>Fast 8-bit RGB compression without color subsampling. HDR uses Fast lossless. Models run one at a time.</source>
+      <translation>Szybka kompresja 8-bitowego RGB bez podpróbkowania kolorów. HDR używa Szybkiej kompresji bezstratnej. Modele działają pojedynczo.</translation>
+    </message>
+    <message>
+      <source>Lossless RAM cache with disk fallback. Models run one at a time.</source>
+      <translation>Bezstratna pamięć podręczna RAM z zapisem na dysku w razie potrzeby. Modele pracują pojedynczo.</translation>
+    </message>
+    <message>
+      <source>Export paused; GPU memory released</source>
+      <translation>Eksport wstrzymany; pamięć GPU zwolniona</translation>
+    </message>
+    <message>
+      <source>Part %1 · %2 · %3 FPS · %4 GB</source>
+      <translation>Część %1 · %2 · %3 FPS · %4 GB</translation>
+    </message>
+    <message>
+      <source>Preroll: %1 frames</source>
+      <translation>Wstępne klatki: %1</translation>
+    </message>
+    <message>
+      <source>Pausing export; releasing GPU workers…</source>
+      <translation>Wstrzymywanie eksportu; zwalnianie procesów GPU…</translation>
+    </message>
+    <message>
+      <source>Resuming export from the last committed part…</source>
+      <translation>Wznawianie od ostatniej ukończonej części…</translation>
+    </message>
+    <message>
+      <source>Loading model</source>
+      <translation>Ładowanie modelu</translation>
+    </message>
+    <message>
+      <source>Flushing output</source>
+      <translation>Kończenie wyjścia</translation>
+    </message>
+    <message>
+      <source>Writing cache</source>
+      <translation>Zapisywanie pamięci podręcznej</translation>
+    </message>
+    <message>
+      <source>Releasing worker</source>
+      <translation>Zwalnianie procesu</translation>
+    </message>
+    <message>
+      <source>Committing part</source>
+      <translation>Zatwierdzanie części</translation>
+    </message>
+    <message>
+      <source>Finalizing video</source>
+      <translation>Kończenie filmu</translation>
+    </message>
+    <message>
+      <source>Startup %1 s · switch %2 s</source>
+      <translation>Uruchomienie %1 s · zmiana %2 s</translation>
+    </message>
+    <message>
+      <source>Cache Memory (Rolling Cache)</source>
+      <translation>Pamięć podręczna (cache rotacyjny)</translation>
+    </message>
+    <message>
+      <source>Cache size</source>
+      <translation>Rozmiar pamięci podręcznej</translation>
+    </message>
+    <message>
+      <source>%1 GB (Default)</source>
+      <translation>%1 GB (Domyślne)</translation>
+    </message>
+    <message>
+      <source>Native precision</source>
+      <translation>Natywna precyzja</translation>
+    </message>
+    <message>
+      <source>Compressed RGB (8-bit)</source>
+      <translation>Skompresowane RGB (8-bitowe)</translation>
+    </message>
+    <message>
+      <source>Control Mask replaces Automatic Mask. RGB channels control intensity, tone, and structure.</source>
+      <translation>Maska sterująca zastępuje maskę automatyczną. Kanały RGB sterują intensywnością, tonem i strukturą.</translation>
+    </message>
+    <message>
+      <location filename="../qml/components/BatchQueueDrawer.qml" line="307" />
+      <source>Processing Stage %1 of %2 (Part %3)</source>
+      <translation>Etap przetwarzania %1 z %2 (Część %3)</translation>
+    </message>
+    <message>
+      <source>Optical Flow Quality</source>
+      <translation>Jakość przepływu optycznego</translation>
+    </message>
+    <message>
+      <source>%1 (Discrete GPU)</source>
+      <translation>%1 (dedykowany GPU)</translation>
+    </message>
+    <message>
+      <source>%1 (Integrated GPU)</source>
+      <translation>%1 (zintegrowany GPU)</translation>
+    </message>
+    <message>
+      <source>%1 fps target | %2 fps processing | %3 enhanced | %4 sampled out | %5s buffered</source>
+      <translation>Cel: %1 kl./s | Przetwarzanie: %2 kl./s | Ulepszono: %3 | Pominięto przy próbkowaniu: %4 | W buforze: %5 s</translation>
+    </message>
+    <message>
+      <source>%1 · pass %2/%3</source>
+      <translation>%1 · przebieg %2/%3</translation>
+    </message>
+    <message>
+      <source>%1. GPU filters: %2.</source>
+      <translation>%1. Filtry GPU: %2.</translation>
+    </message>
+    <message>
+      <source>AI GPU selection: %1</source>
+      <translation>Wybrany GPU dla AI: %1</translation>
+    </message>
+    <message>
+      <source>Active: %1 — %2×%3.</source>
+      <translation>Aktywna: %1 — %2×%3.</translation>
+    </message>
+    <message>
+      <source>Application: %1</source>
+      <translation>Aplikacja: %1</translation>
+    </message>
+    <message>
+      <source>Applying; newer changes pending</source>
+      <translation>Stosowanie; nowsze zmiany oczekują</translation>
+    </message>
+    <message>
+      <source>Available</source>
+      <translation>Dostępny</translation>
+    </message>
+    <message>
+      <source>Buffering: %1</source>
+      <translation>Buforowanie: %1</translation>
+    </message>
+    <message>
+      <source>CPU (Software decoding / encoding)</source>
+      <translation>CPU (programowe dekodowanie / kodowanie)</translation>
+    </message>
+    <message>
+      <source>Config: %1</source>
+      <translation>Konfiguracja: %1</translation>
+    </message>
+    <message>
+      <source>Failed: %1</source>
+      <translation>Błąd: %1</translation>
+    </message>
+    <message>
+      <source>Finished processing: %1. Playback available until Stop.</source>
+      <translation>Przetwarzanie zakończone: %1. Odtwarzanie dostępne do naciśnięcia Zatrzymaj.</translation>
+    </message>
+    <message>
+      <source>Finished: %1. %2 frames enhanced.</source>
+      <translation>Zakończono: %1. Liczba ulepszonych klatek: %2.</translation>
+    </message>
+    <message>
+      <source>Logs: %1</source>
+      <translation>Dzienniki: %1</translation>
+    </message>
+    <message>
+      <source>Missing</source>
+      <translation>Brak</translation>
+    </message>
+    <message>
+      <source>Outputs: %1</source>
+      <translation>Wyniki: %1</translation>
+    </message>
+    <message>
+      <source>Playing: %1</source>
+      <translation>Odtwarzanie: %1</translation>
+    </message>
+    <message>
+      <source>Preparing Neural Rendering: %1x%2 -&gt; %3x%4...</source>
+      <translation>Przygotowywanie Neural Rendering: %1x%2 -&gt; %3x%4...</translation>
+    </message>
+    <message>
+      <source>Probing %1...</source>
+      <translation>Analizowanie %1...</translation>
+    </message>
+    <message>
+      <source>Processing finished or stopped; changes apply on the next Start.</source>
+      <translation>Przetwarzanie zakończone lub zatrzymane; zmiany zostaną zastosowane przy następnym uruchomieniu.</translation>
+    </message>
+    <message>
+      <source>Requested up to %1p; received %2.</source>
+      <translation>Zażądano do %1p; otrzymano %2.</translation>
+    </message>
+    <message>
+      <source>Runtime error: %1</source>
+      <translation>Błąd środowiska uruchomieniowego: %1</translation>
+    </message>
+    <message>
+      <source>Runtime state: %1</source>
+      <translation>Stan środowiska uruchomieniowego: %1</translation>
+    </message>
+    <message>
+      <source>Software codecs</source>
+      <translation>Kodeki programowe</translation>
+    </message>
+    <message>
+      <source>Source quality selection applies to YouTube/Twitch pages; using the supplied source.</source>
+      <translation>Wybór jakości źródła dotyczy stron YouTube/Twitch; używane jest podane źródło.</translation>
+    </message>
+    <message>
+      <source>Startup warning: %1</source>
+      <translation>Ostrzeżenie podczas uruchamiania: %1</translation>
+    </message>
+    <message>
+      <source>The resolved stream differs from the requested height.</source>
+      <translation>Wysokość uzyskanego strumienia różni się od żądanej.</translation>
+    </message>
+    <message>
+      <source>Update failed; recovery failed</source>
+      <translation>Aktualizacja nie powiodła się; odzyskiwanie nie powiodło się</translation>
+    </message>
+    <message>
+      <source>Update failed—previous settings restored</source>
+      <translation>Aktualizacja nie powiodła się — przywrócono poprzednie ustawienia</translation>
+    </message>
+    <message>
+      <source>Video GPU selection: %1</source>
+      <translation>Wybrany GPU dla wideo: %1</translation>
+    </message>
+    <message>
+      <source>Vulkan codecs where supported; software fallback</source>
+      <translation>Kodeki Vulkan tam, gdzie są obsługiwane; w pozostałych przypadkach kodeki programowe</translation>
+    </message>
+    <message>
+      <source>Native DLSSG</source>
+      <translation>Natywny DLSSG</translation>
+    </message>
+    <message>
+      <source>Cascade</source>
+      <translation>Kaskada</translation>
+    </message>
+    <message>
+      <source>Area</source>
+      <translation>Uśrednianie obszaru</translation>
+    </message>
+    <message>
+      <source>Bicubic</source>
+      <translation>Dwusześcienna</translation>
+    </message>
+    <message>
+      <source>Bilinear</source>
+      <translation>Dwuliniowa</translation>
+    </message>
+    <message>
+      <source>Nearest</source>
+      <translation>Najbliższy sąsiad</translation>
+    </message>
+    <message>
+      <source>FFV1 Lossless RGB 10-bit</source>
+      <translation>FFV1 bezstratny RGB 10-bit</translation>
+    </message>
+    <message>
+      <source>Ready</source>
+      <translation>Gotowe</translation>
+    </message>
+    <message>
+      <source>Initializing</source>
+      <translation>Inicjalizacja</translation>
+    </message>
+    <message>
+      <source>The selected FFmpeg/Vulkan GPU is unavailable. Choose Automatic or another GPU in Settings.</source>
+      <translation>Wybrany GPU FFmpeg/Vulkan jest niedostępny. Wybierz Automatycznie lub inny GPU w ustawieniach.</translation>
+    </message>
+    <message>
+      <source>Vulkan GPU filtering is unavailable. Install a current AMD, Intel or NVIDIA Vulkan driver.</source>
+      <translation>Filtrowanie GPU przez Vulkan jest niedostępne. Zainstaluj aktualny sterownik Vulkan firmy AMD, Intel lub NVIDIA.</translation>
+    </message>
+    <message>
+      <source>%1: %2 (%3)</source>
+      <translation>%1: %2 (%3)</translation>
+    </message>
+    <message>
+      <source>Style %1</source>
+      <translation>Styl %1</translation>
     </message>
   </context>
 </TS>

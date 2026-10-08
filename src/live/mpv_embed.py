@@ -41,6 +41,7 @@ except Exception:
 
 _request_ids = itertools.count(1)
 _request_lock = threading.Lock()
+_MAX_IPC_REPLY_BYTES = 1024 * 1024
 
 
 def _kernel32():
@@ -97,6 +98,8 @@ def _read_reply(kernel32: Any, handle: Any, request_id: int, *, timeout: float =
             if err != 234 or not got.value:  # 234 = MORE_DATA, keep draining
                 raise OSError(f"Could not read MPV IPC reply ({err}).")
         pending += chunk.raw[: got.value]
+        if len(pending) > _MAX_IPC_REPLY_BYTES:
+            raise ValueError("MPV IPC reply exceeded the size limit.")
         while b"\n" in pending:
             raw, pending = pending.split(b"\n", 1)
             raw = raw.strip()
@@ -137,6 +140,10 @@ def _ipc_roundtrip(
     kernel32 = _kernel32()
     GENERIC_READ_WRITE = 0xC0000000
     OPEN_EXISTING = 3
+    # The pipe server may identify us, but must not impersonate our Windows
+    # token. Use an explicit SQOS level when opening the local IPC channel.
+    SECURITY_IDENTIFICATION = 0x00010000
+    SECURITY_SQOS_PRESENT = 0x00100000
     INVALID_HANDLE = ctypes.c_void_p(-1).value
 
     def _usable(handle: Any) -> bool:
@@ -150,7 +157,8 @@ def _ipc_roundtrip(
     for _ in range(max(1, tries)):
         handle = None
         try:
-            handle = kernel32.CreateFileW(pipe, GENERIC_READ_WRITE, 0, None, OPEN_EXISTING, 0, None)
+            handle = kernel32.CreateFileW(pipe, GENERIC_READ_WRITE, 0, None, OPEN_EXISTING,
+                                         SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, None)
             if not _usable(handle):
                 raise OSError(f"Could not open MPV IPC pipe ({ctypes.get_last_error()}).")
             written = ctypes.c_ulong(0)

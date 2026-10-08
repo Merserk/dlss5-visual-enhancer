@@ -26,14 +26,12 @@ from .decoder import decode_image
 from .encoder import save_full_size_image_preview
 from .models import ImageConversionOptions
 
-
 def _update(controller: JobController, progress: Callable[[float, str], None] | None,
             value: float, message: str) -> None:
     if controller.cancel.is_set():
         raise Cancelled("Image preview stopped by user.")
     if progress is not None:
         progress(value, message)
-
 
 def render_image_preview(
     input_path: str | Path,
@@ -92,8 +90,9 @@ def render_image_preview(
                 warmup_frames=options.warmup_frames,
                 factor=factor,
                 mode=mode,
-                native_settings=native,
-                composition_mask=options.nr_mask,
+                native_settings={**native, "motion_mode": 0},
+                still_image=True,
+                control_mask=options.nr_mask,
                 gpu=gpu,
                 runtime_bundle=prepared.runtime_bundle,
                 controller=controller,
