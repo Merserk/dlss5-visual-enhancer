@@ -51,7 +51,8 @@ struct Stage {
         auto frame = normalizer ? normalizer->read() : source();
         if (!frame)
             return {};
-        if (QStringList{"super_resolution", "rtx_video_hdr"}.contains(name) && !normalizer) {
+        const bool sharedVsr=name=="super_resolution"&&hasVfxStages(settings.stages(true));
+        if ((name=="rtx_video_hdr" || name=="super_resolution"&&!sharedVsr) && !normalizer) {
             info.width = frame->image.width();
             info.height = frame->image.height();
             info.pixelFormat = rgb10Input ? "gbrp10le" : frame->image.depth() > 32 ? "rgba64le" : "rgba";
@@ -125,7 +126,6 @@ FrameStreamPipeline::FrameStreamPipeline(Settings settings, MediaInfo info, cons
                 };
             }
             auto size=vfxSpatialSize({info.width,info.height},selected);info.width=size.width();info.height=size.height();info.fps=vfxFrameRate(info.fps,selected);
-            if(!info.hdr){info.primaries="bt709";info.transfer="bt470m";}
             info.pixelFormat=info.hdr||info.precisionBits()>8?"gbrp10le":"rgba";info.colorSpace="gbr";info.range="pc";
             continue;
         }
@@ -148,9 +148,9 @@ FrameStreamPipeline::FrameStreamPipeline(Settings settings, MediaInfo info, cons
             info.primaries = "bt2020";
             info.transfer = "smpte2084";
         }
-        if (name == "super_resolution") {
+        if (name == "super_resolution" && !hasVfxStages(stages)) {
             info.primaries = "bt709";
-            info.transfer = hasVfxStages(stages) ? "bt470m" : "bt709";
+            info.transfer = "bt709";
         }
         if (QStringList{"scale_method", "coloring", "cas_sharpening", "grain", "super_resolution",
                         "rtx_video_hdr"}

@@ -61,9 +61,9 @@ void muxDelivery(const QString& video, const QString& destination, const RenderR
         mux << "-colorspace" << "0" << "-color_range" << "pc";
         const auto stages=settings.stages(true);
         const bool convertedHdr=stages.contains("rtx_video_hdr");
-        const bool rtxSdr=stages.contains("super_resolution")||(hasVfxStages(stages)&&!source.hdr);
+        const bool rtxSdr=stages.contains("super_resolution")&&!hasVfxStages(stages);
         const auto primaries=convertedHdr ? QString("bt2020") : rtxSdr ? QString("bt709") : source.primaries;
-        const auto transfer=convertedHdr ? QString("smpte2084") : hasVfxStages(stages)&&!source.hdr ? QString("bt470m") : rtxSdr ? QString("bt709") : source.transfer;
+        const auto transfer=convertedHdr ? QString("smpte2084") : rtxSdr ? QString("bt709") : source.transfer;
         if (!primaries.isEmpty() && primaries!="unknown") mux << "-color_primaries" << primaries;
         if (!transfer.isEmpty() && transfer!="unknown") mux << "-color_trc" << transfer;
     }

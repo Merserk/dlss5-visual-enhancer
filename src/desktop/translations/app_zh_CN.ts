@@ -4,6 +4,18 @@
   <context>
     <name>App</name>
     <message>
+      <source>Visit Website</source>
+      <translation>访问网站</translation>
+    </message>
+    <message>
+      <source>Support Project</source>
+      <translation>支持项目</translation>
+    </message>
+    <message>
+      <source>Uses Qt under LGPLv3</source>
+      <translation>依据 LGPLv3 使用 Qt</translation>
+    </message>
+    <message>
       <location filename="../qml/components/MediaViewport.qml" line="711" />
       <source>
 Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
@@ -984,11 +996,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <source>GPU support and installed models are checked before processing.</source>
       <translation>处理前将检查 GPU 支持情况和已安装的模型。</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="29" />
-      <source>GitHub Repository</source>
-      <translation>GitHub 仓库</translation>
     </message>
     <message>
       <source>Good</source>
@@ -2310,11 +2317,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>风格 %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/AboutView.qml" line="30" />
-      <source>Support on Patreon</source>
-      <translation>在 Patreon 上支持</translation>
-    </message>
-    <message>
       <source>Switched to %1 mode. %2</source>
       <translation>已切换至 %1 模式。%2</translation>
     </message>
@@ -2455,11 +2457,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/UpscaleView.qml" line="514" />
       <source>Upscale Video(s)</source>
       <translation>放大视频</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="35" />
-      <source>Uses Qt under LGPLv3. See Third-Party Licenses.</source>
-      <translation>使用 LGPLv3 授权的 Qt。请参阅第三方许可证。</translation>
     </message>
     <message>
       <location filename="../qml/components/SuperResolutionControls.qml" line="15" />

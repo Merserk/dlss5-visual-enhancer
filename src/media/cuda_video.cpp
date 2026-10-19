@@ -339,11 +339,10 @@ struct CudaVideoEncoder::Impl {
             // Native RGB output uses the delivery matrix, independently of
             // the source YUV matrix used while decoding.
             codec->colorspace = info.hdr ? AVCOL_SPC_BT2020_NCL : AVCOL_SPC_BT709;
-            codec->color_primaries = info.primaries == "bt2020" ? AVCOL_PRI_BT2020
-                : info.primaries == "unknown" ? AVCOL_PRI_UNSPECIFIED : AVCOL_PRI_BT709;
-            codec->color_trc = info.transfer == "gamma22" || info.transfer == "bt470m" ? AVCOL_TRC_GAMMA22 : info.transfer == "smpte2084" ? AVCOL_TRC_SMPTE2084
-                : info.transfer == "arib-std-b67" ? AVCOL_TRC_ARIB_STD_B67
-                : info.transfer == "unknown" ? AVCOL_TRC_UNSPECIFIED : AVCOL_TRC_BT709;
+            const auto primaries=api.av_color_primaries_from_name(info.primaries.toUtf8().constData());
+            const auto transfer=api.av_color_transfer_from_name(info.transfer.toUtf8().constData());
+            codec->color_primaries=primaries<0 ? info.hdr ? AVCOL_PRI_BT2020 : AVCOL_PRI_UNSPECIFIED : AVColorPrimaries(primaries);
+            codec->color_trc=transfer<0 ? info.hdr ? AVCOL_TRC_SMPTE2084 : AVCOL_TRC_UNSPECIFIED : AVColorTransferCharacteristic(transfer);
             const bool ten = name != "h264_nvenc" && (info.hdr || settings.hdr_mode ||
                 info.pixelFormat.contains("10") || info.pixelFormat.contains("12") || info.pixelFormat.contains("16") ||
                 info.pixelFormat.contains("64"));

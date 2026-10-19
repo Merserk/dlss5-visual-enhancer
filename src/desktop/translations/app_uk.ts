@@ -4,6 +4,18 @@
   <context>
     <name>App</name>
     <message>
+      <source>Visit Website</source>
+      <translation>Відвідати сайт</translation>
+    </message>
+    <message>
+      <source>Support Project</source>
+      <translation>Підтримати проєкт</translation>
+    </message>
+    <message>
+      <source>Uses Qt under LGPLv3</source>
+      <translation>Використовує Qt за ліцензією LGPLv3</translation>
+    </message>
+    <message>
       <location filename="../qml/components/MediaViewport.qml" line="711" />
       <source>
 Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
@@ -992,11 +1004,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <source>GPU support and installed models are checked before processing.</source>
       <translation>Підтримка GPU та встановлені моделі перевіряються перед обробкою.</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="29" />
-      <source>GitHub Repository</source>
-      <translation>Репозиторій GitHub</translation>
     </message>
     <message>
       <source>Good</source>
@@ -2318,11 +2325,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>Стиль %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/AboutView.qml" line="30" />
-      <source>Support on Patreon</source>
-      <translation>Підтримати на Patreon</translation>
-    </message>
-    <message>
       <source>Switched to %1 mode. %2</source>
       <translation>Перемкнуто в режим %1. %2</translation>
     </message>
@@ -2463,11 +2465,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/UpscaleView.qml" line="514" />
       <source>Upscale Video(s)</source>
       <translation>Масштабувати відео</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="35" />
-      <source>Uses Qt under LGPLv3. See Third-Party Licenses.</source>
-      <translation>Використовує Qt за LGPLv3. Див. ліцензії сторонніх компонентів.</translation>
     </message>
     <message>
       <location filename="../qml/components/SuperResolutionControls.qml" line="15" />

@@ -4,6 +4,18 @@
   <context>
     <name>App</name>
     <message>
+      <source>Visit Website</source>
+      <translation>Visitar sitio web</translation>
+    </message>
+    <message>
+      <source>Support Project</source>
+      <translation>Apoyar el proyecto</translation>
+    </message>
+    <message>
+      <source>Uses Qt under LGPLv3</source>
+      <translation>Utiliza Qt bajo LGPLv3</translation>
+    </message>
+    <message>
       <location filename="../qml/components/MediaViewport.qml" line="711" />
       <source>
 Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
@@ -988,11 +1000,6 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
     <message>
       <source>GPU support and installed models are checked before processing.</source>
       <translation>La compatibilidad de la GPU y los modelos instalados se comprueban antes de procesar.</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="29" />
-      <source>GitHub Repository</source>
-      <translation>Repositorio de GitHub</translation>
     </message>
     <message>
       <source>Good</source>
@@ -2314,11 +2321,6 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
       <translation>Estilo %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/AboutView.qml" line="30" />
-      <source>Support on Patreon</source>
-      <translation>Apoyar en Patreon</translation>
-    </message>
-    <message>
       <source>Switched to %1 mode. %2</source>
       <translation>Cambiado al modo %1. %2</translation>
     </message>
@@ -2459,11 +2461,6 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
       <location filename="../qml/views/UpscaleView.qml" line="514" />
       <source>Upscale Video(s)</source>
       <translation>Escalar vídeos</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="35" />
-      <source>Uses Qt under LGPLv3. See Third-Party Licenses.</source>
-      <translation>Utiliza Qt bajo LGPLv3. Consulta las licencias de terceros.</translation>
     </message>
     <message>
       <location filename="../qml/components/SuperResolutionControls.qml" line="15" />

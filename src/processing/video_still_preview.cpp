@@ -166,12 +166,9 @@ QImage VideoStillPreview::process(const QImage &input, Settings settings, MediaI
         info.pixelFormat = "gbrp10le";
     else if (info.pixelFormat == "gbrp10le" && !stages.isEmpty())
         info.pixelFormat = "rgba64le";
-    if (stages.contains("super_resolution")) {
+    if (stages.contains("super_resolution") && !hasVfxStages(stages)) {
         info.primaries = "bt709";
         info.transfer = "bt709";
-    }
-    if(hasVfxStages(stages)){
-        if(!info.hdr){info.primaries="bt709";info.transfer="bt470m";}
     }
     if(stages.contains("rtx_video_hdr")){info.hdr=true;info.primaries="bt2020";info.transfer="smpte2084";}
     info.width = output->image.width();

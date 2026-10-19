@@ -147,6 +147,7 @@ inline QList<QByteArray> previewStageKeys(QByteArray identity, const Settings& s
         if(stage=="dlss_ray_reconstruction")identity+="/rr-native-1x-abi2/rr-guides-v2/fixed-still-video/scene-v2/full-fingerprint/streamed-parked-32-v3/single-still/";
         for (const auto& field : fields.value(stage)) relevant.insert(field,settings.value(field));
         if(isVfxStage(stage)||(hasVfxStages(settings.stages(true))&&QStringList{"super_resolution","rtx_video_hdr"}.contains(stage))){
+            identity+="/vfx-source-colors-v2/";
             identity+=info.metadata.value("sample_aspect_ratio").toString().toUtf8();
             identity+=QByteArray::number(info.clockwiseRotation());
             const auto values=settings.values();for(auto it=values.begin();it!=values.end();++it)if(it.key().startsWith("vfx_"))relevant.insert(it.key(),it.value());

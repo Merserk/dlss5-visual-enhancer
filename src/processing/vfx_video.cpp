@@ -113,7 +113,7 @@ bool renderVfxVideo(const RenderRequest& request,const MediaInfo& input,const Se
     if(settings.vfx_frame_generation_enabled)outputInfo.variableFrameRate=false;
     if(estimate.stages.contains("rtx_video_hdr")){
         outputInfo.primaries="bt2020";outputInfo.transfer="smpte2084";outputInfo.sourceBitDepth=10;
-    }else if(!input.hdr){outputInfo.primaries="bt709";outputInfo.transfer="bt470m";}
+    }
     outputInfo.colorSpace=outputInfo.hdr?"bt2020nc":"bt709";outputInfo.range="tv";
     if(request.preview){settings.codec="FFV1 Lossless RGB 10-bit";settings.container="MKV";}
     ScratchDirectory directory(QStringLiteral("vfx-XXXXXX"));if(!directory.isValid())throw std::runtime_error("Cannot create VFX delivery directory.");
@@ -136,7 +136,6 @@ bool renderVfxVideo(const RenderRequest& request,const MediaInfo& input,const Se
             auto clock=std::make_shared<VfxClock>(selected,stageColors,std::move(source),control);clocks.push_back(clock);
             source=[clock]()->std::optional<SourceFrame>{auto frame=clock->read();if(!frame)return {};return SourceFrame{{},{},clock->outputInfo(),std::move(frame->pixels),frame->pts,frame->span,frame->base};};
             const auto size=vfxSpatialSize({stageColors.width,stageColors.height},selected);stageColors.width=size.width();stageColors.height=size.height();stageColors.fps=vfxFrameRate(stageColors.fps,selected);
-            if(!stageColors.hdr){stageColors.primaries="bt709";stageColors.transfer="bt470m";}
         }
         const auto clock=clocks.back();
         const auto base=settings.vfx_frame_generation_enabled?clock->outputBase():decoder->timeBase();std::unique_ptr<CudaVideoEncoder> gpuEncoder;std::unique_ptr<CudaFramePool> pool;std::unique_ptr<HostVideoEncoder> hostEncoder;

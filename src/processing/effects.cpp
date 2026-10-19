@@ -618,7 +618,7 @@ VideoFilterStage::VideoFilterStage(QStringList stages, const MediaInfo& colors, 
     args << "-i" << source << "-map" << "0:v:0" << "-an" << "-vf" << filter << "-fps_mode" << "passthrough"
         << "-enc_time_base:v" << "demux" << "-c:v" << "rawvideo" << "-threads:v" << "1" << "-pix_fmt" << "gbrp10le"
         << "-f" << "nut" << "-write_index" << "0" << "-flush_packets" << "1" << "pipe:1";
-    state.process = std::make_unique<PipeProcess>(Paths::instance().ffmpeg(), args);
+    state.process = std::make_unique<PipeProcess>(Paths::instance().ffmpeg(), args,PipeProcess::OutputMode::Backpressured);
     state.reader = std::make_unique<FramePacketReader>(*state.process, control, RawPixelFormat::Gbrp10);
 }
 VideoFilterStage::~VideoFilterStage() = default;

@@ -57,7 +57,7 @@ class InterpolationDelivery {
         auto after=estimate.stages.mid(1);
         output_=pixels_;
         output_.width=estimate.width; output_.height=estimate.height; output_.hdr=estimate.hdr;
-        if(hasVfxStages(after)){retainVfxPixelAspect(output_,pixels_);if(!output_.hdr){output_.primaries="bt709";output_.transfer="bt470m";}}
+        if(hasVfxStages(after))retainVfxPixelAspect(output_,pixels_);
         if (after.contains("rtx_video_hdr")) { output_.primaries="bt2020"; output_.transfer="smpte2084"; output_.sourceBitDepth=10; }
         if (cudaEncoding_ && !settings_.codec.contains("NVIDIA NVENC")) settings_.codec+=" (NVIDIA NVENC)";
         neuralDelivery_=cudaEncoding_ && !after.isEmpty() && after.back()=="neural_model";

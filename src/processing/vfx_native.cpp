@@ -166,9 +166,13 @@ struct VideoEffects::State {
         auto storage=std::make_shared<VfxSurface::Storage>();storage->metrics=metrics;Error error{};storage->handle=Api::get().vfx_surface_createFn(size.width(),size.height(),format,error.data(),int(error.size()));check(storage->handle!=nullptr,error);storage->desc=descriptor<VfxFrameDescV2>();check(Api::get().vfx_surface_frame_descFn(storage->handle,&storage->desc),error);buffers.push_back(storage);return VfxSurface(std::move(storage));
     }
     void account(const VfxFrameResultV2& r){metrics->account(r);}
-    VfxSurface converted(const VfxFrameDescV2& source,QSize size,unsigned format,bool normalize=false){
-        control.checkpoint();auto out=acquire(size,format);auto dst=out.descriptor();dst.reserved[1]=normalize?1u:0u;auto result=descriptor<VfxFrameResultV2>();convert(source,dst,&result);account(result);
-        out.storage_->desc.color_primaries=normalize?1u:source.color_primaries;out.storage_->desc.color_transfer=normalize?2u:source.color_transfer;return out;
+    VfxSurface converted(const VfxFrameDescV2& source,QSize size,unsigned format){
+        control.checkpoint();auto out=acquire(size,format);auto& dst=out.storage_->desc;
+        // VFX consumes encoded RGB. Preserve the source gamut and transfer;
+        // converting BT.709 to gamma 2.2 here darkened even retained FG frames.
+        dst.color_matrix=source.color_matrix;dst.color_range=1;
+        dst.color_primaries=source.color_primaries;dst.color_transfer=source.color_transfer;
+        dst.reserved[1]=0;auto result=descriptor<VfxFrameResultV2>();convert(source,dst,&result);account(result);return out;
     }
     Effect& ensure(unsigned type,QSize in,QSize out,unsigned format){auto& p=effects[type];if(!p)p=std::make_unique<Effect>(effectDescriptor(type,in,out,format,settings));return *p;}
     VfxSurface run(unsigned type,const VfxSurface& src,QSize out,bool reset=false,const VfxSurface& previous={},float timestep=.5f,bool cut=false){
@@ -177,12 +181,12 @@ struct VideoEffects::State {
         auto prev=previous?previous.descriptor():VfxFrameDescV2{};
         auto params=descriptor<VfxRunParamsV2>();params.reset=reset;params.shot_change=cut;params.timestep=timestep;auto result=descriptor<VfxFrameResultV2>();Error error{};
         check(Api::get().vfx_process_frame_v2Fn(effect.handle,&input,previous?&prev:nullptr,&dst,&params,&result,error.data(),int(error.size())),error);account(result);
+        output.storage_->desc.color_matrix=input.color_matrix;output.storage_->desc.color_range=1;
         output.storage_->desc.color_primaries=input.color_primaries;output.storage_->desc.color_transfer=input.color_transfer;return output;
     }
 };
 VideoEffects::VideoEffects(Settings settings,MediaInfo input,JobControl& control):state_(std::make_unique<State>(std::move(settings),std::move(input),control)){
     const auto& s=state_->settings;initialize(gpuOrdinal(s.ai_gpu_uuid));auto size=vfxSpatialSize({state_->input.width,state_->input.height},s);state_->spatialColors.width=size.width();state_->spatialColors.height=size.height();
-    if(!state_->input.hdr){state_->spatialColors.primaries="bt709";state_->spatialColors.transfer="bt470m";}
     state_->outputColors=state_->spatialColors;state_->outputColors.fps=vfxFrameRate(state_->input.fps,s);
     if(s.vfx_frame_generation_enabled)state_->outputColors.variableFrameRate=false;
     if(state_->input.hdr&&s.vfx_upscale_enabled)throw std::runtime_error("Selected VFX effects require SDR at this position.");
@@ -192,7 +196,7 @@ VfxSurface VideoEffects::spatial(const VfxFrameDescV2& input,bool reset){
     auto& s=*state_;s.control.checkpoint();const auto& settings=s.settings;QSize inSize(s.input.width,s.input.height);
     bool eight=settings.vfx_upscale_enabled;
     auto format=(!eight&&(s.input.hdr||s.input.precisionBits()>8))?VFX_RGB10A2:VFX_RGBA8;
-    auto current=s.converted(input,inSize,format,!s.input.hdr);
+    auto current=s.converted(input,inSize,format);
     if(settings.vfx_vsr_enabled){QSize output=restores(settings)?inSize:vfxSpatialSize(inSize,settings);current=s.run(VFX_VSR,current,output,reset);}
     if(settings.vfx_upscale_enabled)current=s.run(VFX_UPSCALE,current,vfxSpatialSize(inSize,settings),reset);
     ++s.metrics->frames;return current;

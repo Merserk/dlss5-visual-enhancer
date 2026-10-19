@@ -247,7 +247,7 @@ void PreviewPlayer::decode(std::stop_token stop) {
                                  "1",
                                  "-pix_fmt",
                                  "p010le",
-                                 "pipe:1"});
+                                 "pipe:1"},PipeProcess::OutputMode::Backpressured);
             FramePacketReader packets(decoder, *control, RawPixelFormat::P010);
             while (!stop.stop_requested()) {
                 control->checkpoint();

@@ -684,7 +684,8 @@ std::vector<QImage> FramePipeline::processBatch(std::span<const QImage> input, J
             remember();
             continue;
         }
-        if (workingInfo.video && !state.rtxInputNormalized && (stage=="super_resolution" || stage=="rtx_video_hdr")) {
+        const bool sharedVsr=stage=="super_resolution"&&hasVfxStages(s.stages(true));
+        if (workingInfo.video && !state.rtxInputNormalized && (stage=="rtx_video_hdr" || stage=="super_resolution"&&!sharedVsr)) {
             auto& normalizer=state.filters[size_t(index)];
             if (!normalizer) {
                 auto colors=workingInfo;
@@ -755,7 +756,7 @@ std::vector<QImage> FramePipeline::processBatch(std::span<const QImage> input, J
                     shared.vfx_vsr_mode=s.upscale_vsr_quality;shared.vfx_vsr_strength=1;
                     const auto output=rtxOutputSize(image.size(),s,true);
                     shared.vfx_size_mode="Custom dimensions";shared.vfx_width=output.width();shared.vfx_height=output.height();shared.vfx_aspect_lock=false;
-                    auto colors=workingInfo;colors.width=image.width();colors.height=image.height();colors.hdr=false;colors.transfer="bt470m";colors.primaries="bt709";
+                    auto colors=workingInfo;colors.width=image.width();colors.height=image.height();colors.hdr=false;
                     auto& effect=state.vfx[size_t(index)];if(!effect)effect=std::make_unique<VideoEffects>(shared,colors,control);
                     auto pixels=image.convertToFormat(image.depth()>32?QImage::Format_RGBA64:QImage::Format_RGBA8888);
                     image=effect->process(vfxDescriptor(pixels,colors),resetFrame).toHost(true);workingInfo=effect->outputInfo();
@@ -988,7 +989,7 @@ RenderResult Pipeline::render(const RenderRequest& request, JobControl& control,
     decodeArgs << "-map" << "0:v:0" << "-an" << "-fps_mode" << "passthrough" << "-enc_time_base:v" << "demux"
                << "-c:v" << "rawvideo" << "-pix_fmt" << (sourceWide ? "rgba64le" : "rgba") << "-f" << "nut" << "-write_index" << "0"
                << "-flush_packets" << "1" << "pipe:1";
-    decoder = std::make_unique<PipeProcess>(Paths::instance().ffmpeg(), decodeArgs);
+    decoder = std::make_unique<PipeProcess>(Paths::instance().ffmpeg(), decodeArgs,PipeProcess::OutputMode::Backpressured);
     reader = std::make_unique<FramePacketReader>(*decoder, control, sourceWide ? RawPixelFormat::Rgba64 : RawPixelFormat::Rgba8);
     }
     const auto readSource = [&]() -> std::optional<TimedImage> {
@@ -1025,14 +1026,14 @@ RenderResult Pipeline::render(const RenderRequest& request, JobControl& control,
                    ? fallback
                    : value;
     };
-    const bool vfxSdr=hasVfxStages(estimate.stages)&&!input.hdr;
+    const bool rtxSdr=estimate.stages.contains("super_resolution")&&!hasVfxStages(estimate.stages);
     const auto primaries = estimate.stages.contains("rtx_video_hdr")
                                ? QString("bt2020")
-                               : estimate.stages.contains("super_resolution")||vfxSdr ? QString("bt709")
+                               : rtxSdr ? QString("bt709")
                                : known(input.primaries, estimate.hdr ? "bt2020" : "unknown");
     const auto transfer = estimate.stages.contains("rtx_video_hdr")
                               ? QString("smpte2084")
-                              : vfxSdr ? QString("bt470m") : estimate.stages.contains("super_resolution") ? QString("bt709")
+                              : rtxSdr ? QString("bt709")
                               : known(input.transfer, estimate.hdr ? "smpte2084" : "unknown");
     ScratchDirectory encodedTemporary(QStringLiteral("host-delivery-XXXXXX"));
     if (!encodedTemporary.isValid()) throw std::runtime_error("Cannot create the host delivery directory.");

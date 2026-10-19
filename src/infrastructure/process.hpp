@@ -17,7 +17,12 @@ struct ProcessResult {
                                        const QByteArray& input = {}, const std::function<void(const QByteArray&)>& outputReady = {});
 class PipeProcess {
   public:
-    PipeProcess(const QString& program, const QStringList& arguments);
+    // Read-only producers must stop when the consumer stops. Windows QProcess
+    // otherwise drains stdout into an unlimited asynchronous memory buffer.
+    // Bidirectional filters retain buffered output so writes cannot deadlock.
+    enum class OutputMode { Buffered, Backpressured };
+    PipeProcess(const QString& program, const QStringList& arguments,
+                OutputMode outputMode = OutputMode::Buffered);
     ~PipeProcess();
     PipeProcess(const PipeProcess&) = delete;
     PipeProcess& operator=(const PipeProcess&) = delete;
@@ -30,8 +35,11 @@ class PipeProcess {
     [[nodiscard]] QString error();
 
   private:
+    struct OutputPipe;
+    std::unique_ptr<OutputPipe> outputPipe_;
     QProcess process_;
     QByteArray error_;
+    QByteArray readOutput(qsizetype maximum);
     void drainErrors();
 };
 } // namespace ve

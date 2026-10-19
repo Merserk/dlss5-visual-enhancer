@@ -7,12 +7,19 @@
 
 namespace ve {
 namespace {
-void start(QProcess& process, const QString& program, const QStringList& arguments) {
+void start(QProcess& process, const QString& program, const QStringList& arguments, void* outputHandle=nullptr) {
 #ifdef Q_OS_WIN
-    process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* arguments) {
+    process.setCreateProcessArgumentsModifier([outputHandle](QProcess::CreateProcessArguments* arguments) {
         arguments->flags |= 0x08000000; // CREATE_NO_WINDOW: child tools never flash a console.
         arguments->startupInfo->dwFlags |= STARTF_FORCEOFFFEEDBACK;
+        if (outputHandle) {
+            arguments->startupInfo->dwFlags |= STARTF_USESTDHANDLES;
+            arguments->startupInfo->hStdOutput = outputHandle;
+            arguments->inheritHandles = true;
+        }
     });
+#else
+    Q_UNUSED(outputHandle);
 #endif
     process.setProgram(program);
     process.setArguments(arguments);
@@ -63,8 +70,39 @@ ProcessResult runProcess(const QString& program, const QStringList& arguments, J
     result.exitCode = process.exitStatus() == QProcess::NormalExit ? process.exitCode() : -1;
     return result;
 }
-PipeProcess::PipeProcess(const QString& program, const QStringList& arguments) {
-    start(process_, program, arguments);
+struct PipeProcess::OutputPipe {
+#ifdef Q_OS_WIN
+    HANDLE reader=nullptr,writer=nullptr;
+    OutputPipe() {
+        SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES),nullptr,TRUE};
+        if (!CreatePipe(&reader,&writer,&security,1024*1024))
+            throw std::runtime_error("Cannot create bounded decoder output pipe.");
+        if (!SetHandleInformation(reader,HANDLE_FLAG_INHERIT,0)) {
+            CloseHandle(reader);CloseHandle(writer);reader=writer=nullptr;
+            throw std::runtime_error("Cannot protect decoder pipe read handle.");
+        }
+    }
+    void closeWriter() { if (writer) {CloseHandle(writer);writer=nullptr;} }
+    ~OutputPipe() {closeWriter();if(reader)CloseHandle(reader);}
+#endif
+};
+PipeProcess::PipeProcess(const QString& program, const QStringList& arguments, OutputMode outputMode) {
+    void* outputHandle=nullptr;
+#ifdef Q_OS_WIN
+    if (outputMode==OutputMode::Backpressured) {
+        outputPipe_=std::make_unique<OutputPipe>();
+        outputHandle=outputPipe_->writer;
+        // Avoid creating QWindowsPipeReader for stdout; its native callbacks
+        // keep buffering even while the application decoder thread is paused.
+        process_.setProcessChannelMode(QProcess::ForwardedOutputChannel);
+    }
+#else
+    Q_UNUSED(outputMode);
+#endif
+    start(process_, program, arguments,outputHandle);
+#ifdef Q_OS_WIN
+    if(outputPipe_)outputPipe_->closeWriter(); // Only the child may keep stdout open.
+#endif
 }
 PipeProcess::~PipeProcess() {
     if (process_.state() != QProcess::NotRunning) {
@@ -76,7 +114,7 @@ QByteArray PipeProcess::readSome(qsizetype maximum, JobControl& control) {
     while (true) {
         control.checkpoint();
         drainErrors();
-        auto data = process_.read(maximum);
+        auto data = readOutput(maximum);
         if (!data.isEmpty())
             return data;
         if (process_.state() == QProcess::NotRunning) {
@@ -84,17 +122,42 @@ QByteArray PipeProcess::readSome(qsizetype maximum, JobControl& control) {
                 throw std::runtime_error(error_.toStdString());
             return {};
         }
-        process_.waitForReadyRead(25);
+        if(outputPipe_)process_.waitForFinished(2);
+        else process_.waitForReadyRead(25);
     }
 }
 QByteArray PipeProcess::readAvailable(qsizetype maximum, JobControl& control) {
     control.checkpoint();
-    process_.waitForReadyRead(0);
+    if(outputPipe_)process_.waitForFinished(0);
+    else process_.waitForReadyRead(0);
     drainErrors();
-    auto result=process_.read(maximum);
+    auto result=readOutput(maximum);
     if (result.isEmpty() && process_.state()==QProcess::NotRunning && process_.exitCode()!=0)
         throw std::runtime_error(error_.toStdString());
     return result;
+}
+QByteArray PipeProcess::readOutput(qsizetype maximum) {
+#ifdef Q_OS_WIN
+    if(outputPipe_) {
+        if(maximum<=0)return {};
+        DWORD available=0;
+        if(!PeekNamedPipe(outputPipe_->reader,nullptr,0,nullptr,&available,nullptr)) {
+            const auto code=GetLastError();
+            if(code==ERROR_BROKEN_PIPE)return {};
+            throw std::runtime_error("Cannot inspect decoder output pipe: Windows error "+std::to_string(code));
+        }
+        if(!available)return {};
+        const auto amount=DWORD(std::min<qsizetype>({maximum,qsizetype(available),1024*1024}));
+        QByteArray data(amount,Qt::Uninitialized);DWORD received=0;
+        if(!ReadFile(outputPipe_->reader,data.data(),amount,&received,nullptr)) {
+            const auto code=GetLastError();
+            if(code==ERROR_BROKEN_PIPE)return {};
+            throw std::runtime_error("Cannot read decoder output pipe: Windows error "+std::to_string(code));
+        }
+        data.resize(received);return data;
+    }
+#endif
+    return process_.read(maximum);
 }
 void PipeProcess::drainErrors() {
     error_ += process_.readAllStandardError();
@@ -105,16 +168,9 @@ QByteArray PipeProcess::read(qsizetype size, JobControl& control) {
     QByteArray data;
     data.reserve(size);
     while (data.size() < size) {
-        control.checkpoint();
-        data += process_.read(size - data.size());
-        drainErrors();
-        if (data.size() == size)
-            break;
-        if (process_.state() == QProcess::NotRunning) {
-            data += process_.read(size - data.size());
-            break;
-        }
-        process_.waitForReadyRead(25);
+        const auto next=readSome(size-data.size(),control);
+        if(next.isEmpty())break;
+        data+=next;
     }
     if (!data.isEmpty() && data.size() != size)
         throw std::runtime_error("Decoder returned an incomplete video frame.");
@@ -123,6 +179,7 @@ QByteArray PipeProcess::read(qsizetype size, JobControl& control) {
     return data;
 }
 void PipeProcess::write(const char* data, qsizetype size, JobControl& control) {
+    if(outputPipe_)throw std::logic_error("A backpressured decoder pipe is read-only.");
     qsizetype offset = 0;
     while (offset < size) {
         control.checkpoint();

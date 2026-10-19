@@ -4,6 +4,18 @@
   <context>
     <name>App</name>
     <message>
+      <source>Visit Website</source>
+      <translation>ウェブサイトを見る</translation>
+    </message>
+    <message>
+      <source>Support Project</source>
+      <translation>プロジェクトを支援</translation>
+    </message>
+    <message>
+      <source>Uses Qt under LGPLv3</source>
+      <translation>LGPLv3 に基づき Qt を使用</translation>
+    </message>
+    <message>
       <location filename="../qml/components/MediaViewport.qml" line="711" />
       <source>
 Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
@@ -984,11 +996,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <source>GPU support and installed models are checked before processing.</source>
       <translation>処理前にGPUの対応状況とインストール済みモデルを確認します。</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="29" />
-      <source>GitHub Repository</source>
-      <translation>GitHubリポジトリ</translation>
     </message>
     <message>
       <source>Good</source>
@@ -2310,11 +2317,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>スタイル %1</translation>
     </message>
     <message>
-      <location filename="../qml/views/AboutView.qml" line="30" />
-      <source>Support on Patreon</source>
-      <translation>Patreonで支援</translation>
-    </message>
-    <message>
       <source>Switched to %1 mode. %2</source>
       <translation>%1モードに切り替えました。%2</translation>
     </message>
@@ -2455,11 +2457,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/UpscaleView.qml" line="514" />
       <source>Upscale Video(s)</source>
       <translation>動画をアップスケール</translation>
-    </message>
-    <message>
-      <location filename="../qml/views/AboutView.qml" line="35" />
-      <source>Uses Qt under LGPLv3. See Third-Party Licenses.</source>
-      <translation>LGPLv3に基づきQtを使用しています。サードパーティーライセンスを参照してください。</translation>
     </message>
     <message>
       <location filename="../qml/components/SuperResolutionControls.qml" line="15" />
