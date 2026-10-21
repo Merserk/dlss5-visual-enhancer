@@ -75,8 +75,7 @@ applicable to each distributed component.
 
 Used through src/processing/native_engines.cpp and the native engine
 interfaces. Ray Reconstruction uses nvngx_dlssd.dll at native resolution
-for imported images and videos. Its application bridge is Merserk-owned
-and is listed in section 8, separately from NVIDIA's runtime.
+for imported images and videos.
 RTX Video HDR still uses nvngx_truehdr.dll; removing the
 separate VFX TrueHDR effect does not remove this RTX Video dependency.
 
@@ -353,7 +352,7 @@ d) Qt-supplied helpers and incorporated third-party code
 
    Qt's image-format plugins, graphics helpers and software OpenGL
    fallback retain the upstream licenses recorded by their Qt kit.
-   Microsoft-provided helpers retain Microsoft terms (section 11).
+   Microsoft-provided helpers retain Microsoft terms (section 10).
    Consult the Qt SPDX inventories and bin/licenses/qt/ for
    attribution; the Qt license does not replace those upstream terms.
 
@@ -377,43 +376,7 @@ f) Exiv2 metadata tools
    Used by src/media/image_metadata.cpp for image metadata handling.
 
 ===============================================================================
-8. MERSERK-OWNED COMPONENTS (NOT THIRD-PARTY)
-===============================================================================
-
-The following are owned by Merserk and are NOT third-party notices. They are
-listed here only so they are not mistaken for third-party items. Do not look
-for their terms in third-party license texts:
-
-    Visual Enhancer.exe and VE_CLI.exe (desktop and CLI applications)
-    neuroframe_engine_frame_interpolation.dll
-    neuroframe_engine_fsr_frame_generation.dll
-    neuroframe_engine_neural_rendering.dll
-    neuroframe_engine_ray_reconstruction.dll
-    neuroframe_engine_reshade.dll
-    neuroframe_engine_super_resolution.dll
-    neuroframe_engine_upscaling.dll
-    neuroframe_engine_video_effects.dll
-    ve_reshade_runtime.dll (Merserk headless runtime wrapper around
-        third-party ReShade and its incorporated helpers; their original
-        licenses remain applicable as described in section 11)
-    Merserk-owned application code and resources under src/
-    Merserk-owned build and packaging scripts under tools/
-
-The third-party source, algorithm adaptations, headers and runtime
-components itemized elsewhere in this notice remain under their own
-licenses. Placement in an application executable or source directory
-does not change their ownership or terms.
-
-Merserk-owned files are governed by LICENSE.txt in this source repository,
-and LICENSE.txt in current end-user packages. Earlier releases remain
-governed by the terms granted in those earlier copies for those releases,
-as described by the applicable Merserk Source License.
-
-A third-party file must never have its original license header removed,
-replaced, or relicensed merely because it sits inside this package.
-
-===============================================================================
-9. AMD FIDELITYFX CONTRAST ADAPTIVE SHARPENING
+8. AMD FIDELITYFX CONTRAST ADAPTIVE SHARPENING
 ===============================================================================
 
 The CAS sharpen-only algorithm is adapted from the FidelityFX SDK,
@@ -430,7 +393,7 @@ This implementation replaces the earlier Python/CPU adaptation and is
 used by the image and video Sharpening stage.
 
 ===============================================================================
-10. NVIDIA IMAGE SCALING NVSHARPEN
+9. NVIDIA IMAGE SCALING NVSHARPEN
 ===============================================================================
 
 The sharpening-only NVSharpen algorithm is adapted from NVIDIA Image
@@ -447,7 +410,7 @@ replaces the earlier Python/CPU adaptation and is used by the image and
 video Sharpening stage.
 
 ===============================================================================
-11. RESHADE RUNTIME, AMD FIDELITYFX OPTICAL FLOW, ONNX RUNTIME & DEPTH MODEL
+10. RESHADE RUNTIME, AMD FIDELITYFX OPTICAL FLOW, ONNX RUNTIME & DEPTH MODEL
 ===============================================================================
 
 a) ReShade (D3D12 effect runtime and ReShadeFX compiler)
@@ -474,7 +437,7 @@ b) AMD FidelityFX Optical Flow
    Full text: bin/runtime/reshade/license/AMD-FidelityFX-OpticalFlow-LICENSE.txt.
    ReShade uses this AMD backend for video motion estimation and temporal
    depth stabilization across supported GPUs. The separate FSR Frame
-   Generation backend is described in section 12.
+   Generation backend is described in section 11.
 
 c) Microsoft ONNX Runtime, DirectML and graphics helpers
 
@@ -538,7 +501,7 @@ e) Bundled ReShade Shaders and Presets
    https://github.com/crosire/reshade-shaders. RTGI shaders are not included.
 
 ===============================================================================
-12. AMD FSR FRAME GENERATION AND DIRECTX VIDEO ENCODING
+11. AMD FSR FRAME GENERATION AND DIRECTX VIDEO ENCODING
 ===============================================================================
 
 AMD FSR Frame Generation uses the AMD FidelityFX DirectX 12 effect runtime.
@@ -581,7 +544,7 @@ See https://docs.nvidia.com/video-technologies/video-codec-sdk/ and
 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.
 
 ===============================================================================
-13. SYSTEM COMPONENTS, TRADEMARKS, NO ENDORSEMENT
+12. SYSTEM COMPONENTS, TRADEMARKS, NO ENDORSEMENT
 ===============================================================================
 
 The app calls Microsoft Windows, Direct3D, Vulkan and NVIDIA CUDA driver
