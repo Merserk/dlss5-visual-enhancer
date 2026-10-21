@@ -20,6 +20,9 @@ enum class Property {
     workflowStages,
     vfxSettings,
     rrSettings,
+    reshadeSettings,
+    reshadeStatus,
+    reshadePresetInfo,
     vfxStatus,
     sharpeningMethodChoices,
     ffmpegDeviceChoices,
@@ -124,7 +127,8 @@ enum class Property {
     encodingQualityChoices,
     renameModeChoices,
     fiFpsChoices,
-    fiEngineChoices,
+    fiProviderChoices,
+    fsrAdapterChoices,
     fiPreviewLengthChoices,
     upscalePreviewLengthChoices,
     nrPreviewLengthChoices,
@@ -198,8 +202,15 @@ enum class Property {
     upscaleImageCustomSuffix,
     upscaleRenameMode,
     upscaleCustomSuffix,
+    fiFrameRateMode,
+    fiMultiplier,
     fiTargetFps,
-    fiEngine,
+    fiProvider,
+    fsrFrameRateMode,
+    fsrMultiplier,
+    fsrTargetFps,
+    fsrAdapterId,
+    fsrStatus,
     fiOpticalFlowQuality,
     fiCodec,
     fiContainer,
@@ -225,6 +236,13 @@ enum class Action {
     cleanProcessingCache,
     setVfxSetting,
     setRrSetting,
+    setReShadeSetting,
+    reloadReShadePreset,
+    saveReShadePresetCopy,
+    setReShadeParameter,
+    resetReShadeParameters,
+    setReShadeTechniqueEnabled,
+    moveReShadeTechnique,
     setLutFile,
     setLutAdjustment,
     resetLutAdjustments,
@@ -286,6 +304,9 @@ class QmlFacade : public QObject {
     Q_PROPERTY(QString processingCacheDetails READ processingCacheDetails NOTIFY processingCacheChanged)
     Q_PROPERTY(QVariantMap vfxSettings READ vfxSettings NOTIFY settingsUpdated)
     Q_PROPERTY(QVariantMap rrSettings READ rrSettings NOTIFY settingsUpdated)
+    Q_PROPERTY(QVariantMap reshadeSettings READ reshadeSettings NOTIFY settingsUpdated)
+    Q_PROPERTY(QString reshadeStatus READ reshadeStatus NOTIFY reshadeStatusChanged)
+    Q_PROPERTY(QVariantMap reshadePresetInfo READ reshadePresetInfo NOTIFY reshadePresetInfoChanged)
     Q_PROPERTY(QString vfxStatus READ vfxStatus NOTIFY vfxStatusChanged)
     Q_PROPERTY(QString activeTab READ activeTab WRITE write_activeTab NOTIFY activeTabChanged)
     Q_PROPERTY(QString nrMode READ nrMode WRITE write_nrMode NOTIFY nrModeChanged)
@@ -398,7 +419,8 @@ class QmlFacade : public QObject {
     Q_PROPERTY(QVariantList encodingQualityChoices READ encodingQualityChoices NOTIFY settingsUpdated)
     Q_PROPERTY(QVariantList renameModeChoices READ renameModeChoices NOTIFY settingsUpdated)
     Q_PROPERTY(QVariantList fiFpsChoices READ fiFpsChoices NOTIFY settingsUpdated)
-    Q_PROPERTY(QVariantList fiEngineChoices READ fiEngineChoices NOTIFY settingsUpdated)
+    Q_PROPERTY(QVariantList fiProviderChoices READ fiProviderChoices NOTIFY settingsUpdated)
+    Q_PROPERTY(QVariantList fsrAdapterChoices READ fsrAdapterChoices NOTIFY gpuChoicesChanged)
     Q_PROPERTY(QVariantList fiPreviewLengthChoices READ fiPreviewLengthChoices NOTIFY languageChanged)
     Q_PROPERTY(
         QVariantList upscalePreviewLengthChoices READ upscalePreviewLengthChoices NOTIFY languageChanged)
@@ -513,8 +535,15 @@ class QmlFacade : public QObject {
         QString upscaleRenameMode READ upscaleRenameMode WRITE write_upscaleRenameMode NOTIFY settingsUpdated)
     Q_PROPERTY(QString upscaleCustomSuffix READ upscaleCustomSuffix WRITE write_upscaleCustomSuffix NOTIFY
                    settingsUpdated)
+    Q_PROPERTY(QString fiFrameRateMode READ fiFrameRateMode WRITE write_fiFrameRateMode NOTIFY settingsUpdated)
+    Q_PROPERTY(int fiMultiplier READ fiMultiplier WRITE write_fiMultiplier NOTIFY settingsUpdated)
     Q_PROPERTY(QString fiTargetFps READ fiTargetFps WRITE write_fiTargetFps NOTIFY settingsUpdated)
-    Q_PROPERTY(QString fiEngine READ fiEngine WRITE write_fiEngine NOTIFY settingsUpdated)
+    Q_PROPERTY(QString fiProvider READ fiProvider WRITE write_fiProvider NOTIFY settingsUpdated)
+    Q_PROPERTY(QString fsrFrameRateMode READ fsrFrameRateMode WRITE write_fsrFrameRateMode NOTIFY settingsUpdated)
+    Q_PROPERTY(int fsrMultiplier READ fsrMultiplier WRITE write_fsrMultiplier NOTIFY settingsUpdated)
+    Q_PROPERTY(QString fsrTargetFps READ fsrTargetFps WRITE write_fsrTargetFps NOTIFY settingsUpdated)
+    Q_PROPERTY(QString fsrAdapterId READ fsrAdapterId WRITE write_fsrAdapterId NOTIFY settingsUpdated)
+    Q_PROPERTY(QString fsrStatus READ fsrStatus NOTIFY runtimeStateChanged)
     Q_PROPERTY(QString fiOpticalFlowQuality READ fiOpticalFlowQuality WRITE write_fiOpticalFlowQuality NOTIFY
                    settingsUpdated)
     Q_PROPERTY(QString fiCodec READ fiCodec WRITE write_fiCodec NOTIFY settingsUpdated)
@@ -682,7 +711,8 @@ class QmlFacade : public QObject {
     QVariantList encodingQualityChoices() const { return read(Property::encodingQualityChoices).toList(); }
     QVariantList renameModeChoices() const { return read(Property::renameModeChoices).toList(); }
     QVariantList fiFpsChoices() const { return read(Property::fiFpsChoices).toList(); }
-    QVariantList fiEngineChoices() const { return read(Property::fiEngineChoices).toList(); }
+    QVariantList fiProviderChoices() const { return read(Property::fiProviderChoices).toList(); }
+    QVariantList fsrAdapterChoices() const { return read(Property::fsrAdapterChoices).toList(); }
     QVariantList fiPreviewLengthChoices() const { return read(Property::fiPreviewLengthChoices).toList(); }
     QVariantList upscalePreviewLengthChoices() const {
         return read(Property::upscalePreviewLengthChoices).toList();
@@ -900,10 +930,23 @@ class QmlFacade : public QObject {
     void write_upscaleCustomSuffix(QString value) {
         write(Property::upscaleCustomSuffix, QVariant::fromValue(value));
     }
+    QString fiFrameRateMode() const { return read(Property::fiFrameRateMode).toString(); }
+    void write_fiFrameRateMode(QString value) { write(Property::fiFrameRateMode, QVariant::fromValue(value)); }
+    int fiMultiplier() const { return read(Property::fiMultiplier).toInt(); }
+    void write_fiMultiplier(int value) { write(Property::fiMultiplier, QVariant::fromValue(value)); }
     QString fiTargetFps() const { return read(Property::fiTargetFps).toString(); }
     void write_fiTargetFps(QString value) { write(Property::fiTargetFps, QVariant::fromValue(value)); }
-    QString fiEngine() const { return read(Property::fiEngine).toString(); }
-    void write_fiEngine(QString value) { write(Property::fiEngine, QVariant::fromValue(value)); }
+    QString fiProvider() const { return read(Property::fiProvider).toString(); }
+    void write_fiProvider(QString value) { write(Property::fiProvider, QVariant::fromValue(value)); }
+    QString fsrFrameRateMode() const { return read(Property::fsrFrameRateMode).toString(); }
+    void write_fsrFrameRateMode(QString value) { write(Property::fsrFrameRateMode, QVariant::fromValue(value)); }
+    int fsrMultiplier() const { return read(Property::fsrMultiplier).toInt(); }
+    void write_fsrMultiplier(int value) { write(Property::fsrMultiplier, QVariant::fromValue(value)); }
+    QString fsrTargetFps() const { return read(Property::fsrTargetFps).toString(); }
+    void write_fsrTargetFps(QString value) { write(Property::fsrTargetFps, QVariant::fromValue(value)); }
+    QString fsrAdapterId() const { return read(Property::fsrAdapterId).toString(); }
+    void write_fsrAdapterId(QString value) { write(Property::fsrAdapterId, QVariant::fromValue(value)); }
+    QString fsrStatus() const { return read(Property::fsrStatus).toString(); }
     QString fiOpticalFlowQuality() const { return read(Property::fiOpticalFlowQuality).toString(); }
     void write_fiOpticalFlowQuality(QString value) {
         write(Property::fiOpticalFlowQuality, QVariant::fromValue(value));
@@ -941,7 +984,25 @@ class QmlFacade : public QObject {
     QString fullLog() const { return read(Property::fullLog).toString(); }
     QVariantMap vfxSettings() const { return read(Property::vfxSettings).toMap(); }
     QVariantMap rrSettings() const { return read(Property::rrSettings).toMap(); }
+    QVariantMap reshadeSettings() const { return read(Property::reshadeSettings).toMap(); }
+    QString reshadeStatus() const { return read(Property::reshadeStatus).toString(); }
+    QVariantMap reshadePresetInfo() const { return read(Property::reshadePresetInfo).toMap(); }
     Q_INVOKABLE void setRrSetting(QString key, QVariant value) { execute(Action::setRrSetting, {key,value}); }
+    Q_INVOKABLE void setReShadeSetting(QString key, QVariant value) { execute(Action::setReShadeSetting, {key, value}); }
+    Q_INVOKABLE void reloadReShadePreset() { execute(Action::reloadReShadePreset, {}); }
+    Q_INVOKABLE QString saveReShadePresetCopy(QString targetPath) {
+        return execute(Action::saveReShadePresetCopy, {targetPath}).toString();
+    }
+    Q_INVOKABLE void setReShadeParameter(QString key, QVariant value) {
+        execute(Action::setReShadeParameter, {key, value});
+    }
+    Q_INVOKABLE void resetReShadeParameters() { execute(Action::resetReShadeParameters, {}); }
+    Q_INVOKABLE void setReShadeTechniqueEnabled(QString name, bool enabled) {
+        execute(Action::setReShadeTechniqueEnabled, {name, enabled});
+    }
+    Q_INVOKABLE void moveReShadeTechnique(int fromIndex, int toIndex) {
+        execute(Action::moveReShadeTechnique, {fromIndex, toIndex});
+    }
     QString vfxStatus() const { return read(Property::vfxStatus).toString(); }
     Q_INVOKABLE void setVfxSetting(QString key, QVariant value) { execute(Action::setVfxSetting, {key,value}); }
     Q_INVOKABLE void setLutFile(QString a0) { execute(Action::setLutFile, {QVariant::fromValue(a0)}); }
@@ -1046,6 +1107,9 @@ class QmlFacade : public QObject {
     Q_INVOKABLE void refreshProcessingCache() { execute(Action::refreshProcessingCache, {}); }
     Q_INVOKABLE void cleanProcessingCache() { execute(Action::cleanProcessingCache, {}); }
   signals:
+    void reshadeStatusChanged();
+    void reshadePresetInfoChanged();
+    void reshadeParametersReset();
     void processingCacheChanged();
     void activeTabChanged();
     void nrModeChanged();
@@ -1100,6 +1164,11 @@ class QmlFacade : public QObject {
             break;
         case Property::workflowStages:
             emit workflowStagesChanged();
+            break;
+        case Property::reshadeSettings:
+        case Property::reshadeStatus:
+        case Property::reshadePresetInfo:
+            emit settingsUpdated();
             break;
         case Property::sharpeningMethodChoices:
             emit settingsUpdated();
@@ -1410,8 +1479,11 @@ class QmlFacade : public QObject {
         case Property::fiFpsChoices:
             emit settingsUpdated();
             break;
-        case Property::fiEngineChoices:
+        case Property::fiProviderChoices:
             emit settingsUpdated();
+            break;
+        case Property::fsrAdapterChoices:
+            emit gpuChoicesChanged();
             break;
         case Property::fiPreviewLengthChoices:
             emit languageChanged();
@@ -1632,11 +1704,24 @@ class QmlFacade : public QObject {
         case Property::upscaleCustomSuffix:
             emit settingsUpdated();
             break;
+        case Property::fiFrameRateMode:
+        case Property::fiMultiplier:
         case Property::fiTargetFps:
             emit settingsUpdated();
             break;
-        case Property::fiEngine:
+        case Property::fiProvider:
             emit settingsUpdated();
+            break;
+        case Property::fsrFrameRateMode:
+        case Property::fsrMultiplier:
+        case Property::fsrTargetFps:
+            emit settingsUpdated();
+            break;
+        case Property::fsrAdapterId:
+            emit settingsUpdated();
+            break;
+        case Property::fsrStatus:
+            emit runtimeStateChanged();
             break;
         case Property::fiOpticalFlowQuality:
             emit settingsUpdated();
@@ -1773,8 +1858,14 @@ inline constexpr SettingBinding settingBindings[] = {
     {Property::upscaleImageCustomSuffix, "upscale_image_custom_suffix"},
     {Property::upscaleRenameMode, "upscale_rename_mode"},
     {Property::upscaleCustomSuffix, "upscale_custom_suffix"},
+    {Property::fiFrameRateMode, "frame_interpolation_frame_rate_mode"},
+    {Property::fiMultiplier, "frame_interpolation_multiplier"},
     {Property::fiTargetFps, "frame_interpolation_target_fps"},
-    {Property::fiEngine, "frame_interpolation_engine"},
+    {Property::fiProvider, "frame_interpolation_provider"},
+    {Property::fsrFrameRateMode, "fsr_frame_generation_frame_rate_mode"},
+    {Property::fsrMultiplier, "fsr_frame_generation_multiplier"},
+    {Property::fsrTargetFps, "fsr_frame_generation_target_fps"},
+    {Property::fsrAdapterId, "fsr_adapter_id"},
     {Property::fiOpticalFlowQuality, "frame_interpolation_optical_flow_quality"},
     {Property::fiCodec, "frame_interpolation_codec"},
     {Property::fiQuality, "frame_interpolation_quality"},

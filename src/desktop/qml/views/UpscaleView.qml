@@ -93,7 +93,7 @@ Item {
                 }
 
                 // Scrollable Cards Area
-                Flickable {
+                InspectorScrollArea {
                     width: parent.width
                     height: parent.height - 48 - actionBar.height
                     contentWidth: width

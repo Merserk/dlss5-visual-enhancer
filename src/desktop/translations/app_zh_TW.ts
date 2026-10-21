@@ -477,10 +477,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>無法開始批次處理：%1</translation>
     </message>
     <message>
-      <source>Cascade</source>
-      <translation>串接</translation>
-    </message>
-    <message>
       <source>Changes apply immediately.</source>
       <translation>變更立即生效。</translation>
     </message>
@@ -715,7 +711,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/FrameInterpolationView.qml" line="88" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="49" />
       <source>DLSS Frame Generation</source>
-      <translation>DLSS Frame Generation</translation>
+      <translation>DLSS 畫格生成</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="14" />
@@ -726,7 +722,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="41" />
       <source>DLSS Neural Rendering</source>
-      <translation>DLSS Neural Rendering</translation>
+      <translation>DLSS 神經渲染</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="30" />
@@ -738,17 +734,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/NeuralRenderingView.qml" line="43" />
       <location filename="../qml/views/UpscaleView.qml" line="115" />
       <source>DLSS Super Resolution</source>
-      <translation>DLSS Super Resolution</translation>
+      <translation>DLSS 超解析度</translation>
     </message>
     <message>
       <source>DLSS effects: %1</source>
       <translation>DLSS 效果：%1</translation>
-    </message>
-    <message>
-      <location filename="../qml/components/FrameGenerationControls.qml" line="25" />
-      <location filename="../qml/views/FrameInterpolationView.qml" line="104" />
-      <source>DLSS-G Engine</source>
-      <translation>DLSS-G 引擎</translation>
     </message>
     <message>
       <source>Deblur Modes</source>
@@ -1410,10 +1400,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>NR 風格</translation>
     </message>
     <message>
-      <source>Native DLSSG</source>
-      <translation>原生 DLSSG</translation>
-    </message>
-    <message>
       <source>Natural</source>
       <translation>自然</translation>
     </message>
@@ -1827,13 +1813,13 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="44" />
       <source>RTX Super Resolution</source>
-      <translation>RTX Super Resolution</translation>
+      <translation>RTX 超解析度</translation>
     </message>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="45" />
       <location filename="../qml/views/UpscaleView.qml" line="275" />
       <source>RTX Video HDR</source>
-      <translation>RTX Video HDR</translation>
+      <translation>RTX HDR 影片</translation>
     </message>
     <message>
       <source>Ready</source>
@@ -2636,11 +2622,461 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
       <message>
       <source>DLSS Ray Reconstruction</source>
-      <translation>DLSS Ray Reconstruction</translation>
+      <translation>DLSS 光線重建</translation>
     </message>
     <message>
       <source>Imported images and videos use estimated material guides. Results depend on the source.</source>
       <translation>匯入的影像和影片使用估算的材質資訊。效果取決於來源素材。</translation>
     </message>
-</context>
+    <message>
+      <source>AMD FidelityFX Optical Flow</source>
+      <translation>AMD FidelityFX 光流</translation>
+    </message>
+    <message>
+      <source>Active Techniques</source>
+      <translation>啟用技術</translation>
+    </message>
+    <message>
+      <source>Always (MoGe-2 ViT-S)</source>
+      <translation>總是 (MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Auto (MoGe-2 ViT-S When Required)</source>
+      <translation>自動 (需要時使用 MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Shaders)</source>
+      <translation>自動 (預設集與執行階段著色器)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Textures)</source>
+      <translation>自動 (預設集與執行階段紋理)</translation>
+    </message>
+    <message>
+      <source>Choose a ReShade .ini preset</source>
+      <translation>選擇 ReShade .ini 預設集</translation>
+    </message>
+    <message>
+      <source>Depth Input</source>
+      <translation>深度輸入</translation>
+    </message>
+    <message>
+      <source>Disabled</source>
+      <translation>已停用</translation>
+    </message>
+    <message>
+      <source>Disocclusion Sensitivity</source>
+      <translation>遮擋解除靈敏度</translation>
+    </message>
+    <message>
+      <source>Effect Mix</source>
+      <translation>效果混合</translation>
+    </message>
+    <message>
+      <source>Flip Depth Vertically</source>
+      <translation>垂直翻轉深度</translation>
+    </message>
+    <message>
+      <source>Logarithmic Depth Buffer</source>
+      <translation>對數深度緩衝</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Spatial)</source>
+      <translation>關閉 (逐影格空間)</translation>
+    </message>
+    <message>
+      <source>Processing ReShade video</source>
+      <translation>正在處理 ReShade 影片</translation>
+    </message>
+    <message>
+      <source>ReShade</source>
+      <translation>ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade Preset (.ini)</source>
+      <translation>ReShade 預設集 (.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade Presets (*.ini)</source>
+      <translation>ReShade 預設集 (*.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade runtime unavailable.</source>
+      <translation>ReShade 執行階段無法使用。</translation>
+    </message>
+    <message>
+      <source>Reload Preset</source>
+      <translation>重新載入預設集</translation>
+    </message>
+    <message>
+      <source>Reloaded ReShade preset.</source>
+      <translation>已重新載入 ReShade 預設集。</translation>
+    </message>
+    <message>
+      <source>Reversed Depth Buffer</source>
+      <translation>反轉深度緩衝</translation>
+    </message>
+    <message>
+      <source>Save Preset Copy</source>
+      <translation>儲存預設集副本</translation>
+    </message>
+    <message>
+      <source>Save ReShade Preset Copy</source>
+      <translation>儲存 ReShade 預設集副本</translation>
+    </message>
+    <message>
+      <source>Saved ReShade preset to %1</source>
+      <translation>已將 ReShade 預設集儲存至 %1</translation>
+    </message>
+    <message>
+      <source>Shader Parameters</source>
+      <translation>著色器參數</translation>
+    </message>
+    <message>
+      <source>Shader Search Folder (.fx / .fxh)</source>
+      <translation>著色器搜尋資料夾 (.fx / .fxh)</translation>
+    </message>
+    <message>
+      <source>Temporal Depth Blend</source>
+      <translation>時間深度混合</translation>
+    </message>
+    <message>
+      <source>Texture &amp; LUT Search Folder</source>
+      <translation>紋理與 LUT 搜尋資料夾</translation>
+    </message>
+    <message>
+      <source>Video Motion &amp; Depth Stabilization</source>
+      <translation>影片動態與深度穩定</translation>
+    </message>
+    <message>
+      <source>Always Generate AI Depth</source>
+      <translation>一律產生 AI 深度</translation>
+    </message>
+    <message>
+      <source>Optical Flow</source>
+      <translation>光流</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Depth)</source>
+      <translation>關閉（逐幀深度）</translation>
+    </message>
+    <message>
+      <source>This preset requires depth. Select Auto or Always to process it.</source>
+      <translation>此預設需要深度。請選擇「自動」或「一律」。</translation>
+    </message>
+    <message>
+      <source>AI depth supplies effects that need scene depth. Auto stabilizes it in video using AMD Optical Flow.</source>
+      <translation>AI 深度供需要場景深度的效果使用。自動模式透過 AMD Optical Flow 穩定影片深度。</translation>
+    </message>
+    <message>
+      <source>This preset does not need AI depth or motion processing. Auto skips that work.</source>
+      <translation>此預設不需要 AI 深度或動作處理。自動模式會略過這些工作。</translation>
+    </message>
+    <message>
+      <source>Techniques &amp; Settings</source>
+      <translation>技術與設定</translation>
+    </message>
+    <message>
+      <source>Reset Values</source>
+      <translation>重設數值</translation>
+    </message>
+    <message>
+      <source>Search effects and parameters…</source>
+      <translation>搜尋效果與參數…</translation>
+    </message>
+    <message>
+      <source>%1 enabled</source>
+      <translation>已啟用 %1 項</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>關閉</translation>
+    </message>
+    <message>
+      <source>Fisheye distortion is off by default. Enable the technique to apply it.</source>
+      <translation>魚眼畸變預設關閉。啟用該技術即可套用。</translation>
+    </message>
+    <message>
+      <source>Enable a technique above to apply this effect.</source>
+      <translation>啟用上方技術以套用此效果。</translation>
+    </message>
+    <message>
+      <source>Depth Detail</source>
+      <translation>深度細節</translation>
+    </message>
+    <message>
+      <source>Effect Precision</source>
+      <translation>效果精度</translation>
+    </message>
+    <message>
+      <source>HDR Handling</source>
+      <translation>HDR 處理</translation>
+    </message>
+    <message>
+      <source>Preserve Source Transparency</source>
+      <translation>保留來源透明度</translation>
+    </message>
+    <message>
+      <source>Show Internal Shader Parameters</source>
+      <translation>顯示內部著色器參數</translation>
+    </message>
+    <message>
+      <source>MoGe-2 ViT-S · ONNX Runtime DirectML
+Video depth alignment · AMD FidelityFX Optical Flow</source>
+      <translation>MoGe-2 ViT-S · ONNX Runtime DirectML
+影片深度對齊 · AMD FidelityFX 光流</translation>
+    </message>
+    <message>
+      <source>Choose a preset to begin.</source>
+      <translation>請選擇預設以開始。</translation>
+    </message>
+    <message>
+      <source>%1 technique(s) enabled · %2</source>
+      <translation>已啟用 %1 項技術 · %2</translation>
+    </message>
+    <message>
+      <source>AI depth enabled</source>
+      <translation>AI 深度已啟用</translation>
+    </message>
+    <message>
+      <source>Depth not required or disabled</source>
+      <translation>不需要深度或深度已關閉</translation>
+    </message>
+    <message>
+      <source>Enabled</source>
+      <translation>已啟用</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>進階</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation</source>
+      <translation>FSR 影格生成</translation>
+    </message>
+    <message>
+      <source>Processing GPU</source>
+      <translation>處理 GPU</translation>
+    </message>
+    <message>
+      <source>Frame generation available</source>
+      <translation>影格生成可用</translation>
+    </message>
+    <message>
+      <source>Selected FSR adapter is unavailable</source>
+      <translation>所選的 FSR 配接器無法使用</translation>
+    </message>
+    <message>
+      <source>No compatible FSR adapter detected</source>
+      <translation>未偵測到相容的 FSR 配接器</translation>
+    </message>
+    <message>
+      <source>Frame generation provider</source>
+      <translation>影格生成技術</translation>
+    </message>
+    <message>
+      <source>Shared GPU memory</source>
+      <translation>共用 GPU 記憶體</translation>
+    </message>
+    <message>
+      <source>AI Processing GPU (DirectX 12 / FidelityFX)</source>
+      <translation>AI 處理 GPU（DirectX 12 / FidelityFX）</translation>
+    </message>
+    <message>
+      <source>RTX Video Super Resolution</source>
+      <translation>RTX 影片超解析度</translation>
+    </message>
+    <message>
+      <source>Fast (280)</source>
+      <translation>快速 (280)</translation>
+    </message>
+    <message>
+      <source>Standard (504)</source>
+      <translation>標準 (504)</translation>
+    </message>
+    <message>
+      <source>High (756)</source>
+      <translation>高 (756)</translation>
+    </message>
+    <message>
+      <source>Maximum (1008)</source>
+      <translation>最高 (1008)</translation>
+    </message>
+    <message>
+      <source>8-bit sRGB Compatibility</source>
+      <translation>8 位元 sRGB 相容模式</translation>
+    </message>
+    <message>
+      <source>Auto (SDR Preset Adapter)</source>
+      <translation>自動（SDR 預設集調整器）</translation>
+    </message>
+    <message>
+      <source>HDR-Aware Preset</source>
+      <translation>支援 HDR 的預設集</translation>
+    </message>
+    <message>
+      <source>SDR Adapter</source>
+      <translation>SDR 調整器</translation>
+    </message>
+    <message>
+      <source>Reject Unsupported</source>
+      <translation>拒絕不支援的設定</translation>
+    </message>
+    <message>
+      <source>%1 FPS</source>
+      <translation>%1 畫格/秒</translation>
+    </message>
+    <message>
+      <source>FPS</source>
+      <translation>畫格/秒</translation>
+    </message>
+    <message>
+      <source>No compatible NVIDIA or FSR DirectX 12 GPU was detected.</source>
+      <translation>未偵測到相容 DirectX 12 的 NVIDIA 或 FSR GPU。</translation>
+    </message>
+    <message>
+      <source>Clipboard download failed: %1</source>
+      <translation>從剪貼簿下載失敗：%1</translation>
+    </message>
+    <message>
+      <source>The clipboard URL did not contain a readable image.</source>
+      <translation>剪貼簿中的 URL 未包含可讀取的影像。</translation>
+    </message>
+    <message>
+      <source>Scanning input files…</source>
+      <translation>正在掃描輸入檔案…</translation>
+    </message>
+    <message>
+      <source>Files added: %1.</source>
+      <translation>已新增檔案：%1。</translation>
+    </message>
+    <message>
+      <source>Rendering preview…</source>
+      <translation>正在渲染預覽…</translation>
+    </message>
+    <message>
+      <source>Preview ready.</source>
+      <translation>預覽已就緒。</translation>
+    </message>
+    <message>
+      <source>Preview updated; waiting for the latest request.</source>
+      <translation>預覽已更新；正在等待最新要求。</translation>
+    </message>
+    <message>
+      <source>Processing batch…</source>
+      <translation>正在批次處理…</translation>
+    </message>
+    <message>
+      <source>%1 complete, %2 failed.</source>
+      <translation>已完成：%1，失敗：%2。</translation>
+    </message>
+    <message>
+      <source>Interpolating video</source>
+      <translation>正在進行影片畫格插補</translation>
+    </message>
+    <message>
+      <source>Use one frame-generation engine per workflow. Select DLSS, AMD FSR or VFX Frame Generation.</source>
+      <translation>每個工作流程只能使用一個畫格生成引擎。請選擇 DLSS、AMD FSR 或 VFX 畫格生成。</translation>
+    </message>
+    <message>
+      <source>DLSS Neural Rendering requires at least 64 by 64 input.</source>
+      <translation>DLSS 神經渲染要求輸入至少為 64 × 64 像素。</translation>
+    </message>
+    <message>
+      <source>Scaling cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>縮放無法在此位置處理 HDR 影片。請將其移至 HDR 轉換之前。</translation>
+    </message>
+    <message>
+      <source>The requested output is below the supported 64 by 64 minimum.</source>
+      <translation>要求的輸出尺寸小於支援的最小尺寸 64 × 64 像素。</translation>
+    </message>
+    <message>
+      <source>DLSS Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>DLSS 超解析度無法在此位置處理 HDR 影片。請將其移至 HDR 轉換之前。</translation>
+    </message>
+    <message>
+      <source>Ray Reconstruction requires explicit PQ or HLG signaling for HDR video.</source>
+      <translation>光線重建要求 HDR 影片明確標示為 PQ 或 HLG。</translation>
+    </message>
+    <message>
+      <source>RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>RTX 超解析度無法在此位置處理 HDR 影片。請將其移至 HDR 轉換之前。</translation>
+    </message>
+    <message>
+      <source>NVIDIA Video Effects is video-only.</source>
+      <translation>NVIDIA Video Effects 僅支援影片。</translation>
+    </message>
+    <message>
+      <source>The legacy NVIDIA VFX preset has no enabled effect.</source>
+      <translation>舊版 NVIDIA VFX 預設集中沒有啟用的效果。</translation>
+    </message>
+    <message>
+      <source>This video effect requires SDR at this position. Move its card before HDR conversion.</source>
+      <translation>此影片效果在目前位置要求 SDR 輸入。請將其卡片移至 HDR 轉換之前。</translation>
+    </message>
+    <message>
+      <source>RTX Video HDR requires SDR at this position.</source>
+      <translation>RTX HDR 影片在此位置要求 SDR 輸入。</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires at least 64 by 64 pixels.</source>
+      <translation>FSR 畫格生成要求至少為 64 × 64 像素。</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation supports up to 16384 pixels per side.</source>
+      <translation>FSR 畫格生成支援每邊最多 16384 像素。</translation>
+    </message>
+    <message>
+      <source>Frame Generation target FPS must exceed the frame rate entering this card. Choose a higher target FPS.</source>
+      <translation>畫格生成的目標畫格率必須高於此卡片的輸入畫格率。請選擇更高的目標畫格率。</translation>
+    </message>
+    <message>
+      <source>Sharpening requires SDR video at this position. Move it before HDR conversion.</source>
+      <translation>銳化在此位置要求 SDR 影片。請將其移至 HDR 轉換之前。</translation>
+    </message>
+    <message>
+      <source>The selected .cube LUT is unavailable.</source>
+      <translation>所選 .cube LUT 無法使用。</translation>
+    </message>
+    <message>
+      <source>The selected ReShade .ini preset is unavailable.</source>
+      <translation>所選 ReShade .ini 預設集無法使用。</translation>
+    </message>
+    <message>
+      <source>ReShade requires at least 16 by 16 input.</source>
+      <translation>ReShade 要求輸入至少為 16 × 16 像素。</translation>
+    </message>
+    <message>
+      <source>The selected codec does not support this container.</source>
+      <translation>所選編解碼器不支援此封裝格式。</translation>
+    </message>
+    <message>
+      <source>Video export requires even output dimensions.</source>
+      <translation>影片匯出的輸出寬度和高度必須為偶數。</translation>
+    </message>
+    <message>
+      <source>HDR output requires 10-bit HDR Mode in Export Settings.</source>
+      <translation>HDR 輸出要求在匯出設定中啟用 10 位元 HDR 模式。</translation>
+    </message>
+    <message>
+      <source>HDR requires a 10-bit or higher video codec.</source>
+      <translation>HDR 要求使用 10 位元或更高位元深度的影片編解碼器。</translation>
+    </message>
+    <message>
+      <source>Custom suffix is empty or contains invalid filename characters.</source>
+      <translation>自訂後綴為空白或包含檔名不允許的字元。</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires GPU encoding with H.264, HEVC or AV1. Select a supported codec.</source>
+      <translation>FSR 畫格生成要求使用 H.264、HEVC 或 AV1 GPU 編碼。請選擇支援的編解碼器。</translation>
+    </message>
+    <message>
+      <source>GPU encoding is unavailable for the selected FSR DirectX adapter</source>
+      <translation>所選 FSR DirectX 配接器不支援 GPU 編碼</translation>
+    </message>
+    <message>
+      <source>HDR FSR input requires HDR Mode and a 10-bit output codec</source>
+      <translation>HDR FSR 輸入要求啟用 HDR 模式並使用 10 位元輸出編解碼器</translation>
+    </message>
+  </context>
 </TS>

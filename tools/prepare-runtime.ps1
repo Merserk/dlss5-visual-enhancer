@@ -21,12 +21,11 @@ New-Item -ItemType Directory -Force -Path $downloadDirectory, $destinationRoot |
 
 # Versions and SHA-256 values are pinned. Only vendor dependencies are extracted
 # from archives; no application executable or engine DLL comes from a release.
-# PyAV 16 supplies libavcodec 62/libavutil 60/swscale 9, matching our headers.
+# Shared libav is prepared separately with the pinned DirectX-capable build.
 $downloads = @(
     @{Name='ffmpeg-9.0.2-full_build.7z';Url='https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build.7z';Hash='f0e46253c70dfe902bac915dfb4224f0cf1b7c6eeab9da2ccc9a5581f9a71b13'},
     @{Name='windows-artifacts.zip';Url='https://github.com/AOMediaCodec/libavif/releases/download/v1.4.2/windows-artifacts.zip';Hash='cb2d9fea43dcbab1d0707e3b37eb7b08070ad2fb60a2c188c39ec12382c0484a'},
     @{Name='exiv2-0.28.9-2022msvc-AMD64.zip';Url='https://github.com/Exiv2/exiv2/releases/download/v0.28.9/exiv2-0.28.9-2022msvc-AMD64.zip';Hash='47b455d7102d5d3b92227e580c582d4c36f0291902dc70af95062c32852d3f1c'},
-    @{Name='av-16.0.1-cp312-cp312-win_amd64.whl';Url='https://files.pythonhosted.org/packages/15/37/c7811eca0f318d5fd3212f7e8c3d8335f75a54907c97a89213dc580b8056/av-16.0.1-cp312-cp312-win_amd64.whl';Hash='0c669b6b6668c8ae74451c15ec6d6d8a36e4c3803dc5d9910f607a174dd18f17'},
     @{Name='pillow_heif-1.8.1-cp312-cp312-win_amd64.whl';Url='https://files.pythonhosted.org/packages/db/fd/2ff579be4694ac68cc73bfaafe1abc255bd658b678bfb3b33922784ddaf0/pillow_heif-1.8.1-cp312-cp312-win_amd64.whl';Hash='ce0ff957ad901a5a6bf8cd22ea26c4304bab7cf2f93d0a2f03046487e5711910'},
     # The private NR model has no public SDK/source package. Extract its original
     # NVIDIA DLL alone from the project's published archive, then verify it.
@@ -61,9 +60,19 @@ foreach ($file in Get-ChildItem -LiteralPath (Join-Path $exiv2Root 'bin') -File 
     Copy-Dependency $file.FullName "bin/exiv2/$($file.Name)"
 }
 Copy-Dependency (Join-Path $exiv2Root 'COPYING') 'bin/exiv2/COPYING'
-$avRoot = $extracted['av-16.0.1-cp312-cp312-win_amd64.whl']
-foreach ($file in Get-ChildItem -LiteralPath (Join-Path $avRoot 'av.libs') -File -Filter '*.dll') { Copy-Dependency $file.FullName "bin/runtime/av/$($file.Name)" }
-Copy-Dependency (Join-Path $avRoot 'av-16.0.1.dist-info/licenses/LICENSE.txt') 'bin/licenses/PYAV-NATIVE-DEPENDENCIES.txt'
+# Prepare one coherent runtime; obsolete hashed wheel DLLs must never coexist
+# with the selected libav libraries because the loader resolves by prefix.
+$avTarget = [IO.Path]::GetFullPath((Join-Path $destinationRoot 'bin/runtime/av'))
+$safePrefix = [IO.Path]::GetFullPath($destinationRoot).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+if (-not $avTarget.StartsWith($safePrefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'AV dependency target is outside the runtime.' }
+if (Test-Path -LiteralPath $avTarget) {
+    if ((Get-Item -LiteralPath $avTarget).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'AV dependency target cannot be a link.' }
+}
+& (Join-Path $PSScriptRoot 'prepare-media-runtime.ps1') -DownloadRoot $downloadDirectory -Destination $destinationRoot
+$currentAvNames = @('avutil-60.dll','avcodec-62.dll','avformat-62.dll','swscale-9.dll','swresample-6.dll')
+foreach ($file in Get-ChildItem -LiteralPath $avTarget -File -Filter '*.dll') {
+    if ($file.Name -notin $currentAvNames) { Remove-Item -LiteralPath $file.FullName -Force }
+}
 $heifRoot = $extracted['pillow_heif-1.8.1-cp312-cp312-win_amd64.whl']
 foreach ($file in Get-ChildItem -LiteralPath $heifRoot -Recurse -File -Filter '*.dll') { Copy-Dependency $file.FullName "bin/runtime/image-codecs/$($file.Name)" }
 Copy-Dependency (Join-Path $heifRoot 'pillow_heif-1.8.1.dist-info/licenses/LICENSES_bundled.txt') 'bin/licenses/HEIF-NATIVE-DEPENDENCIES.txt'

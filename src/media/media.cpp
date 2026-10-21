@@ -1,4 +1,5 @@
 #include "media.hpp"
+#include "frame_generation_rate.hpp"
 #include "av_api.hpp"
 #include "image_codecs.hpp"
 #include "image_metadata.hpp"
@@ -19,6 +20,8 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
+#include <numeric>
 
 namespace ve {
 QSize MediaInfo::outputSampleAspectRatio() const {
@@ -429,6 +432,37 @@ QStringList videoEncoderArguments(const QString& codec, const QString& quality, 
         result << "-preset" << "6";
     return result;
 }
+// One rational delivery clock for estimates, previews and every export route.
+// Multipliers preserve fractional source rates instead of rounding to integer FPS.
+TimeBase frameGenerationTimeBase(double sourceFps, const Settings& settings, bool fsr) {
+    const auto& mode = fsr ? settings.fsr_frame_generation_frame_rate_mode : settings.frame_interpolation_frame_rate_mode;
+    if (mode == "Multiplier") {
+        const int multiplier = fsr ? settings.fsr_frame_generation_multiplier : settings.frame_interpolation_multiplier;
+        if (!std::isfinite(sourceFps) || sourceFps <= 0 || multiplier < 2 || multiplier > 8)
+            throw std::runtime_error("Frame generation requires a positive source frame rate and a multiplier from 2 to 8.");
+        const auto source = av::Api::get().av_d2q(sourceFps, 1000000);
+        const auto common = std::gcd(source.den, multiplier);
+        const auto numerator = std::int64_t(source.num) * (multiplier / common);
+        if (source.num <= 0 || source.den <= 0 || numerator > std::numeric_limits<int>::max())
+            throw std::runtime_error("The multiplied frame rate exceeds the supported rational clock range.");
+        return {source.den / common, int(numerator)};
+    }
+    if (mode != "Target FPS") throw std::runtime_error("Unknown frame-rate mode.");
+    const auto& target = fsr ? settings.fsr_frame_generation_target_fps : settings.frame_interpolation_target_fps;
+    if (target == "23.976") return {1001, 24000};
+    if (target == "29.97") return {1001, 30000};
+    if (target == "59.94") return {1001, 60000};
+    if (target == "119.88") return {1001, 120000};
+    bool valid = false;
+    const auto integer = target.toInt(&valid);
+    if (!valid || integer <= 0) throw std::runtime_error("Invalid target frame rate.");
+    return {1, integer};
+}
+double frameGenerationFrameRate(double sourceFps, const Settings& settings, bool fsr) {
+    const auto interval = frameGenerationTimeBase(sourceFps, settings, fsr);
+    return double(interval.denominator) / interval.numerator;
+}
+
 double targetFrameRate(const QString& choice) {
     static const QMap<QString, double> fractional{{"23.976", 24000. / 1001},
                                                   {"29.97", 30000. / 1001},

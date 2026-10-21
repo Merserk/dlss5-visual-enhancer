@@ -477,10 +477,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>バッチを開始できません: %1</translation>
     </message>
     <message>
-      <source>Cascade</source>
-      <translation>カスケード</translation>
-    </message>
-    <message>
       <source>Changes apply immediately.</source>
       <translation>変更はすぐに適用されます。</translation>
     </message>
@@ -715,7 +711,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/FrameInterpolationView.qml" line="88" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="49" />
       <source>DLSS Frame Generation</source>
-      <translation>DLSS Frame Generation</translation>
+      <translation>DLSS フレーム生成</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="14" />
@@ -726,7 +722,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="41" />
       <source>DLSS Neural Rendering</source>
-      <translation>DLSS Neural Rendering</translation>
+      <translation>DLSS ニューラルレンダリング</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="30" />
@@ -738,17 +734,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/NeuralRenderingView.qml" line="43" />
       <location filename="../qml/views/UpscaleView.qml" line="115" />
       <source>DLSS Super Resolution</source>
-      <translation>DLSS Super Resolution</translation>
+      <translation>DLSS 超解像</translation>
     </message>
     <message>
       <source>DLSS effects: %1</source>
       <translation>DLSSエフェクト: %1</translation>
-    </message>
-    <message>
-      <location filename="../qml/components/FrameGenerationControls.qml" line="25" />
-      <location filename="../qml/views/FrameInterpolationView.qml" line="104" />
-      <source>DLSS-G Engine</source>
-      <translation>DLSS-G エンジン</translation>
     </message>
     <message>
       <source>Deblur Modes</source>
@@ -1410,10 +1400,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>NR スタイル</translation>
     </message>
     <message>
-      <source>Native DLSSG</source>
-      <translation>ネイティブDLSSG</translation>
-    </message>
-    <message>
       <source>Natural</source>
       <translation>ナチュラル</translation>
     </message>
@@ -1827,13 +1813,13 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="44" />
       <source>RTX Super Resolution</source>
-      <translation>RTX Super Resolution</translation>
+      <translation>RTX 超解像</translation>
     </message>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="45" />
       <location filename="../qml/views/UpscaleView.qml" line="275" />
       <source>RTX Video HDR</source>
-      <translation>RTX Video HDR</translation>
+      <translation>RTX HDR 動画</translation>
     </message>
     <message>
       <source>Ready</source>
@@ -2636,11 +2622,461 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
       <message>
       <source>DLSS Ray Reconstruction</source>
-      <translation>DLSS Ray Reconstruction</translation>
+      <translation>DLSS レイ再構成</translation>
     </message>
     <message>
       <source>Imported images and videos use estimated material guides. Results depend on the source.</source>
       <translation>読み込んだ画像と動画には、推定したマテリアル情報を使用します。結果はソースによって異なります。</translation>
     </message>
-</context>
+    <message>
+      <source>AMD FidelityFX Optical Flow</source>
+      <translation>AMD FidelityFX オプティカルフロー</translation>
+    </message>
+    <message>
+      <source>Active Techniques</source>
+      <translation>有効なテクニック</translation>
+    </message>
+    <message>
+      <source>Always (MoGe-2 ViT-S)</source>
+      <translation>常時 (MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Auto (MoGe-2 ViT-S When Required)</source>
+      <translation>自動 (必要時に MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Shaders)</source>
+      <translation>自動 (プリセットとランタイムのシェーダー)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Textures)</source>
+      <translation>自動 (プリセットとランタイムのテクスチャ)</translation>
+    </message>
+    <message>
+      <source>Choose a ReShade .ini preset</source>
+      <translation>ReShade .ini プリセットを選択</translation>
+    </message>
+    <message>
+      <source>Depth Input</source>
+      <translation>深度入力</translation>
+    </message>
+    <message>
+      <source>Disabled</source>
+      <translation>無効</translation>
+    </message>
+    <message>
+      <source>Disocclusion Sensitivity</source>
+      <translation>ディスオクルージョン感度</translation>
+    </message>
+    <message>
+      <source>Effect Mix</source>
+      <translation>エフェクトミックス</translation>
+    </message>
+    <message>
+      <source>Flip Depth Vertically</source>
+      <translation>深度を上下反転</translation>
+    </message>
+    <message>
+      <source>Logarithmic Depth Buffer</source>
+      <translation>対数深度バッファ</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Spatial)</source>
+      <translation>オフ (フレーム単位の空間処理)</translation>
+    </message>
+    <message>
+      <source>Processing ReShade video</source>
+      <translation>ReShade 動画を処理中</translation>
+    </message>
+    <message>
+      <source>ReShade</source>
+      <translation>ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade Preset (.ini)</source>
+      <translation>ReShade プリセット (.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade Presets (*.ini)</source>
+      <translation>ReShade プリセット (*.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade runtime unavailable.</source>
+      <translation>ReShade ランタイムが利用できません。</translation>
+    </message>
+    <message>
+      <source>Reload Preset</source>
+      <translation>プリセットを再読み込み</translation>
+    </message>
+    <message>
+      <source>Reloaded ReShade preset.</source>
+      <translation>ReShade プリセットを再読み込みしました。</translation>
+    </message>
+    <message>
+      <source>Reversed Depth Buffer</source>
+      <translation>反転深度バッファ</translation>
+    </message>
+    <message>
+      <source>Save Preset Copy</source>
+      <translation>プリセットのコピーを保存</translation>
+    </message>
+    <message>
+      <source>Save ReShade Preset Copy</source>
+      <translation>ReShade プリセットのコピーを保存</translation>
+    </message>
+    <message>
+      <source>Saved ReShade preset to %1</source>
+      <translation>ReShade プリセットを %1 に保存しました</translation>
+    </message>
+    <message>
+      <source>Shader Parameters</source>
+      <translation>シェーダーパラメーター</translation>
+    </message>
+    <message>
+      <source>Shader Search Folder (.fx / .fxh)</source>
+      <translation>シェーダー検索フォルダー (.fx / .fxh)</translation>
+    </message>
+    <message>
+      <source>Temporal Depth Blend</source>
+      <translation>時間的深度ブレンド</translation>
+    </message>
+    <message>
+      <source>Texture &amp; LUT Search Folder</source>
+      <translation>テクスチャ &amp; LUT 検索フォルダー</translation>
+    </message>
+    <message>
+      <source>Video Motion &amp; Depth Stabilization</source>
+      <translation>動画モーションと深度安定化</translation>
+    </message>
+    <message>
+      <source>Always Generate AI Depth</source>
+      <translation>AI深度を常に生成</translation>
+    </message>
+    <message>
+      <source>Optical Flow</source>
+      <translation>オプティカルフロー</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Depth)</source>
+      <translation>オフ（フレームごとの深度）</translation>
+    </message>
+    <message>
+      <source>This preset requires depth. Select Auto or Always to process it.</source>
+      <translation>このプリセットには深度が必要です。「自動」または「常に」を選択してください。</translation>
+    </message>
+    <message>
+      <source>AI depth supplies effects that need scene depth. Auto stabilizes it in video using AMD Optical Flow.</source>
+      <translation>AI深度は奥行きが必要なエフェクトに使用されます。自動モードではAMD Optical Flowで動画の深度を安定化します。</translation>
+    </message>
+    <message>
+      <source>This preset does not need AI depth or motion processing. Auto skips that work.</source>
+      <translation>このプリセットにはAI深度や動きの処理は不要です。自動モードでは処理を省略します。</translation>
+    </message>
+    <message>
+      <source>Techniques &amp; Settings</source>
+      <translation>テクニックと設定</translation>
+    </message>
+    <message>
+      <source>Reset Values</source>
+      <translation>値をリセット</translation>
+    </message>
+    <message>
+      <source>Search effects and parameters…</source>
+      <translation>エフェクトとパラメーターを検索…</translation>
+    </message>
+    <message>
+      <source>%1 enabled</source>
+      <translation>%1件有効</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>オフ</translation>
+    </message>
+    <message>
+      <source>Fisheye distortion is off by default. Enable the technique to apply it.</source>
+      <translation>魚眼歪曲は初期状態ではオフです。適用するにはテクニックを有効にしてください。</translation>
+    </message>
+    <message>
+      <source>Enable a technique above to apply this effect.</source>
+      <translation>このエフェクトを適用するには上のテクニックを有効にしてください。</translation>
+    </message>
+    <message>
+      <source>Depth Detail</source>
+      <translation>深度の詳細度</translation>
+    </message>
+    <message>
+      <source>Effect Precision</source>
+      <translation>エフェクトの精度</translation>
+    </message>
+    <message>
+      <source>HDR Handling</source>
+      <translation>HDRの処理</translation>
+    </message>
+    <message>
+      <source>Preserve Source Transparency</source>
+      <translation>元の透明度を保持</translation>
+    </message>
+    <message>
+      <source>Show Internal Shader Parameters</source>
+      <translation>内部シェーダーパラメーターを表示</translation>
+    </message>
+    <message>
+      <source>MoGe-2 ViT-S · ONNX Runtime DirectML
+Video depth alignment · AMD FidelityFX Optical Flow</source>
+      <translation>MoGe-2 ViT-S · ONNX Runtime DirectML
+動画の深度位置合わせ · AMD FidelityFX オプティカルフロー</translation>
+    </message>
+    <message>
+      <source>Choose a preset to begin.</source>
+      <translation>プリセットを選択して開始してください。</translation>
+    </message>
+    <message>
+      <source>%1 technique(s) enabled · %2</source>
+      <translation>%1件のテクニックが有効 · %2</translation>
+    </message>
+    <message>
+      <source>AI depth enabled</source>
+      <translation>AI深度が有効</translation>
+    </message>
+    <message>
+      <source>Depth not required or disabled</source>
+      <translation>深度は不要または無効</translation>
+    </message>
+    <message>
+      <source>Enabled</source>
+      <translation>有効</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>詳細設定</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation</source>
+      <translation>FSR フレーム生成</translation>
+    </message>
+    <message>
+      <source>Processing GPU</source>
+      <translation>処理用 GPU</translation>
+    </message>
+    <message>
+      <source>Frame generation available</source>
+      <translation>フレーム生成を利用できます</translation>
+    </message>
+    <message>
+      <source>Selected FSR adapter is unavailable</source>
+      <translation>選択した FSR アダプターは利用できません</translation>
+    </message>
+    <message>
+      <source>No compatible FSR adapter detected</source>
+      <translation>対応する FSR アダプターが見つかりません</translation>
+    </message>
+    <message>
+      <source>Frame generation provider</source>
+      <translation>フレーム生成技術</translation>
+    </message>
+    <message>
+      <source>Shared GPU memory</source>
+      <translation>共有 GPU メモリ</translation>
+    </message>
+    <message>
+      <source>AI Processing GPU (DirectX 12 / FidelityFX)</source>
+      <translation>AI 処理 GPU（DirectX 12 / FidelityFX）</translation>
+    </message>
+    <message>
+      <source>RTX Video Super Resolution</source>
+      <translation>RTX 動画超解像</translation>
+    </message>
+    <message>
+      <source>Fast (280)</source>
+      <translation>高速 (280)</translation>
+    </message>
+    <message>
+      <source>Standard (504)</source>
+      <translation>標準 (504)</translation>
+    </message>
+    <message>
+      <source>High (756)</source>
+      <translation>高 (756)</translation>
+    </message>
+    <message>
+      <source>Maximum (1008)</source>
+      <translation>最高 (1008)</translation>
+    </message>
+    <message>
+      <source>8-bit sRGB Compatibility</source>
+      <translation>8 ビット sRGB 互換</translation>
+    </message>
+    <message>
+      <source>Auto (SDR Preset Adapter)</source>
+      <translation>自動 (SDR プリセットアダプター)</translation>
+    </message>
+    <message>
+      <source>HDR-Aware Preset</source>
+      <translation>HDR 対応プリセット</translation>
+    </message>
+    <message>
+      <source>SDR Adapter</source>
+      <translation>SDR アダプター</translation>
+    </message>
+    <message>
+      <source>Reject Unsupported</source>
+      <translation>未対応の設定を拒否</translation>
+    </message>
+    <message>
+      <source>%1 FPS</source>
+      <translation>%1 フレーム/秒</translation>
+    </message>
+    <message>
+      <source>FPS</source>
+      <translation>フレーム/秒</translation>
+    </message>
+    <message>
+      <source>No compatible NVIDIA or FSR DirectX 12 GPU was detected.</source>
+      <translation>DirectX 12 に対応する NVIDIA または FSR GPU が検出されませんでした。</translation>
+    </message>
+    <message>
+      <source>Clipboard download failed: %1</source>
+      <translation>クリップボードからのダウンロードに失敗しました: %1</translation>
+    </message>
+    <message>
+      <source>The clipboard URL did not contain a readable image.</source>
+      <translation>クリップボードの URL に読み取り可能な画像がありませんでした。</translation>
+    </message>
+    <message>
+      <source>Scanning input files…</source>
+      <translation>入力ファイルをスキャン中…</translation>
+    </message>
+    <message>
+      <source>Files added: %1.</source>
+      <translation>追加されたファイル: %1。</translation>
+    </message>
+    <message>
+      <source>Rendering preview…</source>
+      <translation>プレビューをレンダリング中…</translation>
+    </message>
+    <message>
+      <source>Preview ready.</source>
+      <translation>プレビューの準備ができました。</translation>
+    </message>
+    <message>
+      <source>Preview updated; waiting for the latest request.</source>
+      <translation>プレビューを更新しました。最新のリクエストを待機中です。</translation>
+    </message>
+    <message>
+      <source>Processing batch…</source>
+      <translation>バッチ処理中…</translation>
+    </message>
+    <message>
+      <source>%1 complete, %2 failed.</source>
+      <translation>完了: %1、失敗: %2。</translation>
+    </message>
+    <message>
+      <source>Interpolating video</source>
+      <translation>動画フレームを補間中</translation>
+    </message>
+    <message>
+      <source>Use one frame-generation engine per workflow. Select DLSS, AMD FSR or VFX Frame Generation.</source>
+      <translation>ワークフローごとにフレーム生成エンジンを 1 つだけ使用してください。DLSS、AMD FSR、VFX フレーム生成から選択してください。</translation>
+    </message>
+    <message>
+      <source>DLSS Neural Rendering requires at least 64 by 64 input.</source>
+      <translation>DLSS ニューラルレンダリングには 64 × 64 ピクセル以上の入力が必要です。</translation>
+    </message>
+    <message>
+      <source>Scaling cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>この位置ではスケーリングで HDR 動画を処理できません。HDR 変換の前に移動してください。</translation>
+    </message>
+    <message>
+      <source>The requested output is below the supported 64 by 64 minimum.</source>
+      <translation>指定した出力は、対応する最小サイズの 64 × 64 ピクセルを下回っています。</translation>
+    </message>
+    <message>
+      <source>DLSS Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>この位置では DLSS 超解像で HDR 動画を処理できません。HDR 変換の前に移動してください。</translation>
+    </message>
+    <message>
+      <source>Ray Reconstruction requires explicit PQ or HLG signaling for HDR video.</source>
+      <translation>レイ再構成で HDR 動画を処理するには、PQ または HLG の明示的な指定が必要です。</translation>
+    </message>
+    <message>
+      <source>RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>この位置では RTX 超解像で HDR 動画を処理できません。HDR 変換の前に移動してください。</translation>
+    </message>
+    <message>
+      <source>NVIDIA Video Effects is video-only.</source>
+      <translation>NVIDIA Video Effects は動画専用です。</translation>
+    </message>
+    <message>
+      <source>The legacy NVIDIA VFX preset has no enabled effect.</source>
+      <translation>旧形式の NVIDIA VFX プリセットには有効なエフェクトがありません。</translation>
+    </message>
+    <message>
+      <source>This video effect requires SDR at this position. Move its card before HDR conversion.</source>
+      <translation>この動画エフェクトには、この位置で SDR が必要です。カードを HDR 変換の前に移動してください。</translation>
+    </message>
+    <message>
+      <source>RTX Video HDR requires SDR at this position.</source>
+      <translation>この位置で RTX HDR 動画を使用するには SDR が必要です。</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires at least 64 by 64 pixels.</source>
+      <translation>FSR フレーム生成には 64 × 64 ピクセル以上が必要です。</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation supports up to 16384 pixels per side.</source>
+      <translation>FSR フレーム生成は一辺あたり最大 16384 ピクセルに対応しています。</translation>
+    </message>
+    <message>
+      <source>Frame Generation target FPS must exceed the frame rate entering this card. Choose a higher target FPS.</source>
+      <translation>フレーム生成の目標フレームレートは、このカードへの入力フレームレートより高くする必要があります。より高い目標値を選択してください。</translation>
+    </message>
+    <message>
+      <source>Sharpening requires SDR video at this position. Move it before HDR conversion.</source>
+      <translation>この位置でシャープ化を使用するには SDR 動画が必要です。HDR 変換の前に移動してください。</translation>
+    </message>
+    <message>
+      <source>The selected .cube LUT is unavailable.</source>
+      <translation>選択した .cube LUT は利用できません。</translation>
+    </message>
+    <message>
+      <source>The selected ReShade .ini preset is unavailable.</source>
+      <translation>選択した ReShade .ini プリセットは利用できません。</translation>
+    </message>
+    <message>
+      <source>ReShade requires at least 16 by 16 input.</source>
+      <translation>ReShade には 16 × 16 ピクセル以上の入力が必要です。</translation>
+    </message>
+    <message>
+      <source>The selected codec does not support this container.</source>
+      <translation>選択したコーデックはこのコンテナに対応していません。</translation>
+    </message>
+    <message>
+      <source>Video export requires even output dimensions.</source>
+      <translation>動画の書き出しには、幅と高さが偶数の出力サイズが必要です。</translation>
+    </message>
+    <message>
+      <source>HDR output requires 10-bit HDR Mode in Export Settings.</source>
+      <translation>HDR 出力には、書き出し設定で 10 ビット HDR モードを有効にする必要があります。</translation>
+    </message>
+    <message>
+      <source>HDR requires a 10-bit or higher video codec.</source>
+      <translation>HDR には 10 ビット以上の動画コーデックが必要です。</translation>
+    </message>
+    <message>
+      <source>Custom suffix is empty or contains invalid filename characters.</source>
+      <translation>カスタム接尾辞が空か、ファイル名に使用できない文字が含まれています。</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires GPU encoding with H.264, HEVC or AV1. Select a supported codec.</source>
+      <translation>FSR フレーム生成には H.264、HEVC、AV1 による GPU エンコードが必要です。対応するコーデックを選択してください。</translation>
+    </message>
+    <message>
+      <source>GPU encoding is unavailable for the selected FSR DirectX adapter</source>
+      <translation>選択した FSR DirectX アダプターでは GPU エンコードを利用できません</translation>
+    </message>
+    <message>
+      <source>HDR FSR input requires HDR Mode and a 10-bit output codec</source>
+      <translation>HDR FSR 入力には HDR モードと 10 ビットの出力コーデックが必要です</translation>
+    </message>
+  </context>
 </TS>

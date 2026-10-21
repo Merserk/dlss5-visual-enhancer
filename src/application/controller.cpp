@@ -3,8 +3,12 @@
 #include "infrastructure/log.hpp"
 #include "infrastructure/paths.hpp"
 #include "infrastructure/vulkan_device.hpp"
+#include "processing/reshade_native.hpp"
+#include "processing/reshade_dependencies.hpp"
+#include "processing/reshade_worker.hpp"
 #include "processing/vfx_native.hpp"
 #include "processing/vfx_worker.hpp"
+#include "processing/fsr_worker.hpp"
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -15,10 +19,12 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QGuiApplication>
+#include <QFutureWatcher>
 #include <QLibraryInfo>
 #include <QLocale>
 #include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
+#include <mutex>
 #include <ranges>
 
 namespace ve {
@@ -35,7 +41,87 @@ QVariantList labeled(const QStringList& values, const QString& suffix = {}) {
         result.append(QVariantMap{{"label", value + suffix}, {"value", value}});
     return result;
 }
+struct CachedReShadePreset {
+    std::mutex mutex;
+    QString key;
+    QVariantMap raw;
+};
+CachedReShadePreset& reshadePresetCache() {
+    static CachedReShadePreset cache;
+    return cache;
+}
+QVariantMap inspectCachedReShadePreset(const Settings& raw, bool video) {
+    const auto rs = reshadeSettingsForMode(raw, video);
+    if (rs.reshade_preset_path.trimmed().isEmpty()) {
+        return ReShadeEngine::inspectPreset(raw, video);
+    }
+    const QString cacheKey = QString::fromLatin1(reshadeDependencyIdentity(raw, video, Paths::instance().root).toHex()) + '|' +
+                             rs.reshade_shader_search_paths + '|' + rs.reshade_texture_search_paths + '|' +
+                             rs.reshade_parameter_overrides + '|' + rs.ai_gpu_uuid;
+    auto& cache = reshadePresetCache();
+    {
+        std::lock_guard lock(cache.mutex);
+        if (cache.key == cacheKey)
+            return cache.raw;
+    }
+    auto inspected = ReShadeEngine::inspectPreset(raw, video);
+    {
+        std::lock_guard lock(cache.mutex);
+        cache.key = cacheKey;
+        cache.raw = inspected;
+    }
+    return inspected;
+}
 } // namespace
+void invalidateReShadePresetCache() {
+    auto& cache = reshadePresetCache();
+    std::lock_guard lock(cache.mutex);
+    cache.key.clear();
+}
+void AppController::requestReShadeInspection() {
+    if (shuttingDown_) return;
+    auto snapshot = reshadeSettingsForMode(settings_, nrMode_ == "Video");
+    snapshot.reshade_parameter_overrides = reshadeGraphOverrides(snapshot.reshade_parameter_overrides);
+    const QFileInfo preset(snapshot.reshade_preset_path);
+    const QString key = nrMode_ + '|' + preset.absoluteFilePath() + '|' +
+        QString::number(preset.lastModified().toMSecsSinceEpoch()) + '|' +
+        snapshot.reshade_shader_search_paths + '|' + snapshot.reshade_texture_search_paths + '|' +
+        snapshot.reshade_parameter_overrides + '|' + snapshot.ai_gpu_uuid + '|' + QString::number(reshadeReloadGeneration_);
+    reshadeRequestedKey_ = key;
+    if (reshadeLoadedKey_ == key || reshadeInspectionBusy_) return;
+    reshadeInspectionBusy_ = true;
+    auto* watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcher<QVariantMap>::finished, this, [this, watcher, key] {
+        const auto result = watcher->result();
+        watcher->deleteLater();
+        reshadeInspectionBusy_ = false;
+        if (shuttingDown_) return;
+        if (key == reshadeRequestedKey_) {
+            reshadeInspection_ = result;
+            reshadeLoadedKey_ = key;
+        }
+        requestReShadeInspection(); // Coalesce changes made while the worker was compiling.
+        emit reshadePresetInfoChanged();
+        emit reshadeStatusChanged();
+    });
+    watcher->setFuture(QtConcurrent::run(&reshadeInspectionPool_, [snapshot] {
+        try {
+            // Uniform overrides are overlaid by the editors. Only graph changes
+            // require recompilation, preserving the imported preset baseline.
+            return inspectCachedReShadePreset(snapshot, true);
+        } catch (const std::exception& e) {
+            return QVariantMap{{"valid", false}, {"error", QString::fromUtf8(e.what())}};
+        }
+    }));
+    // Getters can start inspection too. Notify on the next event turn to avoid
+    // changing a QML binding while it is being evaluated.
+    QMetaObject::invokeMethod(this, [this] {
+        if (!shuttingDown_) {
+            emit reshadePresetInfoChanged();
+            emit reshadeStatusChanged();
+        }
+    }, Qt::QueuedConnection);
+}
 AppController::AppController(PreviewProvider* previews, QObject* parent)
     : QmlFacade(parent), previews_(previews),
       settings_(Settings::load(Paths::instance().configurationFile())),
@@ -45,6 +131,7 @@ AppController::AppController(PreviewProvider* previews, QObject* parent)
     pool_.setMaxThreadCount(3);
     previewPool_.setMaxThreadCount(1);
     cachePool_.setMaxThreadCount(1);
+    reshadeInspectionPool_.setMaxThreadCount(1);
     cacheTrimTimer_.setSingleShot(true);
     cacheTrimTimer_.setInterval(100);
     connect(&cacheTrimTimer_, &QTimer::timeout, this, &AppController::cleanupCaches);
@@ -112,6 +199,7 @@ AppController::~AppController() {
     release.waitForFinished();
     previewPool_.waitForDone();
     pool_.waitForDone();
+    reshadeInspectionPool_.waitForDone();
     info("shutdown", QString("Processing workers stopped in %1 ms.").arg(elapsed.elapsed()));
 }
 void AppController::attachWindow(QQuickWindow* window) {
@@ -142,6 +230,11 @@ QString AppController::translate(const QString& text) const {
     return QCoreApplication::translate("App", text.toUtf8().constData());
 }
 QVariant AppController::read(Property property) const {
+    const bool fsrVideo=nrMode_=="Video"&&settings_.stages(true).contains("fsr_frame_generation");
+    if(fsrVideo&&property==Property::codecChoices){
+        return labeled(QStringList{"H.264","H.265","AV1"});
+    }
+    if(fsrVideo&&property==Property::videoCodec){auto codec=settings_.codec;codec.remove(" (NVIDIA NVENC)");return codec;}
     if (const auto key = binding(property))
         return settings_.value(QStringView(QString::fromLatin1(key)));
     if (auto choices = staticChoices(property))
@@ -169,6 +262,77 @@ QVariant AppController::read(Property property) const {
         QVariantMap result;const auto values=settings_.values();
         for(auto it=values.begin();it!=values.end();++it)if(it.key().startsWith("rr_"))result.insert(it.key(),it.value());
         return result;
+    }
+    case Property::reshadeSettings: {
+        QVariantMap result;
+        const auto values = settings_.values();
+        for (auto it = values.begin(); it != values.end(); ++it)
+            if (it.key().startsWith("reshade_"))
+                result.insert(it.key(), it.value());
+        const auto rs = reshadeSettingsForMode(settings_, nrMode_ == "Video");
+        result.insert("active_preset_path", rs.reshade_preset_path);
+        result.insert("active_shader_search_paths", rs.reshade_shader_search_paths);
+        result.insert("active_texture_search_paths", rs.reshade_texture_search_paths);
+        result.insert("active_mix", rs.reshade_mix);
+        result.insert("active_depth_mode", rs.reshade_depth_mode);
+        result.insert("active_depth_resolution", rs.reshade_depth_resolution);
+        result.insert("active_temporal_stability", rs.reshade_temporal_stability);
+        result.insert("active_temporal_strength", rs.reshade_temporal_strength);
+        result.insert("active_precision_policy", rs.reshade_precision_policy);
+        result.insert("active_hdr_policy", rs.reshade_hdr_policy);
+        result.insert("active_preserve_alpha", rs.reshade_preserve_alpha);
+        result.insert("active_deterministic_seed", rs.reshade_deterministic_seed);
+        result.insert("active_parameter_overrides", rs.reshade_parameter_overrides);
+        return result;
+    }
+    case Property::reshadePresetInfo: {
+        const_cast<AppController*>(this)->requestReShadeInspection();
+        auto map = reshadeInspection_;
+        map.insert("loading", reshadeInspectionBusy_ || reshadeLoadedKey_ != reshadeRequestedKey_);
+        QVariantList parameters;
+        for (const auto& item : map.value("parameters").toList()) {
+            auto p = item.toMap();
+            const auto vals = p.value("values").toList();
+            QVariant currentVal;
+            if (vals.size() == 1)
+                currentVal = vals.front();
+            else if (!vals.isEmpty()) {
+                QStringList parts;
+                for (const auto& v : vals)
+                    parts.append(v.toString());
+                currentVal = parts.join(',');
+            }
+            p.insert("effect_file", p.value("effect").toString());
+            p.insert("min", p.value("ui_min").toDouble());
+            p.insert("max", p.value("ui_max").toDouble());
+            p.insert("step", p.value("ui_step").toDouble());
+            p.insert("default_value", currentVal);
+            p.insert("current_value", currentVal);
+            parameters.append(p);
+        }
+        map.insert("parameters", parameters);
+        QVariantList techniques;
+        for (const auto& item : map.value("techniques").toList()) {
+            auto t = item.toMap();
+            t.insert("effect_file", t.value("effect").toString());
+            techniques.append(t);
+        }
+        map.insert("techniques", techniques);
+        return map;
+    }
+    case Property::reshadeStatus: {
+        const_cast<AppController*>(this)->requestReShadeInspection();
+        if (reshadeInspectionBusy_) return QString{};
+        const auto rs = reshadeSettingsForMode(settings_, nrMode_ == "Video");
+        if (rs.reshade_preset_path.isEmpty()) return QCoreApplication::translate("App", "Choose a preset to begin.");
+        if (!reshadeInspection_.value("valid").toBool()) return reshadeInspection_.value("error").toString();
+        int enabled = 0;
+        for (const auto& t : reshadeInspection_.value("techniques").toList()) if (t.toMap().value("enabled").toBool()) ++enabled;
+        const bool depth = rs.reshade_depth_mode != "Off" &&
+            (rs.reshade_depth_mode == "AI Depth" || reshadeInspection_.value("requires_depth").toBool());
+        return QCoreApplication::translate("App", "%1 technique(s) enabled · %2").arg(enabled).arg(depth
+            ? QCoreApplication::translate("App", "AI depth enabled")
+            : QCoreApplication::translate("App", "Depth not required or disabled"));
     }
     case Property::vfxSettings: {
         QVariantMap result;const auto values=settings_.values();
@@ -240,7 +404,7 @@ QVariant AppController::read(Property property) const {
     case Property::statusMessage:
         return translate(status_);
     case Property::previewError:
-        return c.error;
+        return translate(c.error);
     case Property::splitPosition:
         return split_;
     case Property::hasOutputPreview:
@@ -266,10 +430,12 @@ QVariant AppController::read(Property property) const {
     case Property::processingCacheBytes: return cacheSnapshot_.bytes;
     case Property::processingCacheReclaimableBytes: return cacheSnapshot_.reclaimableBytes;
     case Property::processingCacheBusy: return cacheBusy_;
-    case Property::processingCacheCleaning: return cacheCleaning_;
+    case Property::processingCacheCleaning: return cacheCleaning_ || cacheCleanPending_;
     case Property::processingCacheReady: return cacheReady_;
     case Property::canCleanProcessingCache:
-        return cacheReady_ && !cacheBusy_ && cacheSnapshot_.reclaimableBytes > 0 && cacheMaintenanceSafe();
+        // Read-only size refreshes keep the last snapshot usable. Only cleanup
+        // or active processing should disable the action.
+        return cacheReady_ && !cacheCleaning_ && cacheSnapshot_.reclaimableBytes > 0 && cacheMaintenanceSafe();
     case Property::processingCacheSizeText:
         return cacheSnapshot_.bytes > 0 && cacheSnapshot_.bytes < 10000000
             ? QString("<%1 GB").arg(QLocale().toString(.01, 'f', 2))
@@ -303,7 +469,7 @@ QVariant AppController::read(Property property) const {
     case Property::runtimeState:
         return runtime_;
     case Property::runtimeError:
-        return runtimeError_;
+        return translate(runtimeError_);
     case Property::startupWarnings:
         return warnings_.join('\n');
     case Property::sourceWidth:
@@ -335,9 +501,17 @@ QVariant AppController::read(Property property) const {
     case Property::language:
         return language_;
     case Property::gpuName:
-        return gpus_.empty() ? QString("NVIDIA GPU") : gpus_.front().name;
-    case Property::gpuVram:
-        return gpus_.empty() ? QString{} : QString::number(gpus_.front().memoryMiB / 1024) + " GB";
+    case Property::gpuVram:{
+        if(gpus_.empty()||(nrMode_=="Video"&&settings_.stages(true).contains("fsr_frame_generation"))){
+            const FsrAdapter* selected=nullptr;
+            for(const auto& gpu:fsrAdapters_){
+                if(settings_.fsr_adapter_id==gpu.id||settings_.fsr_adapter_id==QString::number(gpu.index)){selected=&gpu;break;}
+                if(settings_.fsr_adapter_id=="auto"&&gpu.available&&(!selected||gpu.memoryBytes>selected->memoryBytes))selected=&gpu;
+            }
+            if(selected)return property==Property::gpuName?selected->name:selected->memoryBytes?QString::number(selected->memoryBytes/(1024.*1024*1024),'f',1)+" GB":translate("Shared GPU memory");
+        }
+        return property==Property::gpuName?(gpus_.empty()?QString("GPU"):gpus_.front().name):(gpus_.empty()?QString{}:QString::number(gpus_.front().memoryMiB/1024)+" GB");
+    }
     case Property::gpuCount:
         return int(gpus_.size());
     case Property::nrImageQueue:
@@ -367,8 +541,18 @@ QVariant AppController::read(Property property) const {
     case Property::appVersion:
         return "v" VE_APP_VERSION;
     case Property::diagnosticsText:
-        return NativeEngines::instance().diagnostics() + "\nQt " + qVersion() + " | C++23\n" +
+        return NativeEngines::instance().diagnostics() + "\nFSR: "+fsrWorkerDiagnostics()+"\nQt " + qVersion() + " | C++23\n" +
                Paths::instance().root;
+    case Property::fsrAdapterChoices:{
+        QVariantList values{QVariantMap{{"label",QCoreApplication::translate("App","Auto")},{"value","auto"}}};
+        for(const auto& adapter:fsrAdapters_)values.append(QVariantMap{{"label",adapter.name+(adapter.available?QString{}:QString(" — ")+adapter.unavailableReason)},{"value",adapter.id},{"available",adapter.available}});
+        return values;
+    }
+    case Property::fsrStatus:{
+        for(const auto& adapter:fsrAdapters_)if(settings_.fsr_adapter_id=="auto"?adapter.available:settings_.fsr_adapter_id==adapter.id||settings_.fsr_adapter_id==QString::number(adapter.index))
+            return adapter.available?translate("Frame generation available"):adapter.unavailableReason;
+        return settings_.fsr_adapter_id=="auto"?translate("No compatible FSR adapter detected"):translate("Selected FSR adapter is unavailable");
+    }
     case Property::containerChoices:
         return settings_.codec.isEmpty() ? QVariantList{} : labeled(containersForCodec(settings_.codec));
     case Property::upscaleContainerChoices:
@@ -405,19 +589,20 @@ QVariant AppController::read(Property property) const {
     case Property::renderValidationMessage: {
         try {
             if (auto valid = settings_.validate(); !valid)
-                return valid.error();
+                return translate(valid.error());
             if (c.source.width > 0) {
                 const auto estimate = estimatePipeline(c.source, settings_, workflow());
                 (void)estimate;
             }
             return QString{};
         } catch (const std::exception& e) {
-            return QString::fromUtf8(e.what());
+            return translate(QString::fromUtf8(e.what()));
         }
     }
     case Property::frameGenerationEstimate:
-        return c.source.fps > 0 ? QString::number(c.source.fps, 'g', 5) + " FPS → " +
-                                      settings_.frame_interpolation_target_fps + " FPS"
+        return c.source.fps > 0 ? translate("%1 FPS").arg(QString::number(c.source.fps, 'g', 5)) + " → " +
+                                      translate("%1 FPS").arg(QString::number(frameGenerationFrameRate(c.source.fps, settings_,
+                                          tab_ == "frame-interpolation" && settings_.frame_interpolation_provider == "FSR 3"), 'g', 7))
                                 : QString{};
     case Property::rtxSuperResolutionEstimate:
     case Property::outputEstimate: {
@@ -427,9 +612,9 @@ QVariant AppController::read(Property property) const {
             const auto estimate = estimatePipeline(c.source, settings_, workflow());
             return QString::number(c.source.width) + QChar(0xD7) + QString::number(c.source.height) + " → " +
                    QString::number(estimate.width) + QChar(0xD7) + QString::number(estimate.height) +
-                   (c.source.video ? " | " + QString::number(estimate.fps, 'g', 5) + " FPS" : QString{});
+                   (c.source.video ? " | " + translate("%1 FPS").arg(QString::number(estimate.fps, 'g', 5)) : QString{});
         } catch (const std::exception& e) {
-            return QString::fromUtf8(e.what());
+            return translate(QString::fromUtf8(e.what()));
         }
     }
     case Property::currentLogPath:
@@ -482,7 +667,11 @@ void AppController::write(Property property, const QVariant& value) {
         if (value.toString() == "Image" || value.toString() == "Video") {
             nrMode_ = value.toString();
             emit nrModeChanged();
+            if (!reshadeRequestedKey_.isEmpty()) requestReShadeInspection();
+            emit reshadePresetInfoChanged();
+            emit reshadeStatusChanged();
             emit workflowStagesChanged();
+            emit settingsUpdated();
             notifyContext();
         }
         break;
@@ -554,6 +743,13 @@ QVariant AppController::execute(Action action, const QVariantList& args) {
         case Action::cleanProcessingCache: updateProcessingCache(true); return {};
         case Action::setVfxSetting:
         case Action::setRrSetting:
+        case Action::setReShadeSetting:
+        case Action::reloadReShadePreset:
+        case Action::saveReShadePresetCopy:
+        case Action::setReShadeParameter:
+        case Action::resetReShadeParameters:
+        case Action::setReShadeTechniqueEnabled:
+        case Action::moveReShadeTechnique:
         case Action::setLutFile:
         case Action::setLutAdjustment:
         case Action::resetLutAdjustments:
@@ -626,6 +822,8 @@ void AppController::saveSettings() {
         log(result.error(), "settings");
 }
 void AppController::settingsChanged() {
+    if (!reshadeRequestedKey_.isEmpty()) requestReShadeInspection();
+    emit reshadeStatusChanged();
     emit vfxStatusChanged();
     if (prefetchJob_) prefetchJob_->cancel();
     saveTimer_.start();

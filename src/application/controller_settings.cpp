@@ -3,6 +3,8 @@
 #include "media/image_codecs.hpp"
 #include "processing/color_analysis.hpp"
 #include "processing/effects.hpp"
+#include "processing/reshade_native.hpp"
+#include "processing/reshade_dependencies.hpp"
 #include <QDateTime>
 #include <QCoreApplication>
 #include <QDir>
@@ -14,6 +16,71 @@
 #include <cmath>
 
 namespace ve {
+void invalidateReShadePresetCache();
+namespace {
+QString resolveReShadeSettingKey(const QString& rawKey, bool imageMode) {
+    QString base = rawKey;
+    if (base.startsWith("reshade_image_"))
+        return base;
+    if (base.startsWith("reshade_"))
+        base = base.mid(8);
+    if (base == "effect_search_paths")
+        base = "shader_search_paths";
+    if (base == "temporal_stability" || base == "temporal_strength")
+        return "reshade_" + base;
+    return (imageMode ? QStringLiteral("reshade_image_") : QStringLiteral("reshade_")) + base;
+}
+QString normalizePathString(const QVariant& value) {
+    QStringList rawList;
+    if (value.typeId() == QMetaType::QStringList || value.typeId() == QMetaType::QVariantList)
+        rawList = value.toStringList();
+    else
+        rawList = value.toString().split(';', Qt::SkipEmptyParts);
+    QStringList cleaned;
+    for (const auto& entry : rawList) {
+        const auto p = localPath(entry.trimmed());
+        if (!p.isEmpty() && !cleaned.contains(p, Qt::CaseInsensitive))
+            cleaned.append(p);
+    }
+    return cleaned.join(';');
+}
+void upsertReShadeOverrideLine(QString& overridesText, const QString& key, const QString& value) {
+    QJsonObject obj;
+    const auto trimmed = overridesText.trimmed();
+    if (trimmed.startsWith('{')) {
+        QJsonParseError err{};
+        const auto doc = QJsonDocument::fromJson(trimmed.toUtf8(), &err);
+        if (err.error == QJsonParseError::NoError && doc.isObject())
+            obj = doc.object();
+    } else if (!trimmed.isEmpty()) {
+        for (const auto& rawLine : trimmed.split('\n', Qt::SkipEmptyParts)) {
+            const auto line = rawLine.trimmed();
+            const int eq = line.indexOf('=');
+            if (eq > 0)
+                obj.insert(line.left(eq).trimmed(), line.mid(eq + 1).trimmed());
+        }
+    }
+    obj.insert(key, value);
+    overridesText = QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+} // namespace
+void AppController::initializeReShadeImageSettings() {
+    if (nrMode_ == "Image" && !settings_.reshade_image_configured) {
+        const auto active = reshadeSettingsForMode(settings_, false);
+        settings_.reshade_image_preset_path = active.reshade_preset_path;
+        settings_.reshade_image_shader_search_paths = active.reshade_shader_search_paths;
+        settings_.reshade_image_texture_search_paths = active.reshade_texture_search_paths;
+        settings_.reshade_image_parameter_overrides = active.reshade_parameter_overrides;
+        settings_.reshade_image_mix = active.reshade_mix;
+        settings_.reshade_image_depth_mode = active.reshade_depth_mode;
+        settings_.reshade_image_depth_resolution = active.reshade_depth_resolution;
+        settings_.reshade_image_precision_policy = active.reshade_precision_policy;
+        settings_.reshade_image_hdr_policy = active.reshade_hdr_policy;
+        settings_.reshade_image_preserve_alpha = active.reshade_preserve_alpha;
+        settings_.reshade_image_deterministic_seed = active.reshade_deterministic_seed;
+        settings_.reshade_image_configured = true;
+    }
+}
 QVariant AppController::handleSettings(Action action, const QVariantList& args) {
     auto setPath = [&](const QString& key, const QString& path) {
         auto result = settings_.set(key, localPath(path));
@@ -27,6 +94,153 @@ QVariant AppController::handleSettings(Action action, const QVariantList& args) 
         if(!key.startsWith("rr_")||!settings_.values().contains(key))throw std::runtime_error("Unknown Ray Reconstruction setting.");
         auto result=settings_.set(key,args.value(1));if(!result)throw std::runtime_error(result.error().toStdString());
         settingsChanged();return {};
+    }
+    case Action::setReShadeSetting: {
+        const bool imageMode = nrMode_ == "Image";
+        initializeReShadeImageSettings();
+        const auto key = resolveReShadeSettingKey(args.value(0).toString(), imageMode);
+        if (!key.startsWith("reshade_") || !settings_.values().contains(key))
+            throw std::runtime_error("Unknown ReShade setting.");
+        auto value = args.value(1);
+        if (key.endsWith("_preset_path")) {
+            auto cleaned = localPath(value.toString());
+            const QFileInfo fi(cleaned);
+            if (fi.isFile() && fi.fileName().compare("ReShade.ini", Qt::CaseInsensitive) == 0) {
+                QSettings ini(cleaned, QSettings::IniFormat);
+                const auto target = ini.value("GENERAL/PresetFiles").toString();
+                if (!target.isEmpty()) {
+                    const auto candidate = QDir(fi.absolutePath()).filePath(target.split(',').front().trimmed());
+                    if (QFileInfo::exists(candidate)) {
+                        cleaned = QDir::cleanPath(candidate);
+                    }
+                }
+            }
+            const auto previous = settings_.value(key).toString();
+            value = cleaned;
+            if (cleaned.compare(previous, Qt::CaseInsensitive) != 0) {
+                if (key.startsWith("reshade_image_")) {
+                    settings_.reshade_image_parameter_overrides.clear();
+                } else {
+                    settings_.reshade_parameter_overrides.clear();
+                }
+            }
+        } else if (key.endsWith("_search_paths")) {
+            value = normalizePathString(value);
+        }
+        auto result = settings_.set(key, value);
+        if (!result)
+            throw std::runtime_error(result.error().toStdString());
+        settingsChanged();
+        return {};
+    }
+    case Action::reloadReShadePreset: {
+        invalidateReShadePresetCache();
+        ++reshadeReloadGeneration_;
+        reshadeLoadedKey_.clear();
+        previewStages_.clear();
+        settingsChanged();
+        status_ = QT_TRANSLATE_NOOP("App", "Reloaded ReShade preset.");
+        emit statusMessageChanged();
+        return {};
+    }
+    case Action::saveReShadePresetCopy: {
+        auto path = localPath(args.value(0).toString());
+        if (path.isEmpty())
+            throw std::runtime_error("Choose a destination path for the ReShade preset.");
+        if (QFileInfo(path).suffix().compare("ini", Qt::CaseInsensitive) != 0)
+            path += ".ini";
+        ReShadeEngine::exportPresetCopy(settings_, nrMode_ == "Video", path);
+        status_ = QCoreApplication::translate("App", "Saved ReShade preset to %1").arg(QFileInfo(path).fileName());
+        emit statusMessageChanged();
+        return path;
+    }
+    case Action::setReShadeParameter: {
+        initializeReShadeImageSettings();
+        const auto paramKey = args.value(0).toString().trimmed();
+        if (paramKey.isEmpty())
+            return {};
+        const auto rawVal = args.value(1);
+        QString formatted;
+        if (rawVal.typeId() == QMetaType::Bool)
+            formatted = rawVal.toBool() ? QStringLiteral("1") : QStringLiteral("0");
+        else if (rawVal.typeId() == QMetaType::QVariantList || rawVal.typeId() == QMetaType::QStringList)
+            formatted = rawVal.toStringList().join(',');
+        else
+            formatted = rawVal.toString().trimmed();
+        auto& overrides =
+            nrMode_ == "Image" ? settings_.reshade_image_parameter_overrides : settings_.reshade_parameter_overrides;
+        upsertReShadeOverrideLine(overrides, paramKey, formatted);
+        settingsChanged();
+        return {};
+    }
+    case Action::resetReShadeParameters: {
+        const auto active = reshadeSettingsForMode(settings_, nrMode_ == "Video");
+        const auto defaults = ReShadeEngine::presetResetOverrides(active.reshade_preset_path);
+        initializeReShadeImageSettings();
+        auto& text = nrMode_ == "Image" ? settings_.reshade_image_parameter_overrides : settings_.reshade_parameter_overrides;
+        text = defaults;
+        invalidateReShadePresetCache();
+        ++reshadeReloadGeneration_;
+        reshadeLoadedKey_.clear();
+        previewStages_.clear();
+        settingsChanged();
+        emit reshadeParametersReset();
+        return {};
+    }
+    case Action::setReShadeTechniqueEnabled: {
+        initializeReShadeImageSettings();
+        const auto name = args.value(0).toString().trimmed();
+        const bool enabled = args.value(1).toBool();
+        if (name.isEmpty())
+            return {};
+        const auto techniques = read(Property::reshadePresetInfo).toMap().value("techniques").toList();
+        QStringList enabledQualified;
+        for (const auto& item : techniques) {
+            const auto t = item.toMap();
+            const auto tName = t.value("name").toString();
+            const auto qualified = t.value("qualified").toString().isEmpty()
+                                       ? tName
+                                       : t.value("qualified").toString();
+            const bool isTarget = name.contains('@') ? qualified.compare(name, Qt::CaseInsensitive) == 0
+                                                    : tName.compare(name, Qt::CaseInsensitive) == 0;
+            const bool techEnabled = isTarget ? enabled : t.value("enabled").toBool();
+            if (techEnabled)
+                enabledQualified.append(qualified);
+        }
+        auto& overrides =
+            nrMode_ == "Image" ? settings_.reshade_image_parameter_overrides : settings_.reshade_parameter_overrides;
+        upsertReShadeOverrideLine(overrides, QStringLiteral("Techniques"), enabledQualified.join(','));
+        settingsChanged();
+        return {};
+    }
+    case Action::moveReShadeTechnique: {
+        initializeReShadeImageSettings();
+        const int from = args.value(0).toInt();
+        const int to = args.value(1).toInt();
+        auto techniques = read(Property::reshadePresetInfo).toMap().value("techniques").toList();
+        if (from >= 0 && from < techniques.size()) {
+            const int clampedTo = std::clamp(to, 0, int(techniques.size()) - 1);
+            if (from != clampedTo) {
+                techniques.move(from, clampedTo);
+                QStringList sortingQualified;
+                QStringList enabledQualified;
+                for (const auto& item : techniques) {
+                    const auto t = item.toMap();
+                    const auto qualified = t.value("qualified").toString().isEmpty()
+                                               ? t.value("name").toString()
+                                               : t.value("qualified").toString();
+                    sortingQualified.append(qualified);
+                    if (t.value("enabled").toBool())
+                        enabledQualified.append(qualified);
+                }
+                auto& overrides = nrMode_ == "Image" ? settings_.reshade_image_parameter_overrides
+                                                     : settings_.reshade_parameter_overrides;
+                upsertReShadeOverrideLine(overrides, QStringLiteral("TechniqueSorting"), sortingQualified.join(','));
+                upsertReShadeOverrideLine(overrides, QStringLiteral("Techniques"), enabledQualified.join(','));
+                settingsChanged();
+            }
+        }
+        return {};
     }
     case Action::setVfxSetting: {
         const auto key=args.value(0).toString();
@@ -122,6 +336,8 @@ QVariant AppController::handleSettings(Action action, const QVariantList& args) 
         if (!order.contains(stage))
             throw std::runtime_error("Unknown processing card.");
         if (args[1].toBool()) {
+            if(QStringList{"frame_generation","fsr_frame_generation","vfx_frame_generation"}.contains(stage))
+                for(const auto& engine:QStringList{"frame_generation","fsr_frame_generation","vfx_frame_generation"})if(engine!=stage)active.removeAll(engine);
             if(stage=="dlss_ray_reconstruction")active.removeAll("dlss_super_resolution");
             else if(stage=="dlss_super_resolution")active.removeAll("dlss_ray_reconstruction");
             if (!active.contains(stage))
@@ -132,6 +348,7 @@ QVariant AppController::handleSettings(Action action, const QVariantList& args) 
         if(stage=="vfx_vsr")settings_.vfx_vsr_enabled=enabled;
         else if(stage=="vfx_frame_generation")settings_.vfx_frame_generation_enabled=enabled;
         else if(stage=="vfx_upscale")settings_.vfx_upscale_enabled=enabled;
+        if(QStringList{"frame_generation","fsr_frame_generation","vfx_frame_generation"}.contains(stage))settings_.vfx_frame_generation_enabled=active.contains("vfx_frame_generation");
         settingsChanged();
         return {};
     }
@@ -187,8 +404,9 @@ QVariant AppController::handleSettings(Action action, const QVariantList& args) 
             return {};
         const auto applies = [&](const QString& key) {
             return !prefix.isEmpty()
-                       ? key.startsWith(prefix)
+                       ? key.startsWith(prefix) || (tab == "frame-interpolation" && key.startsWith("fsr_frame_generation_"))
                        : !QStringList{"ai_gpu_uuid",
+                                                                  "fsr_adapter_id",
                                                                   "video_gpu_uuid",
                                                                   "ffmpeg_device",
                                                                   "container",
@@ -222,7 +440,10 @@ QVariant AppController::handleSettings(Action action, const QVariantList& args) 
         settingsChanged();
         saveSettings();
         emit upscaleModeChanged();
-        presetStatus_ = tab + " settings were reset to defaults.";
+        const auto tabName = tab == "upscale" ? translate("Upscale")
+                           : tab == "frame-interpolation" ? translate("Frame Interpolation")
+                                                          : translate("Neural Rendering");
+        presetStatus_ = QCoreApplication::translate("App", "%1 settings were reset to defaults.").arg(tabName);
         emit presetStatusChanged();
         return {};
     }

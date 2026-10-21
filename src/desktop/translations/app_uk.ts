@@ -485,10 +485,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>Не вдалося почати обробку: %1</translation>
     </message>
     <message>
-      <source>Cascade</source>
-      <translation>Каскад</translation>
-    </message>
-    <message>
       <source>Changes apply immediately.</source>
       <translation>Зміни застосовуються одразу.</translation>
     </message>
@@ -723,7 +719,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/FrameInterpolationView.qml" line="88" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="49" />
       <source>DLSS Frame Generation</source>
-      <translation>DLSS Frame Generation</translation>
+      <translation>Генерація кадрів DLSS</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="14" />
@@ -734,7 +730,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="41" />
       <source>DLSS Neural Rendering</source>
-      <translation>DLSS Neural Rendering</translation>
+      <translation>Нейронний рендеринг DLSS</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="30" />
@@ -746,17 +742,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/NeuralRenderingView.qml" line="43" />
       <location filename="../qml/views/UpscaleView.qml" line="115" />
       <source>DLSS Super Resolution</source>
-      <translation>DLSS Super Resolution</translation>
+      <translation>Надвисока роздільність DLSS</translation>
     </message>
     <message>
       <source>DLSS effects: %1</source>
       <translation>Ефекти DLSS: %1</translation>
-    </message>
-    <message>
-      <location filename="../qml/components/FrameGenerationControls.qml" line="25" />
-      <location filename="../qml/views/FrameInterpolationView.qml" line="104" />
-      <source>DLSS-G Engine</source>
-      <translation>Рушій DLSS-G</translation>
     </message>
     <message>
       <source>Deblur Modes</source>
@@ -1418,10 +1408,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>Стиль NR</translation>
     </message>
     <message>
-      <source>Native DLSSG</source>
-      <translation>Нативний DLSSG</translation>
-    </message>
-    <message>
       <source>Natural</source>
       <translation>Природний</translation>
     </message>
@@ -1835,13 +1821,13 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="44" />
       <source>RTX Super Resolution</source>
-      <translation>RTX Super Resolution</translation>
+      <translation>Надвисока роздільність RTX</translation>
     </message>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="45" />
       <location filename="../qml/views/UpscaleView.qml" line="275" />
       <source>RTX Video HDR</source>
-      <translation>RTX Video HDR</translation>
+      <translation>HDR-відео RTX</translation>
     </message>
     <message>
       <source>Ready</source>
@@ -2644,11 +2630,461 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
       <message>
       <source>DLSS Ray Reconstruction</source>
-      <translation>DLSS Ray Reconstruction</translation>
+      <translation>Реконструкція променів DLSS</translation>
     </message>
     <message>
       <source>Imported images and videos use estimated material guides. Results depend on the source.</source>
       <translation>Для імпортованих зображень і відео використовуються оцінені дані матеріалів. Результати залежать від джерела.</translation>
     </message>
-</context>
+    <message>
+      <source>AMD FidelityFX Optical Flow</source>
+      <translation>Оптичний потік AMD FidelityFX</translation>
+    </message>
+    <message>
+      <source>Active Techniques</source>
+      <translation>Активні техніки</translation>
+    </message>
+    <message>
+      <source>Always (MoGe-2 ViT-S)</source>
+      <translation>Завжди (MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Auto (MoGe-2 ViT-S When Required)</source>
+      <translation>Авто (MoGe-2 ViT-S за потреби)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Shaders)</source>
+      <translation>Автоматично (шейдери пресету та середовища)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Textures)</source>
+      <translation>Автоматично (текстури пресету та середовища)</translation>
+    </message>
+    <message>
+      <source>Choose a ReShade .ini preset</source>
+      <translation>Виберіть пресет .ini ReShade</translation>
+    </message>
+    <message>
+      <source>Depth Input</source>
+      <translation>Вхід глибини</translation>
+    </message>
+    <message>
+      <source>Disabled</source>
+      <translation>Вимкнено</translation>
+    </message>
+    <message>
+      <source>Disocclusion Sensitivity</source>
+      <translation>Чутливість дезокклюзії</translation>
+    </message>
+    <message>
+      <source>Effect Mix</source>
+      <translation>Змішування ефекту</translation>
+    </message>
+    <message>
+      <source>Flip Depth Vertically</source>
+      <translation>Перевернути глибину вертикально</translation>
+    </message>
+    <message>
+      <source>Logarithmic Depth Buffer</source>
+      <translation>Логарифмічний буфер глибини</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Spatial)</source>
+      <translation>Вимк. (просторово на кадр)</translation>
+    </message>
+    <message>
+      <source>Processing ReShade video</source>
+      <translation>Обробка відео ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade</source>
+      <translation>ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade Preset (.ini)</source>
+      <translation>Пресет ReShade (.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade Presets (*.ini)</source>
+      <translation>Пресети ReShade (*.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade runtime unavailable.</source>
+      <translation>Середовище виконання ReShade недоступне.</translation>
+    </message>
+    <message>
+      <source>Reload Preset</source>
+      <translation>Перезавантажити пресет</translation>
+    </message>
+    <message>
+      <source>Reloaded ReShade preset.</source>
+      <translation>Пресет ReShade перезавантажено.</translation>
+    </message>
+    <message>
+      <source>Reversed Depth Buffer</source>
+      <translation>Зворотний буфер глибини</translation>
+    </message>
+    <message>
+      <source>Save Preset Copy</source>
+      <translation>Зберегти копію пресету</translation>
+    </message>
+    <message>
+      <source>Save ReShade Preset Copy</source>
+      <translation>Зберегти копію пресету ReShade</translation>
+    </message>
+    <message>
+      <source>Saved ReShade preset to %1</source>
+      <translation>Пресет ReShade збережено у %1</translation>
+    </message>
+    <message>
+      <source>Shader Parameters</source>
+      <translation>Параметри шейдерів</translation>
+    </message>
+    <message>
+      <source>Shader Search Folder (.fx / .fxh)</source>
+      <translation>Папка пошуку шейдерів (.fx / .fxh)</translation>
+    </message>
+    <message>
+      <source>Temporal Depth Blend</source>
+      <translation>Часове змішування глибини</translation>
+    </message>
+    <message>
+      <source>Texture &amp; LUT Search Folder</source>
+      <translation>Папка пошуку текстур і LUT</translation>
+    </message>
+    <message>
+      <source>Video Motion &amp; Depth Stabilization</source>
+      <translation>Рух відео та стабілізація глибини</translation>
+    </message>
+    <message>
+      <source>Always Generate AI Depth</source>
+      <translation>Завжди генерувати ШІ-глибину</translation>
+    </message>
+    <message>
+      <source>Optical Flow</source>
+      <translation>Оптичний потік</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Depth)</source>
+      <translation>Вимкнено (глибина кожного кадру)</translation>
+    </message>
+    <message>
+      <source>This preset requires depth. Select Auto or Always to process it.</source>
+      <translation>Цей пресет потребує глибини. Виберіть «Авто» або «Завжди».</translation>
+    </message>
+    <message>
+      <source>AI depth supplies effects that need scene depth. Auto stabilizes it in video using AMD Optical Flow.</source>
+      <translation>ШІ-глибина забезпечує ефекти глибиною сцени. Авто стабілізує її у відео через AMD Optical Flow.</translation>
+    </message>
+    <message>
+      <source>This preset does not need AI depth or motion processing. Auto skips that work.</source>
+      <translation>Цьому пресету не потрібні ШІ-глибина та обробка руху. Авто пропускає цю роботу.</translation>
+    </message>
+    <message>
+      <source>Techniques &amp; Settings</source>
+      <translation>Техніки й налаштування</translation>
+    </message>
+    <message>
+      <source>Reset Values</source>
+      <translation>Скинути значення</translation>
+    </message>
+    <message>
+      <source>Search effects and parameters…</source>
+      <translation>Пошук ефектів і параметрів…</translation>
+    </message>
+    <message>
+      <source>%1 enabled</source>
+      <translation>Увімкнено: %1</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>Вимкнено</translation>
+    </message>
+    <message>
+      <source>Fisheye distortion is off by default. Enable the technique to apply it.</source>
+      <translation>Спотворення «риб’яче око» типово вимкнено. Увімкніть техніку для застосування.</translation>
+    </message>
+    <message>
+      <source>Enable a technique above to apply this effect.</source>
+      <translation>Увімкніть техніку вище, щоб застосувати цей ефект.</translation>
+    </message>
+    <message>
+      <source>Depth Detail</source>
+      <translation>Деталізація глибини</translation>
+    </message>
+    <message>
+      <source>Effect Precision</source>
+      <translation>Точність ефектів</translation>
+    </message>
+    <message>
+      <source>HDR Handling</source>
+      <translation>Обробка HDR</translation>
+    </message>
+    <message>
+      <source>Preserve Source Transparency</source>
+      <translation>Зберігати прозорість джерела</translation>
+    </message>
+    <message>
+      <source>Show Internal Shader Parameters</source>
+      <translation>Показувати внутрішні параметри шейдера</translation>
+    </message>
+    <message>
+      <source>MoGe-2 ViT-S · ONNX Runtime DirectML
+Video depth alignment · AMD FidelityFX Optical Flow</source>
+      <translation>MoGe-2 ViT-S · ONNX Runtime DirectML
+Вирівнювання глибини відео · Оптичний потік AMD FidelityFX</translation>
+    </message>
+    <message>
+      <source>Choose a preset to begin.</source>
+      <translation>Виберіть пресет для початку.</translation>
+    </message>
+    <message>
+      <source>%1 technique(s) enabled · %2</source>
+      <translation>Увімкнено технік: %1 · %2</translation>
+    </message>
+    <message>
+      <source>AI depth enabled</source>
+      <translation>ШІ-глибину ввімкнено</translation>
+    </message>
+    <message>
+      <source>Depth not required or disabled</source>
+      <translation>Глибина не потрібна або вимкнена</translation>
+    </message>
+    <message>
+      <source>Enabled</source>
+      <translation>Увімкнено</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>Додатково</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation</source>
+      <translation>Генерація кадрів FSR</translation>
+    </message>
+    <message>
+      <source>Processing GPU</source>
+      <translation>Графічний процесор для обробки</translation>
+    </message>
+    <message>
+      <source>Frame generation available</source>
+      <translation>Генерація кадрів доступна</translation>
+    </message>
+    <message>
+      <source>Selected FSR adapter is unavailable</source>
+      <translation>Вибраний адаптер FSR недоступний</translation>
+    </message>
+    <message>
+      <source>No compatible FSR adapter detected</source>
+      <translation>Сумісного адаптера FSR не знайдено</translation>
+    </message>
+    <message>
+      <source>Frame generation provider</source>
+      <translation>Технологія генерації кадрів</translation>
+    </message>
+    <message>
+      <source>Shared GPU memory</source>
+      <translation>Спільна пам’ять GPU</translation>
+    </message>
+    <message>
+      <source>AI Processing GPU (DirectX 12 / FidelityFX)</source>
+      <translation>GPU обробки ШІ (DirectX 12 / FidelityFX)</translation>
+    </message>
+    <message>
+      <source>RTX Video Super Resolution</source>
+      <translation>Надвисока роздільність відео RTX</translation>
+    </message>
+    <message>
+      <source>Fast (280)</source>
+      <translation>Швидко (280)</translation>
+    </message>
+    <message>
+      <source>Standard (504)</source>
+      <translation>Стандартно (504)</translation>
+    </message>
+    <message>
+      <source>High (756)</source>
+      <translation>Високо (756)</translation>
+    </message>
+    <message>
+      <source>Maximum (1008)</source>
+      <translation>Максимум (1008)</translation>
+    </message>
+    <message>
+      <source>8-bit sRGB Compatibility</source>
+      <translation>Сумісність із 8-бітним sRGB</translation>
+    </message>
+    <message>
+      <source>Auto (SDR Preset Adapter)</source>
+      <translation>Авто (адаптер пресетів SDR)</translation>
+    </message>
+    <message>
+      <source>HDR-Aware Preset</source>
+      <translation>Пресет із підтримкою HDR</translation>
+    </message>
+    <message>
+      <source>SDR Adapter</source>
+      <translation>Адаптер SDR</translation>
+    </message>
+    <message>
+      <source>Reject Unsupported</source>
+      <translation>Відхиляти непідтримувані</translation>
+    </message>
+    <message>
+      <source>%1 FPS</source>
+      <translation>%1 кадр/с</translation>
+    </message>
+    <message>
+      <source>FPS</source>
+      <translation>кадр/с</translation>
+    </message>
+    <message>
+      <source>No compatible NVIDIA or FSR DirectX 12 GPU was detected.</source>
+      <translation>Не виявлено сумісного з DirectX 12 графічного процесора NVIDIA або FSR.</translation>
+    </message>
+    <message>
+      <source>Clipboard download failed: %1</source>
+      <translation>Не вдалося завантажити з буфера обміну: %1</translation>
+    </message>
+    <message>
+      <source>The clipboard URL did not contain a readable image.</source>
+      <translation>URL-адреса в буфері обміну не містила придатного для читання зображення.</translation>
+    </message>
+    <message>
+      <source>Scanning input files…</source>
+      <translation>Сканування вхідних файлів…</translation>
+    </message>
+    <message>
+      <source>Files added: %1.</source>
+      <translation>Додано файлів: %1.</translation>
+    </message>
+    <message>
+      <source>Rendering preview…</source>
+      <translation>Рендеринг попереднього перегляду…</translation>
+    </message>
+    <message>
+      <source>Preview ready.</source>
+      <translation>Попередній перегляд готовий.</translation>
+    </message>
+    <message>
+      <source>Preview updated; waiting for the latest request.</source>
+      <translation>Попередній перегляд оновлено; очікування останнього запиту.</translation>
+    </message>
+    <message>
+      <source>Processing batch…</source>
+      <translation>Пакетна обробка…</translation>
+    </message>
+    <message>
+      <source>%1 complete, %2 failed.</source>
+      <translation>Завершено: %1, невдало: %2.</translation>
+    </message>
+    <message>
+      <source>Interpolating video</source>
+      <translation>Інтерполяція кадрів відео</translation>
+    </message>
+    <message>
+      <source>Use one frame-generation engine per workflow. Select DLSS, AMD FSR or VFX Frame Generation.</source>
+      <translation>Використовуйте лише один рушій генерації кадрів у кожному робочому процесі. Виберіть DLSS, AMD FSR або VFX.</translation>
+    </message>
+    <message>
+      <source>DLSS Neural Rendering requires at least 64 by 64 input.</source>
+      <translation>Для нейронного рендерингу DLSS потрібне вхідне зображення не менше 64 × 64 пікселів.</translation>
+    </message>
+    <message>
+      <source>Scaling cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>Масштабування не може обробляти HDR-відео в цій позиції. Перемістіть його перед перетворенням на HDR.</translation>
+    </message>
+    <message>
+      <source>The requested output is below the supported 64 by 64 minimum.</source>
+      <translation>Запитаний вихідний розмір менший за підтримуваний мінімум 64 × 64 пікселі.</translation>
+    </message>
+    <message>
+      <source>DLSS Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>Надвисока роздільність DLSS не може обробляти HDR-відео в цій позиції. Перемістіть її перед перетворенням на HDR.</translation>
+    </message>
+    <message>
+      <source>Ray Reconstruction requires explicit PQ or HLG signaling for HDR video.</source>
+      <translation>Для реконструкції променів HDR-відео має явно містити позначення PQ або HLG.</translation>
+    </message>
+    <message>
+      <source>RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>Надвисока роздільність RTX не може обробляти HDR-відео в цій позиції. Перемістіть її перед перетворенням на HDR.</translation>
+    </message>
+    <message>
+      <source>NVIDIA Video Effects is video-only.</source>
+      <translation>NVIDIA Video Effects працює лише з відео.</translation>
+    </message>
+    <message>
+      <source>The legacy NVIDIA VFX preset has no enabled effect.</source>
+      <translation>У застарілому пресеті NVIDIA VFX немає ввімкнених ефектів.</translation>
+    </message>
+    <message>
+      <source>This video effect requires SDR at this position. Move its card before HDR conversion.</source>
+      <translation>Цьому відеоефекту в цій позиції потрібне SDR-відео. Перемістіть його картку перед перетворенням на HDR.</translation>
+    </message>
+    <message>
+      <source>RTX Video HDR requires SDR at this position.</source>
+      <translation>Для HDR-відео RTX у цій позиції потрібне SDR-відео.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires at least 64 by 64 pixels.</source>
+      <translation>Для генерації кадрів FSR потрібен розмір не менше 64 × 64 пікселів.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation supports up to 16384 pixels per side.</source>
+      <translation>Генерація кадрів FSR підтримує до 16384 пікселів з кожного боку.</translation>
+    </message>
+    <message>
+      <source>Frame Generation target FPS must exceed the frame rate entering this card. Choose a higher target FPS.</source>
+      <translation>Цільова частота генерації кадрів має перевищувати частоту на вході цієї картки. Виберіть вищу цільову частоту.</translation>
+    </message>
+    <message>
+      <source>Sharpening requires SDR video at this position. Move it before HDR conversion.</source>
+      <translation>Для підвищення різкості в цій позиції потрібне SDR-відео. Перемістіть його перед перетворенням на HDR.</translation>
+    </message>
+    <message>
+      <source>The selected .cube LUT is unavailable.</source>
+      <translation>Вибрана LUT-таблиця .cube недоступна.</translation>
+    </message>
+    <message>
+      <source>The selected ReShade .ini preset is unavailable.</source>
+      <translation>Вибраний пресет ReShade .ini недоступний.</translation>
+    </message>
+    <message>
+      <source>ReShade requires at least 16 by 16 input.</source>
+      <translation>Для ReShade потрібне вхідне зображення не менше 16 × 16 пікселів.</translation>
+    </message>
+    <message>
+      <source>The selected codec does not support this container.</source>
+      <translation>Вибраний кодек не підтримує цей контейнер.</translation>
+    </message>
+    <message>
+      <source>Video export requires even output dimensions.</source>
+      <translation>Для експорту відео ширина й висота вихідного зображення мають бути парними.</translation>
+    </message>
+    <message>
+      <source>HDR output requires 10-bit HDR Mode in Export Settings.</source>
+      <translation>Для HDR-виводу потрібен 10-бітний режим HDR у налаштуваннях експорту.</translation>
+    </message>
+    <message>
+      <source>HDR requires a 10-bit or higher video codec.</source>
+      <translation>Для HDR потрібен відеокодек із глибиною 10 біт або більше.</translation>
+    </message>
+    <message>
+      <source>Custom suffix is empty or contains invalid filename characters.</source>
+      <translation>Власний суфікс порожній або містить неприпустимі символи для імені файлу.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires GPU encoding with H.264, HEVC or AV1. Select a supported codec.</source>
+      <translation>Для генерації кадрів FSR потрібне GPU-кодування H.264, HEVC або AV1. Виберіть підтримуваний кодек.</translation>
+    </message>
+    <message>
+      <source>GPU encoding is unavailable for the selected FSR DirectX adapter</source>
+      <translation>GPU-кодування недоступне для вибраного адаптера DirectX FSR</translation>
+    </message>
+    <message>
+      <source>HDR FSR input requires HDR Mode and a 10-bit output codec</source>
+      <translation>Для HDR-входу FSR потрібні режим HDR і 10-бітний вихідний кодек</translation>
+    </message>
+  </context>
 </TS>

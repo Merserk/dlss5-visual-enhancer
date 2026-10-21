@@ -477,10 +477,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>일괄 처리를 시작할 수 없음: %1</translation>
     </message>
     <message>
-      <source>Cascade</source>
-      <translation>캐스케이드</translation>
-    </message>
-    <message>
       <source>Changes apply immediately.</source>
       <translation>변경 사항이 즉시 적용됩니다.</translation>
     </message>
@@ -715,7 +711,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/FrameInterpolationView.qml" line="88" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="49" />
       <source>DLSS Frame Generation</source>
-      <translation>DLSS Frame Generation</translation>
+      <translation>DLSS 프레임 생성</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="14" />
@@ -726,7 +722,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="41" />
       <source>DLSS Neural Rendering</source>
-      <translation>DLSS Neural Rendering</translation>
+      <translation>DLSS 뉴럴 렌더링</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="30" />
@@ -738,17 +734,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/NeuralRenderingView.qml" line="43" />
       <location filename="../qml/views/UpscaleView.qml" line="115" />
       <source>DLSS Super Resolution</source>
-      <translation>DLSS Super Resolution</translation>
+      <translation>DLSS 초해상도</translation>
     </message>
     <message>
       <source>DLSS effects: %1</source>
       <translation>DLSS 효과: %1</translation>
-    </message>
-    <message>
-      <location filename="../qml/components/FrameGenerationControls.qml" line="25" />
-      <location filename="../qml/views/FrameInterpolationView.qml" line="104" />
-      <source>DLSS-G Engine</source>
-      <translation>DLSS-G 엔진</translation>
     </message>
     <message>
       <source>Deblur Modes</source>
@@ -1410,10 +1400,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>NR 스타일</translation>
     </message>
     <message>
-      <source>Native DLSSG</source>
-      <translation>네이티브 DLSSG</translation>
-    </message>
-    <message>
       <source>Natural</source>
       <translation>자연스러움</translation>
     </message>
@@ -1827,13 +1813,13 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="44" />
       <source>RTX Super Resolution</source>
-      <translation>RTX Super Resolution</translation>
+      <translation>RTX 초해상도</translation>
     </message>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="45" />
       <location filename="../qml/views/UpscaleView.qml" line="275" />
       <source>RTX Video HDR</source>
-      <translation>RTX Video HDR</translation>
+      <translation>RTX HDR 동영상</translation>
     </message>
     <message>
       <source>Ready</source>
@@ -2636,11 +2622,461 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
       <message>
       <source>DLSS Ray Reconstruction</source>
-      <translation>DLSS Ray Reconstruction</translation>
+      <translation>DLSS 레이 재구성</translation>
     </message>
     <message>
       <source>Imported images and videos use estimated material guides. Results depend on the source.</source>
       <translation>가져온 이미지와 동영상에는 추정된 재질 정보를 사용합니다. 결과는 원본에 따라 달라집니다.</translation>
     </message>
-</context>
+    <message>
+      <source>AMD FidelityFX Optical Flow</source>
+      <translation>AMD FidelityFX 광학 흐름</translation>
+    </message>
+    <message>
+      <source>Active Techniques</source>
+      <translation>활성 기법</translation>
+    </message>
+    <message>
+      <source>Always (MoGe-2 ViT-S)</source>
+      <translation>항상 (MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Auto (MoGe-2 ViT-S When Required)</source>
+      <translation>자동 (필요 시 MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Shaders)</source>
+      <translation>자동 (프리셋 및 런타임 셰이더)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Textures)</source>
+      <translation>자동 (프리셋 및 런타임 텍스처)</translation>
+    </message>
+    <message>
+      <source>Choose a ReShade .ini preset</source>
+      <translation>ReShade .ini 프리셋 선택</translation>
+    </message>
+    <message>
+      <source>Depth Input</source>
+      <translation>깊이 입력</translation>
+    </message>
+    <message>
+      <source>Disabled</source>
+      <translation>비활성화됨</translation>
+    </message>
+    <message>
+      <source>Disocclusion Sensitivity</source>
+      <translation>디스오클루전 민감도</translation>
+    </message>
+    <message>
+      <source>Effect Mix</source>
+      <translation>효과 믹스</translation>
+    </message>
+    <message>
+      <source>Flip Depth Vertically</source>
+      <translation>깊이 상하 반전</translation>
+    </message>
+    <message>
+      <source>Logarithmic Depth Buffer</source>
+      <translation>로그 깊이 버퍼</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Spatial)</source>
+      <translation>끔 (프레임별 공간 처리)</translation>
+    </message>
+    <message>
+      <source>Processing ReShade video</source>
+      <translation>ReShade 비디오 처리 중</translation>
+    </message>
+    <message>
+      <source>ReShade</source>
+      <translation>ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade Preset (.ini)</source>
+      <translation>ReShade 프리셋 (.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade Presets (*.ini)</source>
+      <translation>ReShade 프리셋 (*.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade runtime unavailable.</source>
+      <translation>ReShade 런타임을 사용할 수 없습니다.</translation>
+    </message>
+    <message>
+      <source>Reload Preset</source>
+      <translation>프리셋 다시 로드</translation>
+    </message>
+    <message>
+      <source>Reloaded ReShade preset.</source>
+      <translation>ReShade 프리셋을 다시 로드했습니다.</translation>
+    </message>
+    <message>
+      <source>Reversed Depth Buffer</source>
+      <translation>반전된 깊이 버퍼</translation>
+    </message>
+    <message>
+      <source>Save Preset Copy</source>
+      <translation>프리셋 사본 저장</translation>
+    </message>
+    <message>
+      <source>Save ReShade Preset Copy</source>
+      <translation>ReShade 프리셋 사본 저장</translation>
+    </message>
+    <message>
+      <source>Saved ReShade preset to %1</source>
+      <translation>ReShade 프리셋을 %1에 저장했습니다</translation>
+    </message>
+    <message>
+      <source>Shader Parameters</source>
+      <translation>셰이더 매개변수</translation>
+    </message>
+    <message>
+      <source>Shader Search Folder (.fx / .fxh)</source>
+      <translation>셰이더 검색 폴더 (.fx / .fxh)</translation>
+    </message>
+    <message>
+      <source>Temporal Depth Blend</source>
+      <translation>시간적 깊이 블렌드</translation>
+    </message>
+    <message>
+      <source>Texture &amp; LUT Search Folder</source>
+      <translation>텍스처 및 LUT 검색 폴더</translation>
+    </message>
+    <message>
+      <source>Video Motion &amp; Depth Stabilization</source>
+      <translation>비디오 모션 및 깊이 안정화</translation>
+    </message>
+    <message>
+      <source>Always Generate AI Depth</source>
+      <translation>항상 AI 깊이 생성</translation>
+    </message>
+    <message>
+      <source>Optical Flow</source>
+      <translation>광학 흐름</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Depth)</source>
+      <translation>끄기 (프레임별 깊이)</translation>
+    </message>
+    <message>
+      <source>This preset requires depth. Select Auto or Always to process it.</source>
+      <translation>이 프리셋에는 깊이가 필요합니다. 자동 또는 항상을 선택하세요.</translation>
+    </message>
+    <message>
+      <source>AI depth supplies effects that need scene depth. Auto stabilizes it in video using AMD Optical Flow.</source>
+      <translation>AI 깊이는 장면 깊이가 필요한 효과에 사용됩니다. 자동 모드는 AMD Optical Flow로 동영상 깊이를 안정화합니다.</translation>
+    </message>
+    <message>
+      <source>This preset does not need AI depth or motion processing. Auto skips that work.</source>
+      <translation>이 프리셋에는 AI 깊이나 모션 처리가 필요하지 않습니다. 자동 모드에서는 해당 작업을 건너뜁니다.</translation>
+    </message>
+    <message>
+      <source>Techniques &amp; Settings</source>
+      <translation>기법 및 설정</translation>
+    </message>
+    <message>
+      <source>Reset Values</source>
+      <translation>값 초기화</translation>
+    </message>
+    <message>
+      <source>Search effects and parameters…</source>
+      <translation>효과 및 매개변수 검색…</translation>
+    </message>
+    <message>
+      <source>%1 enabled</source>
+      <translation>%1개 활성화됨</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>끄기</translation>
+    </message>
+    <message>
+      <source>Fisheye distortion is off by default. Enable the technique to apply it.</source>
+      <translation>어안 왜곡은 기본적으로 꺼져 있습니다. 적용하려면 기법을 활성화하세요.</translation>
+    </message>
+    <message>
+      <source>Enable a technique above to apply this effect.</source>
+      <translation>이 효과를 적용하려면 위의 기법을 활성화하세요.</translation>
+    </message>
+    <message>
+      <source>Depth Detail</source>
+      <translation>깊이 세부 수준</translation>
+    </message>
+    <message>
+      <source>Effect Precision</source>
+      <translation>효과 정밀도</translation>
+    </message>
+    <message>
+      <source>HDR Handling</source>
+      <translation>HDR 처리</translation>
+    </message>
+    <message>
+      <source>Preserve Source Transparency</source>
+      <translation>원본 투명도 유지</translation>
+    </message>
+    <message>
+      <source>Show Internal Shader Parameters</source>
+      <translation>내부 셰이더 매개변수 표시</translation>
+    </message>
+    <message>
+      <source>MoGe-2 ViT-S · ONNX Runtime DirectML
+Video depth alignment · AMD FidelityFX Optical Flow</source>
+      <translation>MoGe-2 ViT-S · ONNX Runtime DirectML
+동영상 깊이 정렬 · AMD FidelityFX 광학 흐름</translation>
+    </message>
+    <message>
+      <source>Choose a preset to begin.</source>
+      <translation>시작하려면 프리셋을 선택하세요.</translation>
+    </message>
+    <message>
+      <source>%1 technique(s) enabled · %2</source>
+      <translation>%1개 기법 활성화됨 · %2</translation>
+    </message>
+    <message>
+      <source>AI depth enabled</source>
+      <translation>AI 깊이 활성화됨</translation>
+    </message>
+    <message>
+      <source>Depth not required or disabled</source>
+      <translation>깊이가 불필요하거나 비활성화됨</translation>
+    </message>
+    <message>
+      <source>Enabled</source>
+      <translation>활성화</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>고급</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation</source>
+      <translation>FSR 프레임 생성</translation>
+    </message>
+    <message>
+      <source>Processing GPU</source>
+      <translation>처리용 GPU</translation>
+    </message>
+    <message>
+      <source>Frame generation available</source>
+      <translation>프레임 생성 사용 가능</translation>
+    </message>
+    <message>
+      <source>Selected FSR adapter is unavailable</source>
+      <translation>선택한 FSR 어댑터를 사용할 수 없습니다</translation>
+    </message>
+    <message>
+      <source>No compatible FSR adapter detected</source>
+      <translation>호환되는 FSR 어댑터를 찾을 수 없습니다</translation>
+    </message>
+    <message>
+      <source>Frame generation provider</source>
+      <translation>프레임 생성 기술</translation>
+    </message>
+    <message>
+      <source>Shared GPU memory</source>
+      <translation>공유 GPU 메모리</translation>
+    </message>
+    <message>
+      <source>AI Processing GPU (DirectX 12 / FidelityFX)</source>
+      <translation>AI 처리 GPU (DirectX 12 / FidelityFX)</translation>
+    </message>
+    <message>
+      <source>RTX Video Super Resolution</source>
+      <translation>RTX 동영상 초해상도</translation>
+    </message>
+    <message>
+      <source>Fast (280)</source>
+      <translation>빠름 (280)</translation>
+    </message>
+    <message>
+      <source>Standard (504)</source>
+      <translation>표준 (504)</translation>
+    </message>
+    <message>
+      <source>High (756)</source>
+      <translation>높음 (756)</translation>
+    </message>
+    <message>
+      <source>Maximum (1008)</source>
+      <translation>최대 (1008)</translation>
+    </message>
+    <message>
+      <source>8-bit sRGB Compatibility</source>
+      <translation>8비트 sRGB 호환</translation>
+    </message>
+    <message>
+      <source>Auto (SDR Preset Adapter)</source>
+      <translation>자동 (SDR 프리셋 어댑터)</translation>
+    </message>
+    <message>
+      <source>HDR-Aware Preset</source>
+      <translation>HDR 지원 프리셋</translation>
+    </message>
+    <message>
+      <source>SDR Adapter</source>
+      <translation>SDR 어댑터</translation>
+    </message>
+    <message>
+      <source>Reject Unsupported</source>
+      <translation>지원되지 않는 설정 거부</translation>
+    </message>
+    <message>
+      <source>%1 FPS</source>
+      <translation>%1 프레임/초</translation>
+    </message>
+    <message>
+      <source>FPS</source>
+      <translation>프레임/초</translation>
+    </message>
+    <message>
+      <source>No compatible NVIDIA or FSR DirectX 12 GPU was detected.</source>
+      <translation>DirectX 12와 호환되는 NVIDIA 또는 FSR GPU가 감지되지 않았습니다.</translation>
+    </message>
+    <message>
+      <source>Clipboard download failed: %1</source>
+      <translation>클립보드에서 다운로드하지 못했습니다: %1</translation>
+    </message>
+    <message>
+      <source>The clipboard URL did not contain a readable image.</source>
+      <translation>클립보드 URL에 읽을 수 있는 이미지가 없습니다.</translation>
+    </message>
+    <message>
+      <source>Scanning input files…</source>
+      <translation>입력 파일을 검색하는 중…</translation>
+    </message>
+    <message>
+      <source>Files added: %1.</source>
+      <translation>추가된 파일: %1.</translation>
+    </message>
+    <message>
+      <source>Rendering preview…</source>
+      <translation>미리보기를 렌더링하는 중…</translation>
+    </message>
+    <message>
+      <source>Preview ready.</source>
+      <translation>미리보기가 준비되었습니다.</translation>
+    </message>
+    <message>
+      <source>Preview updated; waiting for the latest request.</source>
+      <translation>미리보기가 업데이트되었습니다. 최신 요청을 기다리는 중입니다.</translation>
+    </message>
+    <message>
+      <source>Processing batch…</source>
+      <translation>일괄 처리 중…</translation>
+    </message>
+    <message>
+      <source>%1 complete, %2 failed.</source>
+      <translation>완료: %1, 실패: %2.</translation>
+    </message>
+    <message>
+      <source>Interpolating video</source>
+      <translation>동영상 프레임을 보간하는 중</translation>
+    </message>
+    <message>
+      <source>Use one frame-generation engine per workflow. Select DLSS, AMD FSR or VFX Frame Generation.</source>
+      <translation>워크플로마다 프레임 생성 엔진을 하나만 사용하세요. DLSS, AMD FSR 또는 VFX 프레임 생성을 선택하세요.</translation>
+    </message>
+    <message>
+      <source>DLSS Neural Rendering requires at least 64 by 64 input.</source>
+      <translation>DLSS 뉴럴 렌더링에는 최소 64 × 64픽셀의 입력이 필요합니다.</translation>
+    </message>
+    <message>
+      <source>Scaling cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>이 위치에서는 크기 조정으로 HDR 동영상을 처리할 수 없습니다. HDR 변환 앞으로 이동하세요.</translation>
+    </message>
+    <message>
+      <source>The requested output is below the supported 64 by 64 minimum.</source>
+      <translation>요청한 출력이 지원되는 최소 크기인 64 × 64픽셀보다 작습니다.</translation>
+    </message>
+    <message>
+      <source>DLSS Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>이 위치에서는 DLSS 초해상도로 HDR 동영상을 처리할 수 없습니다. HDR 변환 앞으로 이동하세요.</translation>
+    </message>
+    <message>
+      <source>Ray Reconstruction requires explicit PQ or HLG signaling for HDR video.</source>
+      <translation>레이 재구성으로 HDR 동영상을 처리하려면 PQ 또는 HLG가 명시되어 있어야 합니다.</translation>
+    </message>
+    <message>
+      <source>RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>이 위치에서는 RTX 초해상도로 HDR 동영상을 처리할 수 없습니다. HDR 변환 앞으로 이동하세요.</translation>
+    </message>
+    <message>
+      <source>NVIDIA Video Effects is video-only.</source>
+      <translation>NVIDIA Video Effects는 동영상 전용입니다.</translation>
+    </message>
+    <message>
+      <source>The legacy NVIDIA VFX preset has no enabled effect.</source>
+      <translation>이전 형식의 NVIDIA VFX 프리셋에 활성화된 효과가 없습니다.</translation>
+    </message>
+    <message>
+      <source>This video effect requires SDR at this position. Move its card before HDR conversion.</source>
+      <translation>이 동영상 효과는 현재 위치에서 SDR 입력이 필요합니다. 효과 카드를 HDR 변환 앞으로 이동하세요.</translation>
+    </message>
+    <message>
+      <source>RTX Video HDR requires SDR at this position.</source>
+      <translation>이 위치에서 RTX HDR 동영상을 사용하려면 SDR 입력이 필요합니다.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires at least 64 by 64 pixels.</source>
+      <translation>FSR 프레임 생성에는 최소 64 × 64픽셀이 필요합니다.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation supports up to 16384 pixels per side.</source>
+      <translation>FSR 프레임 생성은 각 변에서 최대 16384픽셀을 지원합니다.</translation>
+    </message>
+    <message>
+      <source>Frame Generation target FPS must exceed the frame rate entering this card. Choose a higher target FPS.</source>
+      <translation>프레임 생성의 목표 프레임 속도는 이 카드의 입력 프레임 속도보다 높아야 합니다. 더 높은 목표값을 선택하세요.</translation>
+    </message>
+    <message>
+      <source>Sharpening requires SDR video at this position. Move it before HDR conversion.</source>
+      <translation>이 위치에서 선명하게 하기를 사용하려면 SDR 동영상이 필요합니다. HDR 변환 앞으로 이동하세요.</translation>
+    </message>
+    <message>
+      <source>The selected .cube LUT is unavailable.</source>
+      <translation>선택한 .cube LUT를 사용할 수 없습니다.</translation>
+    </message>
+    <message>
+      <source>The selected ReShade .ini preset is unavailable.</source>
+      <translation>선택한 ReShade .ini 프리셋을 사용할 수 없습니다.</translation>
+    </message>
+    <message>
+      <source>ReShade requires at least 16 by 16 input.</source>
+      <translation>ReShade에는 최소 16 × 16픽셀의 입력이 필요합니다.</translation>
+    </message>
+    <message>
+      <source>The selected codec does not support this container.</source>
+      <translation>선택한 코덱은 이 컨테이너를 지원하지 않습니다.</translation>
+    </message>
+    <message>
+      <source>Video export requires even output dimensions.</source>
+      <translation>동영상 내보내기의 출력 너비와 높이는 짝수여야 합니다.</translation>
+    </message>
+    <message>
+      <source>HDR output requires 10-bit HDR Mode in Export Settings.</source>
+      <translation>HDR 출력에는 내보내기 설정의 10비트 HDR 모드가 필요합니다.</translation>
+    </message>
+    <message>
+      <source>HDR requires a 10-bit or higher video codec.</source>
+      <translation>HDR에는 10비트 이상의 동영상 코덱이 필요합니다.</translation>
+    </message>
+    <message>
+      <source>Custom suffix is empty or contains invalid filename characters.</source>
+      <translation>사용자 지정 접미사가 비어 있거나 파일 이름에 사용할 수 없는 문자가 포함되어 있습니다.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires GPU encoding with H.264, HEVC or AV1. Select a supported codec.</source>
+      <translation>FSR 프레임 생성에는 H.264, HEVC 또는 AV1 GPU 인코딩이 필요합니다. 지원되는 코덱을 선택하세요.</translation>
+    </message>
+    <message>
+      <source>GPU encoding is unavailable for the selected FSR DirectX adapter</source>
+      <translation>선택한 FSR DirectX 어댑터에서 GPU 인코딩을 사용할 수 없습니다</translation>
+    </message>
+    <message>
+      <source>HDR FSR input requires HDR Mode and a 10-bit output codec</source>
+      <translation>HDR FSR 입력에는 HDR 모드와 10비트 출력 코덱이 필요합니다</translation>
+    </message>
+  </context>
 </TS>

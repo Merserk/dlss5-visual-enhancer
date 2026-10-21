@@ -9,7 +9,7 @@ copyright, license, redistribution requirements, and notices.
 
 SCOPE
 
-This file describes the current Visual Enhancer 17.0.0.0 C++ application,
+This file describes the current Visual Enhancer C++ application,
 its third-party source and headers, and the runtimes used in its Windows
 release packages. The application no longer uses the previous embedded
 Python/PySide package, mpv, yt-dlp, or Python package wrappers.
@@ -24,15 +24,12 @@ Native SDKs and engine development files are maintained separately and
 are not included in the application source upload.
 
 This file names each component, its known licensing, where it is shipped,
-and where to read its version and available license text. Re-audit this
-notice when a component or runtime version changes; bundled dependencies
-and their terms can change between builds.
+and where to read its license text and attribution records. Re-audit this
+notice when bundled components change; their terms can differ between builds.
 
-"Version:" lines identify the checked source/build version or the
-authoritative version record: source headers, DLL version resources,
-runtime-manifest.json, Qt SPDX inventories, or a tool's -version output.
-Headers, command-line tools, Qt media libraries, and other media DLLs may
-come from different upstream releases.
+Software release numbers are omitted. License identifiers, copyright dates,
+and identifying parts of product names and original filenames are retained.
+An asterisk in a path matches a build-specific directory or filename suffix.
 
 Source trees, license texts, attribution inventories, and upstream URLs
 are not by themselves a declaration that every corresponding-source or
@@ -71,18 +68,10 @@ Full texts in release packages:
     bin/runtime/dlssnr/LICENSE-NVIDIA-DLSS.txt
     bin/runtime/rtx_video/NVIDIA_RTX_Video_SDK_License.pdf
 
-Version: checked shipped DLL version resources:
-    nvngx_dlss.dll  (Super Resolution): 310.9.16.0
-    nvngx_dlssd.dll (Ray Reconstruction): 310.9.16.0
-    nvngx_dlssg.dll (Frame Generation): 310.9.16.0
-    nvngx_dlssnr.dll (Neural Rendering): 310.8.SF.0
-    nvngx_vsr.dll: 1.8.3.0; nvngx_truehdr.dll: 1.2.3.0
-
-The SR, RR and FG release DLLs match NVIDIA's DLSS 310.9.16 SDK release:
-https://github.com/NVIDIA/DLSS/commit/9981c6350dc58c0ce21f024fd65e31e851c31689
-Matching NGX VSR and TrueHDR plugins are selected from the VFX 1.3 SDK
-when packaging the current runtime. Governing SDK license records remain
-applicable independently of the DLL version numbers.
+Upstream DLSS SDK: https://github.com/NVIDIA/DLSS.
+Matching NGX VSR and TrueHDR plugins are selected from the Video Effects SDK
+when packaging the runtime. The governing SDK license records remain
+applicable to each distributed component.
 
 Used through src/processing/native_engines.cpp and the native engine
 interfaces. Ray Reconstruction uses nvngx_dlssd.dll at native resolution
@@ -91,12 +80,12 @@ and is listed in section 8, separately from NVIDIA's runtime.
 RTX Video HDR still uses nvngx_truehdr.dll; removing the
 separate VFX TrueHDR effect does not remove this RTX Video dependency.
 
-NVIDIA Optical Flow SDK 5.0.7 headers are used by the native SR, RR,
+NVIDIA Optical Flow SDK headers are used by the native SR, RR,
 Neural Rendering and Frame Generation video paths. The Optical Flow API
 is loaded from the installed NVIDIA driver's nvofapi64.dll in Windows
 System32; that driver DLL is not redistributed in this package.
 The SDK retains its NVIDIA license; the development copy's agreement is
-native (dev)/external/Optical_Flow_SDK_5.0.7/LicenseAgreement.pdf.
+native (dev)/external/Optical_Flow_SDK_*/LicenseAgreement.pdf.
 
 NVIDIA, GeForce, RTX, DLSS, and related marks are trademarks of NVIDIA
 Corporation. No sponsorship or endorsement is implied.
@@ -117,19 +106,21 @@ Source headers:
 
 License: FFmpeg licensing depends on the build. Its baseline is
 LGPL-2.1-or-later; optional GPL components change the applicable terms.
-The command-line build checked for this release is FFmpeg 9.0.2 and
-enables GPL/version-3 components, including x264/x265. The separately
-loaded AV runtime also includes codec DLLs with their own GPL and
-permissive terms. Do not treat every FFmpeg binary as LGPL-only.
+The command-line build enables GPLv3 components, including x264/x265.
+The separately loaded AV runtime is Gyan's full shared build, with GPL-enabled
+codec components. Its source version, archive URL and checksums are recorded in
+bin/runtime/av/source-manifest.json. Do not treat every FFmpeg binary as LGPL-only.
 
-The Qt-supplied FFmpeg libraries are a separate build. The Qt 6.12.0
-Multimedia SPDX inventory identifies its FFmpeg component as 9.0.1 and
-records LGPL-2.1-or-later together with its additional component licenses.
+The Qt-supplied FFmpeg libraries are a separate build. The Qt Multimedia
+SPDX inventory records LGPL-2.1-or-later together with the licenses of its
+incorporated components.
 
 Full texts / attribution records:
     bin/ffmpeg/LICENSE
+    bin/licenses/FFMPEG-SHARED-LICENSE.txt
+    bin/licenses/FFMPEG-SHARED-BUILD.txt
     bin/licenses/
-    bin/licenses/qt/qtmultimedia-6.12.0.spdx.json
+    bin/licenses/qt/qtmultimedia-*.spdx.json
     third_party/ffmpeg/COPYING.LGPLv2.1 (source/header license)
 
 The static command-line tools also incorporate external components.
@@ -137,8 +128,6 @@ For example, the GPU filter path uses libplacebo (LGPL-2.1-or-later).
 Their individual notices and the exact build configuration remain
 applicable in addition to the FFmpeg license.
 
-Version: run bin/ffmpeg/bin/ffmpeg.exe -version and -buildconf;
-inspect the separate media DLL versions and Qt SPDX inventory.
 The FFmpeg headers in this repository are not a complete corresponding
 source distribution for every shipped FFmpeg binary.
 
@@ -154,7 +143,7 @@ Copyright (c) NVIDIA Corporation and affiliates.
 Shipped as:
     bin/runtime/vfx/bin/NVVideoEffects.dll
     bin/runtime/vfx/bin/NVCVImage.dll
-    bin/runtime/vfx/bin/cudart64_12.dll
+    bin/runtime/vfx/bin/cudart64_*.dll
     bin/runtime/vfx/bin/nvngxruntime.dll
     bin/runtime/vfx/features/nvvfxvideosuperres/bin/nvVFXVideoSuperRes.dll
     bin/runtime/vfx/features/nvvfxvideosuperres/bin/nvngx_vsr.dll
@@ -162,19 +151,18 @@ Shipped as:
     bin/runtime/vfx/features/nvvfxupscale/bin/nvVFXUpscale.dll
 
 License: the NVIDIA software license and product-specific terms supplied
-with Video Effects SDK 1.3.0.0, together with applicable third-party
+with the Video Effects SDK, together with applicable third-party
 notices. The CUDA runtime retains its NVIDIA license terms.
 
 Full texts / notices in release packages:
     bin/runtime/vfx/bin/ThirdPartyLicenses.txt
-    bin/runtime/vfx/license/NVIDIA-Software-License-Agreement-2025.05.05.pdf
-    bin/runtime/vfx/license/product-specific-terms-for-nvidia-ai-products-2025.05.05.pdf
-    bin/runtime/vfx/license/NVIDIA-Open-Model-License-Agreements-24-10-2025.pdf
+    bin/runtime/vfx/license/NVIDIA-Software-License-Agreement-*.pdf
+    bin/runtime/vfx/license/product-specific-terms-for-nvidia-ai-products-*.pdf
+    bin/runtime/vfx/license/NVIDIA-Open-Model-License-Agreements-*.pdf
 
 The SDK's license directory is retained with the runtime. Its inclusion
 does not mean every optional SDK component or model is distributed.
 
-Version: VFX SDK 1.3.0.0; CUDA runtime DLL family 12.
 See bin/runtime/vfx/runtime-manifest.json for the selected feature
 libraries, ABI, file sizes and hashes.
 
@@ -191,7 +179,7 @@ Copyright (C) 2008-2025 LibRaw LLC and the contributors identified in
 its COPYRIGHT file and individual sources.
 
 Source:
-    third_party/LibRaw-0.22.2/
+    third_party/LibRaw-*/
 
 Shipped as:
     a statically linked library in Visual Enhancer.exe
@@ -204,12 +192,11 @@ static-library build. LibRaw's dual licensing does not relicense the
 Merserk-owned application code.
 
 Full texts / notices:
-    third_party/LibRaw-0.22.2/LICENSE.LGPL
-    third_party/LibRaw-0.22.2/LICENSE.CDDL
-    third_party/LibRaw-0.22.2/COPYRIGHT
+    third_party/LibRaw-*/LICENSE.LGPL
+    third_party/LibRaw-*/LICENSE.CDDL
+    third_party/LibRaw-*/COPYRIGHT
     bin/licenses/ (release attribution/license collection)
 
-Version: 0.22.2; see libraw/libraw_version.h.
 Used by src/media/image_codecs.cpp for RAW image decoding.
 The previous rawpy Python wrapper is not a runtime dependency.
 
@@ -221,7 +208,7 @@ See https://www.libraw.org/about.
 
 a) libjpeg-turbo
 
-   Source: third_party/libjpeg-turbo-3.1.3/
+   Source: third_party/libjpeg-turbo-*/
    Shipped as: the statically linked jpeg-static library used by the
    application and LibRaw; no TurboJPEG API library is built.
 
@@ -230,21 +217,20 @@ a) libjpeg-turbo
    source files retain their notices.
 
    Full texts:
-       third_party/libjpeg-turbo-3.1.3/LICENSE.md
-       third_party/libjpeg-turbo-3.1.3/README.ijg
+       third_party/libjpeg-turbo-*/LICENSE.md
+       third_party/libjpeg-turbo-*/README.ijg
 
-   Version: 3.1.3; the application build disables SIMD and TurboJPEG.
+   The application build disables SIMD and TurboJPEG.
    Used for JPEG image processing and LibRaw's JPEG support.
 
 b) zlib
 
    Copyright (C) 1995-2026 Jean-loup Gailly and Mark Adler.
-   Source: third_party/zlib-1.3.2/
+   Source: third_party/zlib-*/
    Shipped as: the statically linked zlibstatic library.
 
    License: zlib license. Preserve its copyright and license notices.
-   Full text: third_party/zlib-1.3.2/LICENSE.
-   Version: 1.3.2; see zlib.h.
+   Full text: third_party/zlib-*/LICENSE.
    Used for compression, PNG output and LibRaw's compressed data.
 
 Release packages retain the applicable texts in bin/licenses/.
@@ -258,7 +244,7 @@ Copyright The Qt Company Ltd. and the contributors identified by the
 individual module licenses and Qt SPDX attribution inventories.
 
 Shipped as:
-    Qt6*.dll
+    Qt*.dll
     qml/ (runtime QML imports and plugins)
     platforms/, imageformats/, iconengines/, multimedia/
     networkinformation/, tls/, generic/, translations/
@@ -278,12 +264,12 @@ Full open-source license texts / attribution records:
     bin/licenses/GPL-3.0.txt
     bin/licenses/GPL-2.0.txt
     bin/licenses/qt/
-        qtbase-6.12.0.spdx.json
-        qtdeclarative-6.12.0.spdx.json
-        qtimageformats-6.12.0.spdx.json
-        qtmultimedia-6.12.0.spdx.json
-        qtshadertools-6.12.0.spdx.json
-        qtsvg-6.12.0.spdx.json
+        qtbase-*.spdx.json
+        qtdeclarative-*.spdx.json
+        qtimageformats-*.spdx.json
+        qtmultimedia-*.spdx.json
+        qtshadertools-*.spdx.json
+        qtsvg-*.spdx.json
 
 For LGPL distributions, users may replace the dynamically loaded Qt
 libraries with compatible modified versions and debug those modifications.
@@ -291,14 +277,13 @@ The Merserk Source License does not restrict those third-party rights.
 A compatible Qt kit can be selected with -QtRoot when rebuilding and
 deploying; see build.ps1, tools/deploy.ps1, and CMakeLists.txt.
 
-Version: Qt 6.12.0 in the checked release; the build accepts Qt 6.12.x
-MSVC x64 kits. DLL resources and the kit's SPDX files identify the exact
-versions and licenses. PySide6 and shiboken6 are no longer used.
+The application uses an MSVC x64 Qt kit. The Qt SPDX files retain the
+module copyright and licensing records. PySide and shiboken are no longer used.
 
 Used by the C++ desktop and CLI services and src/desktop/qml/, including
 QtQuick, Controls, Layouts, Dialogs, QtMultimedia and SVG image support.
 
-See https://doc.qt.io/qt-6/licensing.html and
+See https://doc.qt.io/qt/licensing.html and
 https://doc.qt.io/qt-6/licenses-used-in-qt.html.
 
 ===============================================================================
@@ -325,9 +310,8 @@ a) libheif, libde265 and x265
    Texts: bin/licenses/ and the original codec-library license texts.
    The libheif source headers retain their LGPL notices.
 
-   Version: the checked libheif headers identify 1.19.7; runtime DLL
-   versions must be read separately. Used by src/media/image_codecs.cpp
-   for HEIF/HEIC decoding. The pillow-heif wrapper is not shipped.
+   Used by src/media/image_codecs.cpp for HEIF/HEIC decoding.
+   The pillow-heif wrapper is not shipped.
 
    See https://github.com/strukturag/libheif,
    https://github.com/strukturag/libde265, and https://www.videolan.org/developers/x265.html.
@@ -335,12 +319,14 @@ a) libheif, libde265 and x265
 b) MinGW runtime and additional AV codec libraries
 
    Shipped as dependent DLLs in:
-       bin/runtime/av/
        bin/runtime/image-codecs/
 
-   These include libgcc_s_seh, libstdc++, libwinpthread and AV codec
-   dependencies such as dav1d, LAME, Opus, SVT-AV1, libvpx, libwebp,
-   x264 and x265. Their original licenses remain applicable.
+   These include libgcc_s_seh, libstdc++ and libwinpthread. The shared
+   FFmpeg media libraries in bin/runtime/av/ and the command-line tools
+   also incorporate codec dependencies such as dav1d, LAME, Opus,
+   SVT-AV1, libvpx, libwebp, x264 and x265. These are not separate DLLs
+   in the current AV runtime directory. Their original licenses remain
+   applicable; the exact build configuration is recorded in section 2.
 
    libgcc/libstdc++ use their GPL terms with the applicable GCC Runtime
    Library Exception; libwinpthread and other dependencies retain the
@@ -348,7 +334,6 @@ b) MinGW runtime and additional AV codec libraries
    The exception does not relicense other GPL codec libraries.
 
    Texts: bin/licenses/ and the originating runtime license records.
-   Version: inspect the individual DLL/build records.
    The C++ application does not import PyAV, Pillow, NumPy, OpenCV,
    rawpy, pillow-heif, resvg_py, tifffile or pip.
 
@@ -361,7 +346,6 @@ c) Khronos Vulkan and Vulkan Video headers
    Copyright The Khronos Group Inc. and contributors.
    License: Apache-2.0 and/or MIT, as specified by each file.
    Full text: third_party/vulkan/LICENSE.md and individual header notices.
-   Version: see the generated header version macros.
    Used to describe Vulkan APIs and codec structures; graphics drivers
    are provided by the system.
 
@@ -373,25 +357,23 @@ d) Qt-supplied helpers and incorporated third-party code
    Consult the Qt SPDX inventories and bin/licenses/qt/ for
    attribution; the Qt license does not replace those upstream terms.
 
-e) libavif command-line decoder
+e) libavif command-line tools
 
    Copyright 2019 Joe Drago and the contributors identified in LICENSE.
-   Shipped as: bin/avif/avifdec.exe.
+   Shipped as: bin/avif/avifdec.exe and bin/avif/avifenc.exe.
    License: BSD-2-Clause for libavif, with the incorporated-source notices
    retained in bin/avif/LICENSE. Codec dependencies retain their own terms.
    This product includes software developed by the Independent JPEG Group.
 
-   Version: libavif 1.4.2; the checked decoder reports dav1d 1.5.3,
-   aom 3.14.1 and libyuv 1924. Run bin/avif/avifdec.exe --version for
-   the exact linked codec build identifiers.
-   Used for AVIF image decoding and conversion.
+   The decoder incorporates dav1d, aom and libyuv; their original notices
+   and license terms remain applicable.
+   Used for AVIF image decoding, encoding and conversion.
 
 f) Exiv2 metadata tools
 
    Shipped as: bin/exiv2/exiv2.exe and bin/exiv2/exiv2.dll.
    License: GPL-2.0-or-later, as stated by the tool's -V output.
    Full text: bin/exiv2/COPYING; retain the original Exiv2 notices.
-   Version: Exiv2 0.28.9; run bin/exiv2/exiv2.exe -V.
    Used by src/media/image_metadata.cpp for image metadata handling.
 
 ===============================================================================
@@ -404,11 +386,16 @@ for their terms in third-party license texts:
 
     Visual Enhancer.exe and VE_CLI.exe (desktop and CLI applications)
     neuroframe_engine_frame_interpolation.dll
+    neuroframe_engine_fsr_frame_generation.dll
     neuroframe_engine_neural_rendering.dll
     neuroframe_engine_ray_reconstruction.dll
+    neuroframe_engine_reshade.dll
     neuroframe_engine_super_resolution.dll
     neuroframe_engine_upscaling.dll
     neuroframe_engine_video_effects.dll
+    ve_reshade_runtime.dll (Merserk headless runtime wrapper around
+        third-party ReShade and its incorporated helpers; their original
+        licenses remain applicable as described in section 11)
     Merserk-owned application code and resources under src/
     Merserk-owned build and packaging scripts under tools/
 
@@ -429,7 +416,7 @@ replaced, or relicensed merely because it sits inside this package.
 9. AMD FIDELITYFX CONTRAST ADAPTIVE SHARPENING
 ===============================================================================
 
-The CAS sharpen-only algorithm is adapted from FidelityFX SDK 1.1.4,
+The CAS sharpen-only algorithm is adapted from the FidelityFX SDK,
 Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 License: MIT-style FidelityFX SDK license. The complete permission and
@@ -447,7 +434,7 @@ used by the image and video Sharpening stage.
 ===============================================================================
 
 The sharpening-only NVSharpen algorithm is adapted from NVIDIA Image
-Scaling SDK 1.0.3, Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES.
+Scaling SDK, Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES.
 The NIS scaling algorithm is not used by this adaptation.
 
 License: MIT. The complete text is in src/desktop/NVIDIA-NIS-LICENSE.txt,
@@ -460,7 +447,141 @@ replaces the earlier Python/CPU adaptation and is used by the image and
 video Sharpening stage.
 
 ===============================================================================
-11. SYSTEM COMPONENTS, TRADEMARKS, NO ENDORSEMENT
+11. RESHADE RUNTIME, AMD FIDELITYFX OPTICAL FLOW, ONNX RUNTIME & DEPTH MODEL
+===============================================================================
+
+a) ReShade (D3D12 effect runtime and ReShadeFX compiler)
+
+   Copyright (C) 2014 Patrick Mours. All rights reserved.
+   Shipped as: source-built headless D3D12 runtime in
+       bin/runtime/reshade/ve_reshade_runtime.dll
+   License: BSD-3-Clause.
+   Full text: bin/runtime/reshade/license/ReShade-LICENSE.md.
+   See https://github.com/crosire/reshade.
+
+   The native runtime also incorporates fpng, JPEG XL simple_lossless, stb,
+   utfcpp and SPIR-V headers from the ReShade source tree. Their individual
+   license files and source-header notices retain their own terms. The source
+   repositories are identified in:
+       native (dev)/modules/reshade/dependencies.lock.json
+
+b) AMD FidelityFX Optical Flow
+
+   Copyright (C) 2024 Advanced Micro Devices, Inc.
+   Shipped as: compiled DXIL shaders and static D3D12 optical-flow backend in
+       bin/runtime/reshade/neuroframe_engine_reshade.dll
+   License: MIT-style FidelityFX SDK license.
+   Full text: bin/runtime/reshade/license/AMD-FidelityFX-OpticalFlow-LICENSE.txt.
+   ReShade uses this AMD backend for video motion estimation and temporal
+   depth stabilization across supported GPUs. The separate FSR Frame
+   Generation backend is described in section 12.
+
+c) Microsoft ONNX Runtime, DirectML and graphics helpers
+
+   Copyright (c) Microsoft Corporation.
+   Shipped as:
+       bin/runtime/reshade/onnxruntime.dll
+       bin/runtime/reshade/onnxruntime_providers_shared.dll
+       bin/runtime/reshade/DirectML.dll
+       bin/runtime/reshade/WinPixEventRuntime.dll
+       bin/runtime/reshade/dxcompiler.dll
+       bin/runtime/reshade/dxil.dll
+   License: MIT (ONNX Runtime) and Microsoft DirectML redistributable terms.
+   The DirectX Shader Compiler and DXIL validator retain their Microsoft,
+   MIT and LLVM/University of Illinois license records. WinPixEventRuntime
+   retains the Microsoft PIX distribution terms applicable to its build.
+   Full texts / attribution records:
+       bin/runtime/reshade/license/ONNXRuntime-LICENSE.txt
+       bin/runtime/reshade/license/DirectML-LICENSE.txt
+       native (dev)/external/ReShadeDependencies/onnxruntime-directml/ThirdPartyNotices.txt (build inputs)
+       native (dev)/external/FidelityFX-SDK-*/sdk/tools/ffx_shader_compiler/libs/dxc/LICENSE-MS.txt
+       native (dev)/external/FidelityFX-SDK-*/sdk/tools/ffx_shader_compiler/libs/dxc/LICENSE-MIT.txt
+       native (dev)/external/FidelityFX-SDK-*/sdk/tools/ffx_shader_compiler/libs/dxc/LICENSE-LLVM.txt
+   See https://github.com/microsoft/onnxruntime,
+   https://github.com/microsoft/DirectXShaderCompiler and
+   https://github.com/microsoft/PixEvents.
+
+d) MoGe-2 ViT-S ONNX Model
+
+   Source: https://huggingface.co/Ruicheng/moge-2-vits-normal-onnx.
+   Copyright (c) Microsoft Corporation.
+   Shipped as:
+       bin/runtime/reshade/models/moge-2-vits/model.onnx
+   License: MIT for MoGe and its ViT-S model weights. Incorporated DINOv2
+   code retains its Apache-2.0 notices.
+   Full texts / attribution records:
+       bin/runtime/reshade/license/MoGe-LICENSE.txt
+       bin/runtime/reshade/license/MoGe-NOTICE.txt
+   See https://github.com/microsoft/MoGe and
+   https://huggingface.co/Ruicheng/moge-2-vits-normal.
+   The adapted graph removes unused normals and metric-scale branches,
+   derives the token count from the input patch grid, and extracts relative
+   depth and the original validity mask. Retained learned weights are
+   unchanged. The validity mask is not calibrated uncertainty.
+   The installed depth inference path uses native C++ ONNX Runtime and DirectML;
+   Python and PyTorch are not runtime dependencies for this path.
+
+e) Bundled ReShade Shaders and Presets
+
+   Shipped in:
+       bin/runtime/reshade/reshade-shaders/
+       bin/runtime/reshade/presets/FDVanilla/
+   Includes the FDVanilla preset (Krzysztof-Bogunia/FDVanilla_Reshade) and its
+   shaders, shared ReShade include files, textures and LUT. Optional user
+   shader folders retain the notices of their respective authors.
+   License: MIT for the bundled FDVanilla preset; each shader, include file
+   and asset retains its original header notices and repository terms.
+   Full texts:
+       bin/runtime/reshade/license/FDVanilla-LICENSE.txt
+       bin/runtime/reshade/license/SweetFX-LICENSE.txt
+   See https://github.com/Krzysztof-Bogunia/FDVanilla_Reshade and
+   https://github.com/crosire/reshade-shaders. RTGI shaders are not included.
+
+===============================================================================
+12. AMD FSR FRAME GENERATION AND DIRECTX VIDEO ENCODING
+===============================================================================
+
+AMD FSR Frame Generation uses the AMD FidelityFX DirectX 12 effect runtime.
+The engine also incorporates AMD FidelityFX Optical Flow source. Pure FSR
+workflows use DirectX resources and AMD optical flow; they do not require
+CUDA or NVIDIA Optical Flow.
+
+Shipped as:
+    bin/runtime/fsrfg/amd_fidelityfx_framegeneration_dx12.dll
+    bin/runtime/fsrfg/WinPixEventRuntime.dll
+
+Copyright (C) Advanced Micro Devices, Inc.
+Copyright (c) Microsoft Corporation.
+
+License: the AMD effect runtime is subject to the redistribution terms in
+LICENSE-AMD-FSR.md, including binary-only redistribution and restrictions on
+reverse engineering, decompilation and disassembly. The AMD API source files
+identified as exceptions in that license, the incorporated AMD FidelityFX
+Optical Flow source and the Microsoft PIX event runtime retain their
+respective MIT license terms.
+
+The vendor runtime is distributed unchanged. Provider selection, source
+inventories and binary checksums are recorded in:
+    bin/runtime/fsrfg/runtime-manifest.json
+    bin/runtime/fsrfg/sdk-api-source-manifest.json
+
+Full texts:
+    bin/runtime/fsrfg/LICENSE-AMD-FSR.md
+    bin/runtime/fsrfg/LICENSE-AMD-OPTICAL-FLOW.txt
+    bin/runtime/fsrfg/LICENSE-PIX.txt
+
+Source: https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK and
+https://www.nuget.org/packages/WinPixEventRuntime.
+
+NVIDIA's DirectX video encoder is called through nvEncodeAPI64.dll from the
+installed Windows driver. That driver is not redistributed. The API header
+retains its NVIDIA MIT license in bin/licenses/NVENC-HEADERS-LICENSE.txt.
+AMD AMF encoding uses the installed AMD driver through FFmpeg's AMF interface.
+See https://docs.nvidia.com/video-technologies/video-codec-sdk/ and
+https://github.com/GPUOpen-LibrariesAndSDKs/AMF.
+
+===============================================================================
+13. SYSTEM COMPONENTS, TRADEMARKS, NO ENDORSEMENT
 ===============================================================================
 
 The app calls Microsoft Windows, Direct3D, Vulkan and NVIDIA CUDA driver
@@ -482,11 +603,11 @@ Redistribution information:
 https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files
 
 Third-party names and marks (including AMD, FidelityFX, NVIDIA, DLSS, RTX,
-GeForce, FFmpeg, Qt, LibRaw, and others) are the property of their respective
-owners and are used only to identify compatible or incorporated technology.
-Inclusion does not imply sponsorship, endorsement, certification, or
-partnership unless expressly stated by that party. Visual Enhancer is
-developed independently by Merserk.
+GeForce, ReShade, ONNX Runtime, DirectML, FFmpeg, Qt, LibRaw, and others)
+are the property of their respective owners and are used only to identify
+compatible or incorporated technology. Inclusion does not imply sponsorship,
+endorsement, certification, or partnership unless expressly stated by that
+party. Visual Enhancer is developed independently by Merserk.
 
 ===============================================================================
 END OF THIRD-PARTY NOTICES

@@ -15,7 +15,10 @@ foreach ($required in @('resources/desktop/qml/Main.qml', 'resources/desktop/app
     'resources/shaders', "platforms/qwindows$qtSuffix.dll", "platforms/qoffscreen$qtSuffix.dll",
     "Qt6Core$qtSuffix.dll", "Qt6Gui$qtSuffix.dll", "Qt6Quick$qtSuffix.dll", 'qml/QtQuick/Controls/Basic',
     'bin/ffmpeg/bin/ffmpeg.exe', 'bin/ffmpeg/bin/ffprobe.exe', 'bin/avif/avifenc.exe',
-    'bin/avif/avifdec.exe', 'bin/exiv2/exiv2.exe', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt')) {
+    'bin/avif/avifdec.exe', 'bin/exiv2/exiv2.exe', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt',
+    'bin/runtime/reshade/runtime-manifest.json',
+    'bin/runtime/reshade/models/moge-2-vits/model.onnx',
+    'bin/runtime/reshade/presets/FDVanilla/FDVanilla_reshade.ini')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $required))) { throw "Missing package dependency: $required" }
 }
 $owned = @(Get-VeOwnedBinaries $root)
@@ -26,18 +29,62 @@ $contracts = @{
     super_resolution = 'dlsssr/neuroframe_engine_super_resolution.dll'
     ray_reconstruction = 'dlssrr/neuroframe_engine_ray_reconstruction.dll'
     frame_interpolation = 'dlssg/neuroframe_engine_frame_interpolation.dll'
+    fsr_frame_generation = 'fsrfg/neuroframe_engine_fsr_frame_generation.dll'
     rtx_video = 'rtx_video/neuroframe_engine_upscaling.dll'
     video_effects = 'vfx/neuroframe_engine_video_effects.dll'
+    reshade = 'reshade/neuroframe_engine_reshade.dll'
 }
 foreach ($module in $contracts.Keys) {
     $contractPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "native (dev)/modules/$module/contract.json"
     $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
-    if ($module -ne 'video_effects' -and $contract.initialization_abi -ne 2) { throw "Outdated initialization contract: $module" }
+    if ($module -eq 'fsr_frame_generation') {
+        if ($contract.abi -ne 1 -or $contract.initialization_abi -ne 1 -or $contract.provider -ne '3.1.6') { throw 'Invalid FSR 3 engine contract.' }
+    } elseif ($module -ne 'video_effects' -and $contract.initialization_abi -ne 2) { throw "Outdated initialization contract: $module" }
     $exports = @(Get-VePeExports (Join-Path $root ('bin/runtime/' + $contracts[$module])))
     foreach ($export in $contract.exports) {
         if ($export -notin $exports) { throw "Missing $module export: $export" }
     }
 }
+# Require the pinned FSR 3 payload and one unambiguous FFmpeg dependency set.
+$fsrRuntime = Join-Path $root 'bin/runtime/fsrfg'
+$fsrManifest = Get-Content -LiteralPath (Join-Path $fsrRuntime 'runtime-manifest.json') -Raw | ConvertFrom-Json
+if ($fsrManifest.selected_provider -ne '3.1.6') { throw 'The package must select AMD FSR 3.1.6.' }
+foreach ($record in $fsrManifest.binaries) {
+    if ($record.File -ne [IO.Path]::GetFileName($record.File)) { throw 'Invalid FSR manifest filename.' }
+    $path = Join-Path $fsrRuntime $record.File
+    if ((Get-FileHash -LiteralPath $path).Hash -ne $record.SHA256) { throw "FSR runtime checksum mismatch: $($record.File)" }
+}
+foreach ($required in @('amd_fidelityfx_framegeneration_dx12.dll','WinPixEventRuntime.dll','LICENSE-AMD-FSR.md','LICENSE-AMD-OPTICAL-FLOW.txt','LICENSE-PIX.txt','contract.json')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $fsrRuntime $required) -PathType Leaf)) { throw "Missing FSR runtime dependency: $required" }
+}
+foreach ($file in Get-ChildItem -LiteralPath $fsrRuntime -Recurse -File) {
+    if ($file.Name -match '(?i)nvofapi|nvcuda|cudart|cublas|python|torch') { throw "Forbidden FSR runtime dependency: $($file.Name)" }
+}
+if ((Get-FileHash -LiteralPath (Join-Path $fsrRuntime 'amd_fidelityfx_framegeneration_dx12.dll')).Hash -ne '02297BEEDD285E822D3A64F314CF00FAF378DCEC0EDC47FF0C4DD71B3A8C2F18') { throw 'Unrecognized AMD FSR vendor DLL.' }
+$mediaRuntime = Join-Path $root 'bin/runtime/av'
+$mediaManifest = Get-Content -LiteralPath (Join-Path $mediaRuntime 'source-manifest.json') -Raw | ConvertFrom-Json
+if ($mediaManifest.version -ne '8.1.2') { throw 'The DirectX video path requires the pinned FFmpeg runtime.' }
+$mediaNames = @('avutil-60.dll','avcodec-62.dll','avformat-62.dll','swscale-9.dll','swresample-6.dll')
+if (@(Get-ChildItem -LiteralPath $mediaRuntime -File -Filter '*.dll').Count -ne $mediaNames.Count) { throw 'Ambiguous AV runtime dependency set.' }
+foreach ($name in $mediaNames) {
+    $record = @($mediaManifest.libraries | Where-Object name -EQ $name)
+    if ($record.Count -ne 1 -or (Get-FileHash -LiteralPath (Join-Path $mediaRuntime $name)).Hash -ne $record[0].sha256) { throw "AV runtime checksum mismatch: $name" }
+}
+# ReShade motion is AMD FidelityFX Optical Flow only; its private runtime must stay free of NVIDIA Optical Flow,
+# RTGI shaders, Python and PyTorch.
+$reshadeRuntime = Join-Path $root 'bin/runtime/reshade'
+foreach ($file in (Get-ChildItem -LiteralPath $reshadeRuntime -Recurse -File)) {
+    if ($file.Name -match '(?i)nvofapi|nvofa|^rtgi|pytorch|torch|python') { throw "Forbidden ReShade runtime payload: $($file.FullName)" }
+    if ($file.Extension -in @('.fx', '.fxh') -and $file.Name -match '(?i)rtgi|mxao_gi|global.?illumination') { throw "RTGI shader is not allowed: $($file.FullName)" }
+}
+foreach ($binary in @('ve_reshade_runtime.dll', 'neuroframe_engine_reshade.dll', 'onnxruntime.dll')) {
+    $path = Join-Path $reshadeRuntime $binary
+    if (-not (Test-Path -LiteralPath $path)) { throw "Missing ReShade runtime binary: $binary" }
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $text = [Text.Encoding]::ASCII.GetString($bytes) + [Text.Encoding]::Unicode.GetString($bytes)
+    if ($text -match '(?i)nvofapi') { throw "ReShade runtime binary references NVIDIA Optical Flow: $binary" }
+}
+
 $inventory = foreach ($file in (Get-ChildItem -LiteralPath $root -Recurse -File |
     Where-Object { $_.Extension -in @('.exe', '.dll') -and -not $_.FullName.StartsWith((Join-Path $root 'outputs') + '\', [StringComparison]::OrdinalIgnoreCase) -and -not $_.FullName.StartsWith((Join-Path $root 'logs') + '\', [StringComparison]::OrdinalIgnoreCase) } | Sort-Object FullName)) {
     $isOwned = $file.FullName -in $ownedPaths

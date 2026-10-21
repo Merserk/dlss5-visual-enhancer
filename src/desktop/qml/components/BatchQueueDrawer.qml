@@ -219,7 +219,7 @@ Rectangle {
             ColumnHeading { width: drawer.numberWidth; text: "#"; horizontalAlignment: Text.AlignHCenter }
             ColumnHeading { width: drawer.fileWidth; text: qsTranslate("App", "Thumbnail / File") }
             ColumnHeading { width: drawer.progressWidth; text: qsTranslate("App", "Job progress") }
-            ColumnHeading { width: drawer.fpsWidth; text: "FPS"; visible: drawer.showFps; horizontalAlignment: Text.AlignHCenter }
+            ColumnHeading { width: drawer.fpsWidth; text: qsTranslate("App", "FPS"); visible: drawer.showFps; horizontalAlignment: Text.AlignHCenter }
             ColumnHeading { width: drawer.remainingWidth; text: qsTranslate("App", "Remaining"); visible: drawer.showRemaining; horizontalAlignment: Text.AlignHCenter }
             ColumnHeading { width: drawer.completedWidth; text: qsTranslate("App", "Completed in"); visible: drawer.showCompleted; horizontalAlignment: Text.AlignHCenter }
             ColumnHeading { width: drawer.statusWidth; text: qsTranslate("App", "Status"); horizontalAlignment: Text.AlignHCenter }
@@ -455,7 +455,7 @@ Rectangle {
                     QueueToolTip {
                         visible: progressHover.hovered && queueRow.detail !== ""
                         text: {
-                            var lines = [queueRow.detail]
+                            var lines = [qsTranslate("App", queueRow.detail)]
                             if (queueRow.running && queueRow.processingFps > 0)
                                 lines.push(queueRow.processingFps.toFixed(1) + qsTranslate("App", " processing FPS"))
                             if (queueRow.running && queueRow.remainingSeconds >= 0)
@@ -471,7 +471,7 @@ Rectangle {
                     Column {
                         anchors.centerIn: parent; spacing: 4
                         MetricText { objectName: "batchQueueFps"; text: queueRow.running && queueRow.processingFps > 0 ? queueRow.processingFps.toFixed(1) : "—" }
-                        MetricCaption { text: "FPS" }
+                        MetricCaption { text: qsTranslate("App", "FPS") }
                     }
                     HoverHandler { id: fpsHover }
                     QueueToolTip { visible: fpsHover.hovered; text: qsTranslate("App", "Measured frames per second during video processing") }
@@ -506,7 +506,7 @@ Rectangle {
                         font.weight: Font.Medium; color: queueRow.stateColor
                     }
                     HoverHandler { id: statusHover }
-                    QueueToolTip { visible: statusHover.hovered && queueRow.detail !== ""; text: queueRow.detail }
+                    QueueToolTip { visible: statusHover.hovered && queueRow.detail !== ""; text: qsTranslate("App", queueRow.detail) }
                 }
                 Item {
                     width: drawer.actionsWidth; height: parent.height

@@ -42,9 +42,9 @@ inline std::optional<QVariant> staticChoices(Property property) {
     case Property::dlssPresetChoices:
         return QJsonDocument::fromJson(R"json(["Default","J","K","L","M"])json").array().toVariantList();
     case Property::upscaleEngineChoices:
-        return QJsonDocument::fromJson(R"json(["RTX Video Super Resolution","DLSS"])json")
-            .array()
-            .toVariantList();
+        return QVariantList{QVariantMap{{"label", QCoreApplication::translate("App", "RTX Video Super Resolution")},
+                                       {"value", "RTX Video Super Resolution"}},
+                            QVariantMap{{"label", "DLSS"}, {"value", "DLSS"}}};
     case Property::imageFormatChoices:
         return QJsonDocument::fromJson(R"json(["PNG","JPEG","WebP","AVIF","TIFF"])json")
             .array()
@@ -64,15 +64,18 @@ inline std::optional<QVariant> staticChoices(Property property) {
             .toVariantList();
     case Property::renameModeChoices:
         return QJsonDocument::fromJson(R"json(["Auto","Copy","Custom"])json").array().toVariantList();
-    case Property::fiFpsChoices:
-        return QJsonDocument::fromJson(
-                   R"json([{"label":"23.976 FPS","value":"23.976"},{"label":"25 FPS","value":"25"},{"label":"29.97 FPS","value":"29.97"},{"label":"30 FPS","value":"30"},{"label":"50 FPS","value":"50"},{"label":"59.94 FPS","value":"59.94"},{"label":"60 FPS","value":"60"},{"label":"90 FPS","value":"90"},{"label":"119.88 FPS","value":"119.88"},{"label":"120 FPS","value":"120"},{"label":"144 FPS","value":"144"},{"label":"165 FPS","value":"165"},{"label":"180 FPS","value":"180"},{"label":"240 FPS","value":"240"},{"label":"360 FPS","value":"360"},{"label":"480 FPS","value":"480"}])json")
-            .array()
-            .toVariantList();
-    case Property::fiEngineChoices:
-        return QJsonDocument::fromJson(R"json(["Auto","Native DLSSG","Cascade"])json")
-            .array()
-            .toVariantList();
+    case Property::fiFpsChoices: {
+        QVariantList choices;
+        for (const auto* fps : {"23.976", "25", "29.97", "30", "50", "59.94", "60", "90",
+                               "119.88", "120", "144", "165", "180", "240", "360", "480"}) {
+            const auto value = QString::fromLatin1(fps);
+            choices.append(QVariantMap{{"label", QCoreApplication::translate("App", "%1 FPS").arg(value)},
+                                      {"value", value}});
+        }
+        return choices;
+    }
+    case Property::fiProviderChoices:
+        return QVariantList{QVariantMap{{"label","DLSS"},{"value","DLSS"}},QVariantMap{{"label","AMD FSR 3"},{"value","FSR 3"}}};
     case Property::fiPreviewLengthChoices:
     case Property::upscalePreviewLengthChoices:
     case Property::nrPreviewLengthChoices: {

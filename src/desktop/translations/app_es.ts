@@ -481,10 +481,6 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
       <translation>No se puede iniciar el lote: %1</translation>
     </message>
     <message>
-      <source>Cascade</source>
-      <translation>Cascada</translation>
-    </message>
-    <message>
       <source>Changes apply immediately.</source>
       <translation>Los cambios se aplican de inmediato.</translation>
     </message>
@@ -719,7 +715,7 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
       <location filename="../qml/views/FrameInterpolationView.qml" line="88" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="49" />
       <source>DLSS Frame Generation</source>
-      <translation>DLSS Frame Generation</translation>
+      <translation>Generación de fotogramas DLSS</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="14" />
@@ -730,7 +726,7 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="41" />
       <source>DLSS Neural Rendering</source>
-      <translation>DLSS Neural Rendering</translation>
+      <translation>Renderizado neuronal DLSS</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="30" />
@@ -742,17 +738,11 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
       <location filename="../qml/views/NeuralRenderingView.qml" line="43" />
       <location filename="../qml/views/UpscaleView.qml" line="115" />
       <source>DLSS Super Resolution</source>
-      <translation>DLSS Super Resolution</translation>
+      <translation>Superresolución DLSS</translation>
     </message>
     <message>
       <source>DLSS effects: %1</source>
       <translation>Efectos DLSS: %1</translation>
-    </message>
-    <message>
-      <location filename="../qml/components/FrameGenerationControls.qml" line="25" />
-      <location filename="../qml/views/FrameInterpolationView.qml" line="104" />
-      <source>DLSS-G Engine</source>
-      <translation>Motor DLSS-G</translation>
     </message>
     <message>
       <source>Deblur Modes</source>
@@ -1414,10 +1404,6 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
       <translation>Estilo NR</translation>
     </message>
     <message>
-      <source>Native DLSSG</source>
-      <translation>DLSSG nativo</translation>
-    </message>
-    <message>
       <source>Natural</source>
       <translation>Natural</translation>
     </message>
@@ -1831,13 +1817,13 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="44" />
       <source>RTX Super Resolution</source>
-      <translation>RTX Super Resolution</translation>
+      <translation>Superresolución RTX</translation>
     </message>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="45" />
       <location filename="../qml/views/UpscaleView.qml" line="275" />
       <source>RTX Video HDR</source>
-      <translation>RTX Video HDR</translation>
+      <translation>Vídeo HDR RTX</translation>
     </message>
     <message>
       <source>Ready</source>
@@ -2640,11 +2626,461 @@ Se muestra un fotograma. Navega con &lt; &gt; o abre el archivo externamente.</t
     </message>
       <message>
       <source>DLSS Ray Reconstruction</source>
-      <translation>DLSS Ray Reconstruction</translation>
+      <translation>Reconstrucción de rayos DLSS</translation>
     </message>
     <message>
       <source>Imported images and videos use estimated material guides. Results depend on the source.</source>
       <translation>Las imágenes y los vídeos importados usan datos de materiales estimados. Los resultados dependen de la fuente.</translation>
     </message>
-</context>
+    <message>
+      <source>AMD FidelityFX Optical Flow</source>
+      <translation>Flujo óptico AMD FidelityFX</translation>
+    </message>
+    <message>
+      <source>Active Techniques</source>
+      <translation>Técnicas activas</translation>
+    </message>
+    <message>
+      <source>Always (MoGe-2 ViT-S)</source>
+      <translation>Siempre (MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Auto (MoGe-2 ViT-S When Required)</source>
+      <translation>Automático (MoGe-2 ViT-S cuando sea necesario)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Shaders)</source>
+      <translation>Automático (shaders del preajuste y del entorno)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Textures)</source>
+      <translation>Automático (texturas del preajuste y del entorno)</translation>
+    </message>
+    <message>
+      <source>Choose a ReShade .ini preset</source>
+      <translation>Elegir un preajuste .ini de ReShade</translation>
+    </message>
+    <message>
+      <source>Depth Input</source>
+      <translation>Entrada de profundidad</translation>
+    </message>
+    <message>
+      <source>Disabled</source>
+      <translation>Desactivado</translation>
+    </message>
+    <message>
+      <source>Disocclusion Sensitivity</source>
+      <translation>Sensibilidad de desoclusión</translation>
+    </message>
+    <message>
+      <source>Effect Mix</source>
+      <translation>Mezcla del efecto</translation>
+    </message>
+    <message>
+      <source>Flip Depth Vertically</source>
+      <translation>Invertir profundidad verticalmente</translation>
+    </message>
+    <message>
+      <source>Logarithmic Depth Buffer</source>
+      <translation>Búfer de profundidad logarítmico</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Spatial)</source>
+      <translation>Desactivado (espacial por fotograma)</translation>
+    </message>
+    <message>
+      <source>Processing ReShade video</source>
+      <translation>Procesando video con ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade</source>
+      <translation>ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade Preset (.ini)</source>
+      <translation>Preajuste de ReShade (.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade Presets (*.ini)</source>
+      <translation>Preajustes de ReShade (*.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade runtime unavailable.</source>
+      <translation>Entorno de ejecución de ReShade no disponible.</translation>
+    </message>
+    <message>
+      <source>Reload Preset</source>
+      <translation>Recargar preajuste</translation>
+    </message>
+    <message>
+      <source>Reloaded ReShade preset.</source>
+      <translation>Preajuste de ReShade recargado.</translation>
+    </message>
+    <message>
+      <source>Reversed Depth Buffer</source>
+      <translation>Búfer de profundidad invertido</translation>
+    </message>
+    <message>
+      <source>Save Preset Copy</source>
+      <translation>Guardar copia del preajuste</translation>
+    </message>
+    <message>
+      <source>Save ReShade Preset Copy</source>
+      <translation>Guardar copia del preajuste de ReShade</translation>
+    </message>
+    <message>
+      <source>Saved ReShade preset to %1</source>
+      <translation>Preajuste de ReShade guardado en %1</translation>
+    </message>
+    <message>
+      <source>Shader Parameters</source>
+      <translation>Parámetros de shader</translation>
+    </message>
+    <message>
+      <source>Shader Search Folder (.fx / .fxh)</source>
+      <translation>Carpeta de búsqueda de shaders (.fx / .fxh)</translation>
+    </message>
+    <message>
+      <source>Temporal Depth Blend</source>
+      <translation>Mezcla temporal de profundidad</translation>
+    </message>
+    <message>
+      <source>Texture &amp; LUT Search Folder</source>
+      <translation>Carpeta de búsqueda de texturas y LUT</translation>
+    </message>
+    <message>
+      <source>Video Motion &amp; Depth Stabilization</source>
+      <translation>Movimiento de video y estabilización de profundidad</translation>
+    </message>
+    <message>
+      <source>Always Generate AI Depth</source>
+      <translation>Generar siempre profundidad con IA</translation>
+    </message>
+    <message>
+      <source>Optical Flow</source>
+      <translation>Flujo óptico</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Depth)</source>
+      <translation>Desactivado (profundidad por fotograma)</translation>
+    </message>
+    <message>
+      <source>This preset requires depth. Select Auto or Always to process it.</source>
+      <translation>Este preajuste necesita profundidad. Selecciona Automático o Siempre.</translation>
+    </message>
+    <message>
+      <source>AI depth supplies effects that need scene depth. Auto stabilizes it in video using AMD Optical Flow.</source>
+      <translation>La profundidad IA alimenta los efectos que necesitan profundidad de escena. Automático la estabiliza en vídeo con AMD Optical Flow.</translation>
+    </message>
+    <message>
+      <source>This preset does not need AI depth or motion processing. Auto skips that work.</source>
+      <translation>Este preajuste no necesita profundidad IA ni procesamiento de movimiento. Automático omite ese trabajo.</translation>
+    </message>
+    <message>
+      <source>Techniques &amp; Settings</source>
+      <translation>Técnicas y ajustes</translation>
+    </message>
+    <message>
+      <source>Reset Values</source>
+      <translation>Restablecer valores</translation>
+    </message>
+    <message>
+      <source>Search effects and parameters…</source>
+      <translation>Buscar efectos y parámetros…</translation>
+    </message>
+    <message>
+      <source>%1 enabled</source>
+      <translation>%1 activadas</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>Desactivado</translation>
+    </message>
+    <message>
+      <source>Fisheye distortion is off by default. Enable the technique to apply it.</source>
+      <translation>La distorsión de ojo de pez está desactivada por defecto. Activa la técnica para aplicarla.</translation>
+    </message>
+    <message>
+      <source>Enable a technique above to apply this effect.</source>
+      <translation>Activa una técnica arriba para aplicar este efecto.</translation>
+    </message>
+    <message>
+      <source>Depth Detail</source>
+      <translation>Detalle de profundidad</translation>
+    </message>
+    <message>
+      <source>Effect Precision</source>
+      <translation>Precisión de efectos</translation>
+    </message>
+    <message>
+      <source>HDR Handling</source>
+      <translation>Procesamiento HDR</translation>
+    </message>
+    <message>
+      <source>Preserve Source Transparency</source>
+      <translation>Conservar transparencia original</translation>
+    </message>
+    <message>
+      <source>Show Internal Shader Parameters</source>
+      <translation>Mostrar parámetros internos del shader</translation>
+    </message>
+    <message>
+      <source>MoGe-2 ViT-S · ONNX Runtime DirectML
+Video depth alignment · AMD FidelityFX Optical Flow</source>
+      <translation>MoGe-2 ViT-S · ONNX Runtime DirectML
+Alineación de profundidad del vídeo · Flujo óptico AMD FidelityFX</translation>
+    </message>
+    <message>
+      <source>Choose a preset to begin.</source>
+      <translation>Selecciona un preajuste para empezar.</translation>
+    </message>
+    <message>
+      <source>%1 technique(s) enabled · %2</source>
+      <translation>%1 técnica(s) activada(s) · %2</translation>
+    </message>
+    <message>
+      <source>AI depth enabled</source>
+      <translation>Profundidad IA activada</translation>
+    </message>
+    <message>
+      <source>Depth not required or disabled</source>
+      <translation>Profundidad innecesaria o desactivada</translation>
+    </message>
+    <message>
+      <source>Enabled</source>
+      <translation>Activado</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>Avanzado</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation</source>
+      <translation>Generación de fotogramas FSR</translation>
+    </message>
+    <message>
+      <source>Processing GPU</source>
+      <translation>GPU de procesamiento</translation>
+    </message>
+    <message>
+      <source>Frame generation available</source>
+      <translation>Generación de fotogramas disponible</translation>
+    </message>
+    <message>
+      <source>Selected FSR adapter is unavailable</source>
+      <translation>El adaptador FSR seleccionado no está disponible</translation>
+    </message>
+    <message>
+      <source>No compatible FSR adapter detected</source>
+      <translation>No se detectó ningún adaptador FSR compatible</translation>
+    </message>
+    <message>
+      <source>Frame generation provider</source>
+      <translation>Tecnología de generación de fotogramas</translation>
+    </message>
+    <message>
+      <source>Shared GPU memory</source>
+      <translation>Memoria GPU compartida</translation>
+    </message>
+    <message>
+      <source>AI Processing GPU (DirectX 12 / FidelityFX)</source>
+      <translation>GPU de procesamiento de IA (DirectX 12 / FidelityFX)</translation>
+    </message>
+    <message>
+      <source>RTX Video Super Resolution</source>
+      <translation>Superresolución de vídeo RTX</translation>
+    </message>
+    <message>
+      <source>Fast (280)</source>
+      <translation>Rápido (280)</translation>
+    </message>
+    <message>
+      <source>Standard (504)</source>
+      <translation>Estándar (504)</translation>
+    </message>
+    <message>
+      <source>High (756)</source>
+      <translation>Alto (756)</translation>
+    </message>
+    <message>
+      <source>Maximum (1008)</source>
+      <translation>Máximo (1008)</translation>
+    </message>
+    <message>
+      <source>8-bit sRGB Compatibility</source>
+      <translation>Compatibilidad con sRGB de 8 bits</translation>
+    </message>
+    <message>
+      <source>Auto (SDR Preset Adapter)</source>
+      <translation>Auto (adaptador de preajustes SDR)</translation>
+    </message>
+    <message>
+      <source>HDR-Aware Preset</source>
+      <translation>Preajuste compatible con HDR</translation>
+    </message>
+    <message>
+      <source>SDR Adapter</source>
+      <translation>Adaptador SDR</translation>
+    </message>
+    <message>
+      <source>Reject Unsupported</source>
+      <translation>Rechazar los no compatibles</translation>
+    </message>
+    <message>
+      <source>%1 FPS</source>
+      <translation>%1 FPS</translation>
+    </message>
+    <message>
+      <source>FPS</source>
+      <translation>FPS</translation>
+    </message>
+    <message>
+      <source>No compatible NVIDIA or FSR DirectX 12 GPU was detected.</source>
+      <translation>No se ha detectado ninguna GPU NVIDIA o FSR compatible con DirectX 12.</translation>
+    </message>
+    <message>
+      <source>Clipboard download failed: %1</source>
+      <translation>Error al descargar desde el portapapeles: %1</translation>
+    </message>
+    <message>
+      <source>The clipboard URL did not contain a readable image.</source>
+      <translation>La URL del portapapeles no contenía una imagen legible.</translation>
+    </message>
+    <message>
+      <source>Scanning input files…</source>
+      <translation>Examinando archivos de entrada…</translation>
+    </message>
+    <message>
+      <source>Files added: %1.</source>
+      <translation>Archivos añadidos: %1.</translation>
+    </message>
+    <message>
+      <source>Rendering preview…</source>
+      <translation>Renderizando vista previa…</translation>
+    </message>
+    <message>
+      <source>Preview ready.</source>
+      <translation>Vista previa lista.</translation>
+    </message>
+    <message>
+      <source>Preview updated; waiting for the latest request.</source>
+      <translation>Vista previa actualizada; esperando la última solicitud.</translation>
+    </message>
+    <message>
+      <source>Processing batch…</source>
+      <translation>Procesando lote…</translation>
+    </message>
+    <message>
+      <source>%1 complete, %2 failed.</source>
+      <translation>Completados: %1; fallidos: %2.</translation>
+    </message>
+    <message>
+      <source>Interpolating video</source>
+      <translation>Interpolando fotogramas de vídeo</translation>
+    </message>
+    <message>
+      <source>Use one frame-generation engine per workflow. Select DLSS, AMD FSR or VFX Frame Generation.</source>
+      <translation>Utilice un solo motor de generación de fotogramas por flujo de trabajo. Seleccione DLSS, AMD FSR o VFX.</translation>
+    </message>
+    <message>
+      <source>DLSS Neural Rendering requires at least 64 by 64 input.</source>
+      <translation>El renderizado neuronal DLSS requiere una entrada de al menos 64 × 64 píxeles.</translation>
+    </message>
+    <message>
+      <source>Scaling cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>El escalado no puede procesar vídeo HDR en esta posición. Muévalo antes de la conversión a HDR.</translation>
+    </message>
+    <message>
+      <source>The requested output is below the supported 64 by 64 minimum.</source>
+      <translation>La salida solicitada es inferior al mínimo admitido de 64 × 64 píxeles.</translation>
+    </message>
+    <message>
+      <source>DLSS Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>La superresolución DLSS no puede procesar vídeo HDR en esta posición. Muévala antes de la conversión a HDR.</translation>
+    </message>
+    <message>
+      <source>Ray Reconstruction requires explicit PQ or HLG signaling for HDR video.</source>
+      <translation>La reconstrucción de rayos requiere una señalización explícita PQ o HLG para vídeo HDR.</translation>
+    </message>
+    <message>
+      <source>RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>La superresolución RTX no puede procesar vídeo HDR en esta posición. Muévala antes de la conversión a HDR.</translation>
+    </message>
+    <message>
+      <source>NVIDIA Video Effects is video-only.</source>
+      <translation>NVIDIA Video Effects solo está disponible para vídeo.</translation>
+    </message>
+    <message>
+      <source>The legacy NVIDIA VFX preset has no enabled effect.</source>
+      <translation>El preajuste antiguo de NVIDIA VFX no tiene ningún efecto activado.</translation>
+    </message>
+    <message>
+      <source>This video effect requires SDR at this position. Move its card before HDR conversion.</source>
+      <translation>Este efecto de vídeo requiere SDR en esta posición. Mueva su tarjeta antes de la conversión a HDR.</translation>
+    </message>
+    <message>
+      <source>RTX Video HDR requires SDR at this position.</source>
+      <translation>El vídeo HDR RTX requiere SDR en esta posición.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires at least 64 by 64 pixels.</source>
+      <translation>La generación de fotogramas FSR requiere al menos 64 × 64 píxeles.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation supports up to 16384 pixels per side.</source>
+      <translation>La generación de fotogramas FSR admite hasta 16384 píxeles por lado.</translation>
+    </message>
+    <message>
+      <source>Frame Generation target FPS must exceed the frame rate entering this card. Choose a higher target FPS.</source>
+      <translation>La tasa de fotogramas objetivo debe superar la tasa de entrada de esta tarjeta. Elija una tasa objetivo superior.</translation>
+    </message>
+    <message>
+      <source>Sharpening requires SDR video at this position. Move it before HDR conversion.</source>
+      <translation>El enfoque requiere vídeo SDR en esta posición. Muévalo antes de la conversión a HDR.</translation>
+    </message>
+    <message>
+      <source>The selected .cube LUT is unavailable.</source>
+      <translation>La LUT .cube seleccionada no está disponible.</translation>
+    </message>
+    <message>
+      <source>The selected ReShade .ini preset is unavailable.</source>
+      <translation>El preajuste .ini de ReShade seleccionado no está disponible.</translation>
+    </message>
+    <message>
+      <source>ReShade requires at least 16 by 16 input.</source>
+      <translation>ReShade requiere una entrada de al menos 16 × 16 píxeles.</translation>
+    </message>
+    <message>
+      <source>The selected codec does not support this container.</source>
+      <translation>El códec seleccionado no admite este contenedor.</translation>
+    </message>
+    <message>
+      <source>Video export requires even output dimensions.</source>
+      <translation>La exportación de vídeo requiere dimensiones de salida pares.</translation>
+    </message>
+    <message>
+      <source>HDR output requires 10-bit HDR Mode in Export Settings.</source>
+      <translation>La salida HDR requiere el modo HDR de 10 bits en los ajustes de exportación.</translation>
+    </message>
+    <message>
+      <source>HDR requires a 10-bit or higher video codec.</source>
+      <translation>HDR requiere un códec de vídeo de 10 bits o más.</translation>
+    </message>
+    <message>
+      <source>Custom suffix is empty or contains invalid filename characters.</source>
+      <translation>El sufijo personalizado está vacío o contiene caracteres no válidos para nombres de archivo.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires GPU encoding with H.264, HEVC or AV1. Select a supported codec.</source>
+      <translation>La generación de fotogramas FSR requiere codificación GPU con H.264, HEVC o AV1. Seleccione un códec compatible.</translation>
+    </message>
+    <message>
+      <source>GPU encoding is unavailable for the selected FSR DirectX adapter</source>
+      <translation>La codificación GPU no está disponible para el adaptador DirectX de FSR seleccionado</translation>
+    </message>
+    <message>
+      <source>HDR FSR input requires HDR Mode and a 10-bit output codec</source>
+      <translation>La entrada HDR de FSR requiere el modo HDR y un códec de salida de 10 bits</translation>
+    </message>
+  </context>
 </TS>

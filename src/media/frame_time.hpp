@@ -17,6 +17,13 @@ class FrameTime {
         numerator_ = numerator / common; denominator_ = denominator / common;
     }
     [[nodiscard]] double seconds() const { return double(numerator_) / double(denominator_); }
+    [[nodiscard]] FrameTime roundedTo(const FrameTime& interval) const {
+        return interval.fraction(ticks(interval.numerator_,interval.denominator_),1);
+    }
+    [[nodiscard]] std::int64_t ceilTicks(std::int64_t clockNumerator,std::int64_t clockDenominator) const {
+        const auto value=fraction(clockDenominator,clockNumerator);auto result=value.numerator_/value.denominator_;
+        if(value.numerator_%value.denominator_&&qAddOverflow(result,std::int64_t(1),&result))fail();return result;
+    }
     [[nodiscard]] std::int64_t ticks(std::int64_t clockNumerator,std::int64_t clockDenominator) const {
         const auto value=fraction(clockDenominator,clockNumerator);
         const auto whole=value.numerator_/value.denominator_,remainder=value.numerator_%value.denominator_;
@@ -67,16 +74,21 @@ class FrameTime {
 
 template<class Frame, class Emit> class NearestFrameWriter {
   public:
-    NearestFrameWriter(std::int64_t count, FrameTime interval, Emit write)
-        : count_(count), interval_(interval), emit_(std::move(write)) {}
+    NearestFrameWriter(std::int64_t count, FrameTime interval, Emit write,FrameTime offset={})
+        : count_(count), interval_(interval), offset_(offset), emit_(std::move(write)) {}
     void push(Frame frame) {
         if (previous_) {
-            const auto midpoint = (previous_->time + frame.time).fraction(1, 2);
+            bool discontinuity=false;
+            if constexpr(requires {frame.segment;})discontinuity=previous_->segment!=frame.segment;
+            // A cut belongs at its source presentation time. Nearest-neighbour
+            // selection across segments would otherwise move it half a source
+            // interval early, despite correctly suppressing synthesized pixels.
+            const auto midpoint = discontinuity?frame.time:(previous_->time + frame.time).fraction(1, 2);
             while (index_ < count_) {
-                const auto target = interval_.fraction(index_, 1);
+                const auto target = offset_+interval_.fraction(index_, 1);
                 if (target > midpoint) break;
-                emit_(target == midpoint && tieLate_ ? frame : *previous_, index_++);
-                if (target == midpoint) tieLate_ = !tieLate_;
+                emit_(target == midpoint && (discontinuity||tieLate_) ? frame : *previous_, index_++);
+                if (target == midpoint&&!discontinuity) tieLate_ = !tieLate_;
             }
         }
         previous_ = std::move(frame);
@@ -93,6 +105,7 @@ template<class Frame, class Emit> class NearestFrameWriter {
   private:
     std::int64_t count_, index_ = 0;
     FrameTime interval_;
+    FrameTime offset_;
     Emit emit_;
     std::optional<Frame> previous_;
     bool tieLate_ = false;

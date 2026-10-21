@@ -5,6 +5,7 @@ import "../components"
 
 Item {
     id: root
+    objectName: "frameInterpolationView"
 
     property var appBridge: null
     readonly property int adaptiveInspectorWidth: width >= 2560 ? 520 : (width >= 1920 ? 460 : (width >= 1600 ? 420 : (width >= 1280 ? 380 : 340)))
@@ -66,7 +67,7 @@ Item {
             Column {
                 anchors.fill: parent
 
-                Flickable {
+                InspectorScrollArea {
                     width: parent.width
                     height: parent.height - actionBar.height
                     contentWidth: width
@@ -85,7 +86,7 @@ Item {
                         // Card 1: Frame Generation Configuration
                         AppCard {
                             width: parent.width
-                            title: qsTranslate("App", "DLSS Frame Generation")
+                            title: appBridge && appBridge.fiProvider === "FSR 3" ? qsTranslate("App", "FSR Frame Generation") : qsTranslate("App", "DLSS Frame Generation")
 
                             Column {
                                 width: parent.width
@@ -93,37 +94,23 @@ Item {
 
                                 AppComboBox {
                                     width: parent.width
-                                    label: qsTranslate("App", "Target Output Frame Rate")
-                                    model: appBridge ? appBridge.fiFpsChoices : []
-                                    currentValue: appBridge ? appBridge.fiTargetFps : "60"
-                                    onActivated: (v) => { if (appBridge) appBridge.fiTargetFps = v }
+                                    label: qsTranslate("App", "Frame generation provider")
+                                    model: appBridge ? appBridge.fiProviderChoices : []
+                                    currentValue: appBridge ? appBridge.fiProvider : "DLSS"
+                                    onActivated: value => { if (appBridge) appBridge.fiProvider = value }
+                                }
+                                FsrFrameGenerationControls {
+                                    width: parent.width
+                                    visible: appBridge && appBridge.fiProvider === "FSR 3"
+                                    appBridge: root.appBridge
                                 }
 
-                                AppSegmentedControl {
+                                FrameGenerationControls {
                                     width: parent.width
-                                    label: qsTranslate("App", "DLSS-G Engine")
-                                    model: appBridge ? appBridge.fiEngineChoices : []
-                                    currentValue: appBridge ? appBridge.fiEngine : "Auto"
-                                    onActivated: (v) => { if (appBridge) appBridge.fiEngine = v }
+                                    visible: !appBridge || appBridge.fiProvider !== "FSR 3"
+                                    appBridge: root.appBridge
                                 }
 
-                                AppComboBox {
-                                    objectName: "fgOpticalFlowQuality"
-                                    width: parent.width
-                                    label: qsTranslate("App", "Optical Flow Quality")
-                                    model: appBridge ? appBridge.opticalFlowQualityChoices : ["High", "Medium", "Low"]
-                                    currentValue: appBridge ? appBridge.fiOpticalFlowQuality : "High"
-                                    onActivated: v => { if (appBridge) appBridge.fiOpticalFlowQuality = v; }
-                                }
-
-                                Text {
-                                    width: parent.width
-                                    text: appBridge ? appBridge.frameGenerationEstimate : ""
-                                    wrapMode: Text.Wrap
-                                    font.family: Theme.monoFontFamily
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    color: Theme.textMuted
-                                }
                             }
                         }
 

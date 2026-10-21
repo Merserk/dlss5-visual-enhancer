@@ -497,10 +497,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>تعذر بدء الدفعة: %1</translation>
     </message>
     <message>
-      <source>Cascade</source>
-      <translation>تسلسل</translation>
-    </message>
-    <message>
       <source>Changes apply immediately.</source>
       <translation>تُطبّق التغييرات فورًا.</translation>
     </message>
@@ -735,7 +731,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/FrameInterpolationView.qml" line="88" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="49" />
       <source>DLSS Frame Generation</source>
-      <translation>DLSS Frame Generation</translation>
+      <translation>توليد الإطارات باستخدام DLSS</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="14" />
@@ -746,7 +742,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="41" />
       <source>DLSS Neural Rendering</source>
-      <translation>DLSS Neural Rendering</translation>
+      <translation>التصيير العصبي باستخدام DLSS</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="30" />
@@ -758,17 +754,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/NeuralRenderingView.qml" line="43" />
       <location filename="../qml/views/UpscaleView.qml" line="115" />
       <source>DLSS Super Resolution</source>
-      <translation>DLSS Super Resolution</translation>
+      <translation>الدقة الفائقة باستخدام DLSS</translation>
     </message>
     <message>
       <source>DLSS effects: %1</source>
       <translation>تأثيرات DLSS: %1</translation>
-    </message>
-    <message>
-      <location filename="../qml/components/FrameGenerationControls.qml" line="25" />
-      <location filename="../qml/views/FrameInterpolationView.qml" line="104" />
-      <source>DLSS-G Engine</source>
-      <translation>محرك DLSS-G</translation>
     </message>
     <message>
       <source>Deblur Modes</source>
@@ -1430,10 +1420,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>نمط NR</translation>
     </message>
     <message>
-      <source>Native DLSSG</source>
-      <translation>DLSSG الأصلي</translation>
-    </message>
-    <message>
       <source>Natural</source>
       <translation>طبيعي</translation>
     </message>
@@ -1847,13 +1833,13 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="44" />
       <source>RTX Super Resolution</source>
-      <translation>RTX Super Resolution</translation>
+      <translation>الدقة الفائقة باستخدام RTX</translation>
     </message>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="45" />
       <location filename="../qml/views/UpscaleView.qml" line="275" />
       <source>RTX Video HDR</source>
-      <translation>RTX Video HDR</translation>
+      <translation>فيديو HDR باستخدام RTX</translation>
     </message>
     <message>
       <source>Ready</source>
@@ -2656,11 +2642,461 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
       <message>
       <source>DLSS Ray Reconstruction</source>
-      <translation>DLSS Ray Reconstruction</translation>
+      <translation>إعادة بناء الأشعة باستخدام DLSS</translation>
     </message>
     <message>
       <source>Imported images and videos use estimated material guides. Results depend on the source.</source>
       <translation>تستخدم الصور ومقاطع الفيديو المستوردة بيانات تقديرية للمواد. تعتمد النتائج على المصدر.</translation>
     </message>
-</context>
+    <message>
+      <source>AMD FidelityFX Optical Flow</source>
+      <translation>التدفق البصري باستخدام AMD FidelityFX</translation>
+    </message>
+    <message>
+      <source>Active Techniques</source>
+      <translation>التقنيات النشطة</translation>
+    </message>
+    <message>
+      <source>Always (MoGe-2 ViT-S)</source>
+      <translation>دائماً (MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Auto (MoGe-2 ViT-S When Required)</source>
+      <translation>تلقائي (MoGe-2 ViT-S عند الحاجة)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Shaders)</source>
+      <translation>تلقائي (مظللات الإعداد المسبق ووقت التشغيل)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Textures)</source>
+      <translation>تلقائي (أنسجة الإعداد المسبق ووقت التشغيل)</translation>
+    </message>
+    <message>
+      <source>Choose a ReShade .ini preset</source>
+      <translation>اختر ملف إعداد مسبق .ini لـ ReShade</translation>
+    </message>
+    <message>
+      <source>Depth Input</source>
+      <translation>إدخال العمق</translation>
+    </message>
+    <message>
+      <source>Disabled</source>
+      <translation>معطل</translation>
+    </message>
+    <message>
+      <source>Disocclusion Sensitivity</source>
+      <translation>حساسية كشف الخلفية</translation>
+    </message>
+    <message>
+      <source>Effect Mix</source>
+      <translation>مزج التأثير</translation>
+    </message>
+    <message>
+      <source>Flip Depth Vertically</source>
+      <translation>قلب العمق عمودياً</translation>
+    </message>
+    <message>
+      <source>Logarithmic Depth Buffer</source>
+      <translation>مخزن العمق اللوغاريتمي</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Spatial)</source>
+      <translation>إيقاف (مكاني لكل إطار)</translation>
+    </message>
+    <message>
+      <source>Processing ReShade video</source>
+      <translation>جارٍ معالجة فيديو ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade</source>
+      <translation>ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade Preset (.ini)</source>
+      <translation>إعداد ReShade المسبق (.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade Presets (*.ini)</source>
+      <translation>إعدادات ReShade المسبقة (*.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade runtime unavailable.</source>
+      <translation>بيئة تشغيل ReShade غير متوفرة.</translation>
+    </message>
+    <message>
+      <source>Reload Preset</source>
+      <translation>إعادة تحميل الإعداد المسبق</translation>
+    </message>
+    <message>
+      <source>Reloaded ReShade preset.</source>
+      <translation>تمت إعادة تحميل الإعداد المسبق لـ ReShade.</translation>
+    </message>
+    <message>
+      <source>Reversed Depth Buffer</source>
+      <translation>مخزن العمق المعكوس</translation>
+    </message>
+    <message>
+      <source>Save Preset Copy</source>
+      <translation>حفظ نسخة من الإعداد المسبق</translation>
+    </message>
+    <message>
+      <source>Save ReShade Preset Copy</source>
+      <translation>حفظ نسخة من إعداد ReShade المسبق</translation>
+    </message>
+    <message>
+      <source>Saved ReShade preset to %1</source>
+      <translation>تم حفظ إعداد ReShade المسبق في %1</translation>
+    </message>
+    <message>
+      <source>Shader Parameters</source>
+      <translation>معلمات المظلل</translation>
+    </message>
+    <message>
+      <source>Shader Search Folder (.fx / .fxh)</source>
+      <translation>مجلد البحث عن المظللات (.fx / .fxh)</translation>
+    </message>
+    <message>
+      <source>Temporal Depth Blend</source>
+      <translation>مزج العمق الزمني</translation>
+    </message>
+    <message>
+      <source>Texture &amp; LUT Search Folder</source>
+      <translation>مجلد البحث عن الأنسجة و LUT</translation>
+    </message>
+    <message>
+      <source>Video Motion &amp; Depth Stabilization</source>
+      <translation>تثبيت حركة الفيديو والعمق</translation>
+    </message>
+    <message>
+      <source>Always Generate AI Depth</source>
+      <translation>إنشاء عمق بالذكاء الاصطناعي دائمًا</translation>
+    </message>
+    <message>
+      <source>Optical Flow</source>
+      <translation>التدفق البصري</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Depth)</source>
+      <translation>إيقاف (عمق لكل إطار)</translation>
+    </message>
+    <message>
+      <source>This preset requires depth. Select Auto or Always to process it.</source>
+      <translation>يتطلب هذا الإعداد عمقًا. اختر تلقائي أو دائمًا.</translation>
+    </message>
+    <message>
+      <source>AI depth supplies effects that need scene depth. Auto stabilizes it in video using AMD Optical Flow.</source>
+      <translation>يوفر عمق الذكاء الاصطناعي البيانات للتأثيرات التي تحتاج إلى عمق المشهد. يثبته الوضع التلقائي في الفيديو باستخدام AMD Optical Flow.</translation>
+    </message>
+    <message>
+      <source>This preset does not need AI depth or motion processing. Auto skips that work.</source>
+      <translation>لا يحتاج هذا الإعداد إلى عمق الذكاء الاصطناعي أو معالجة الحركة. يتجاوز الوضع التلقائي هذا العمل.</translation>
+    </message>
+    <message>
+      <source>Techniques &amp; Settings</source>
+      <translation>التقنيات والإعدادات</translation>
+    </message>
+    <message>
+      <source>Reset Values</source>
+      <translation>إعادة ضبط القيم</translation>
+    </message>
+    <message>
+      <source>Search effects and parameters…</source>
+      <translation>البحث عن التأثيرات والمعلمات…</translation>
+    </message>
+    <message>
+      <source>%1 enabled</source>
+      <translation>تم تفعيل %1</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>إيقاف</translation>
+    </message>
+    <message>
+      <source>Fisheye distortion is off by default. Enable the technique to apply it.</source>
+      <translation>تشوه عين السمكة معطل افتراضيًا. فعّل التقنية لتطبيقه.</translation>
+    </message>
+    <message>
+      <source>Enable a technique above to apply this effect.</source>
+      <translation>فعّل تقنية أعلاه لتطبيق هذا التأثير.</translation>
+    </message>
+    <message>
+      <source>Depth Detail</source>
+      <translation>تفاصيل العمق</translation>
+    </message>
+    <message>
+      <source>Effect Precision</source>
+      <translation>دقة التأثيرات</translation>
+    </message>
+    <message>
+      <source>HDR Handling</source>
+      <translation>معالجة HDR</translation>
+    </message>
+    <message>
+      <source>Preserve Source Transparency</source>
+      <translation>الحفاظ على شفافية المصدر</translation>
+    </message>
+    <message>
+      <source>Show Internal Shader Parameters</source>
+      <translation>إظهار معلمات المظلل الداخلية</translation>
+    </message>
+    <message>
+      <source>MoGe-2 ViT-S · ONNX Runtime DirectML
+Video depth alignment · AMD FidelityFX Optical Flow</source>
+      <translation>MoGe-2 ViT-S · ONNX Runtime DirectML
+محاذاة عمق الفيديو · التدفق البصري باستخدام AMD FidelityFX</translation>
+    </message>
+    <message>
+      <source>Choose a preset to begin.</source>
+      <translation>اختر إعدادًا مسبقًا للبدء.</translation>
+    </message>
+    <message>
+      <source>%1 technique(s) enabled · %2</source>
+      <translation>تم تفعيل %1 تقنية · %2</translation>
+    </message>
+    <message>
+      <source>AI depth enabled</source>
+      <translation>عمق الذكاء الاصطناعي مفعّل</translation>
+    </message>
+    <message>
+      <source>Depth not required or disabled</source>
+      <translation>العمق غير مطلوب أو معطل</translation>
+    </message>
+    <message>
+      <source>Enabled</source>
+      <translation>مفعّل</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>متقدم</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation</source>
+      <translation>توليد الإطارات FSR</translation>
+    </message>
+    <message>
+      <source>Processing GPU</source>
+      <translation>معالج الرسومات للمعالجة</translation>
+    </message>
+    <message>
+      <source>Frame generation available</source>
+      <translation>توليد الإطارات متاح</translation>
+    </message>
+    <message>
+      <source>Selected FSR adapter is unavailable</source>
+      <translation>محوّل FSR المحدد غير متاح</translation>
+    </message>
+    <message>
+      <source>No compatible FSR adapter detected</source>
+      <translation>لم يُكتشف محوّل FSR متوافق</translation>
+    </message>
+    <message>
+      <source>Frame generation provider</source>
+      <translation>تقنية توليد الإطارات</translation>
+    </message>
+    <message>
+      <source>Shared GPU memory</source>
+      <translation>ذاكرة رسومات مشتركة</translation>
+    </message>
+    <message>
+      <source>AI Processing GPU (DirectX 12 / FidelityFX)</source>
+      <translation>معالج الرسوميات لمعالجة الذكاء الاصطناعي ‏(DirectX 12 / FidelityFX)</translation>
+    </message>
+    <message>
+      <source>RTX Video Super Resolution</source>
+      <translation>الدقة الفائقة للفيديو باستخدام RTX</translation>
+    </message>
+    <message>
+      <source>Fast (280)</source>
+      <translation>سريع (280)</translation>
+    </message>
+    <message>
+      <source>Standard (504)</source>
+      <translation>قياسي (504)</translation>
+    </message>
+    <message>
+      <source>High (756)</source>
+      <translation>عالٍ (756)</translation>
+    </message>
+    <message>
+      <source>Maximum (1008)</source>
+      <translation>أقصى (1008)</translation>
+    </message>
+    <message>
+      <source>8-bit sRGB Compatibility</source>
+      <translation>التوافق مع sRGB بعمق 8 بت</translation>
+    </message>
+    <message>
+      <source>Auto (SDR Preset Adapter)</source>
+      <translation>تلقائي (محوّل الإعدادات المسبقة لـ SDR)</translation>
+    </message>
+    <message>
+      <source>HDR-Aware Preset</source>
+      <translation>إعداد مسبق يدعم HDR</translation>
+    </message>
+    <message>
+      <source>SDR Adapter</source>
+      <translation>محوّل SDR</translation>
+    </message>
+    <message>
+      <source>Reject Unsupported</source>
+      <translation>رفض غير المدعوم</translation>
+    </message>
+    <message>
+      <source>%1 FPS</source>
+      <translation>%1 إطار/ث</translation>
+    </message>
+    <message>
+      <source>FPS</source>
+      <translation>إطار/ث</translation>
+    </message>
+    <message>
+      <source>No compatible NVIDIA or FSR DirectX 12 GPU was detected.</source>
+      <translation>لم يتم اكتشاف وحدة معالجة رسومات NVIDIA أو FSR متوافقة مع DirectX 12.</translation>
+    </message>
+    <message>
+      <source>Clipboard download failed: %1</source>
+      <translation>فشل التنزيل من الحافظة: %1</translation>
+    </message>
+    <message>
+      <source>The clipboard URL did not contain a readable image.</source>
+      <translation>لم يحتوِ رابط الحافظة على صورة قابلة للقراءة.</translation>
+    </message>
+    <message>
+      <source>Scanning input files…</source>
+      <translation>جارٍ فحص ملفات الإدخال…</translation>
+    </message>
+    <message>
+      <source>Files added: %1.</source>
+      <translation>الملفات المضافة: %1.</translation>
+    </message>
+    <message>
+      <source>Rendering preview…</source>
+      <translation>جارٍ تصيير المعاينة…</translation>
+    </message>
+    <message>
+      <source>Preview ready.</source>
+      <translation>المعاينة جاهزة.</translation>
+    </message>
+    <message>
+      <source>Preview updated; waiting for the latest request.</source>
+      <translation>تم تحديث المعاينة؛ في انتظار أحدث طلب.</translation>
+    </message>
+    <message>
+      <source>Processing batch…</source>
+      <translation>جارٍ معالجة الدفعة…</translation>
+    </message>
+    <message>
+      <source>%1 complete, %2 failed.</source>
+      <translation>اكتمل: %1، فشل: %2.</translation>
+    </message>
+    <message>
+      <source>Interpolating video</source>
+      <translation>جارٍ استيفاء إطارات الفيديو</translation>
+    </message>
+    <message>
+      <source>Use one frame-generation engine per workflow. Select DLSS, AMD FSR or VFX Frame Generation.</source>
+      <translation>استخدم محركًا واحدًا لتوليد الإطارات لكل سير عمل. اختر DLSS أو AMD FSR أو VFX لتوليد الإطارات.</translation>
+    </message>
+    <message>
+      <source>DLSS Neural Rendering requires at least 64 by 64 input.</source>
+      <translation>يتطلب التصيير العصبي باستخدام DLSS إدخالًا بأبعاد 64 × 64 على الأقل.</translation>
+    </message>
+    <message>
+      <source>Scaling cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>لا يمكن للتحجيم معالجة فيديو HDR في هذا الموضع. انقله قبل التحويل إلى HDR.</translation>
+    </message>
+    <message>
+      <source>The requested output is below the supported 64 by 64 minimum.</source>
+      <translation>أبعاد الإخراج المطلوبة أقل من الحد الأدنى المدعوم البالغ 64 × 64.</translation>
+    </message>
+    <message>
+      <source>DLSS Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>لا يمكن للدقة الفائقة باستخدام DLSS معالجة فيديو HDR في هذا الموضع. انقلها قبل التحويل إلى HDR.</translation>
+    </message>
+    <message>
+      <source>Ray Reconstruction requires explicit PQ or HLG signaling for HDR video.</source>
+      <translation>تتطلب إعادة بناء الأشعة تحديد PQ أو HLG صراحةً لفيديو HDR.</translation>
+    </message>
+    <message>
+      <source>RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>لا يمكن للدقة الفائقة باستخدام RTX معالجة فيديو HDR في هذا الموضع. انقلها قبل التحويل إلى HDR.</translation>
+    </message>
+    <message>
+      <source>NVIDIA Video Effects is video-only.</source>
+      <translation>تعمل مؤثرات الفيديو من NVIDIA مع الفيديو فقط.</translation>
+    </message>
+    <message>
+      <source>The legacy NVIDIA VFX preset has no enabled effect.</source>
+      <translation>لا يحتوي إعداد NVIDIA VFX المسبق القديم على أي مؤثر مفعّل.</translation>
+    </message>
+    <message>
+      <source>This video effect requires SDR at this position. Move its card before HDR conversion.</source>
+      <translation>يتطلب مؤثر الفيديو هذا SDR في هذا الموضع. انقل بطاقته قبل التحويل إلى HDR.</translation>
+    </message>
+    <message>
+      <source>RTX Video HDR requires SDR at this position.</source>
+      <translation>يتطلب فيديو HDR باستخدام RTX إدخال SDR في هذا الموضع.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires at least 64 by 64 pixels.</source>
+      <translation>يتطلب توليد الإطارات باستخدام FSR أبعادًا لا تقل عن 64 × 64 بكسل.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation supports up to 16384 pixels per side.</source>
+      <translation>يدعم توليد الإطارات باستخدام FSR ما يصل إلى 16384 بكسل لكل ضلع.</translation>
+    </message>
+    <message>
+      <source>Frame Generation target FPS must exceed the frame rate entering this card. Choose a higher target FPS.</source>
+      <translation>يجب أن يتجاوز معدل الإطارات المستهدف لتوليد الإطارات معدل الإدخال إلى هذه البطاقة. اختر معدلًا مستهدفًا أعلى.</translation>
+    </message>
+    <message>
+      <source>Sharpening requires SDR video at this position. Move it before HDR conversion.</source>
+      <translation>يتطلب تحسين الحدة فيديو SDR في هذا الموضع. انقله قبل التحويل إلى HDR.</translation>
+    </message>
+    <message>
+      <source>The selected .cube LUT is unavailable.</source>
+      <translation>ملف LUT بصيغة .cube المحدد غير متاح.</translation>
+    </message>
+    <message>
+      <source>The selected ReShade .ini preset is unavailable.</source>
+      <translation>إعداد ReShade المسبق بصيغة .ini المحدد غير متاح.</translation>
+    </message>
+    <message>
+      <source>ReShade requires at least 16 by 16 input.</source>
+      <translation>يتطلب ReShade إدخالًا بأبعاد 16 × 16 على الأقل.</translation>
+    </message>
+    <message>
+      <source>The selected codec does not support this container.</source>
+      <translation>لا يدعم الترميز المحدد هذه الحاوية.</translation>
+    </message>
+    <message>
+      <source>Video export requires even output dimensions.</source>
+      <translation>يتطلب تصدير الفيديو أبعاد إخراج ذات أعداد زوجية.</translation>
+    </message>
+    <message>
+      <source>HDR output requires 10-bit HDR Mode in Export Settings.</source>
+      <translation>يتطلب إخراج HDR تفعيل وضع HDR بعمق 10 بت في إعدادات التصدير.</translation>
+    </message>
+    <message>
+      <source>HDR requires a 10-bit or higher video codec.</source>
+      <translation>يتطلب HDR ترميز فيديو بعمق 10 بت أو أكثر.</translation>
+    </message>
+    <message>
+      <source>Custom suffix is empty or contains invalid filename characters.</source>
+      <translation>اللاحقة المخصصة فارغة أو تحتوي على أحرف غير صالحة لأسماء الملفات.</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires GPU encoding with H.264, HEVC or AV1. Select a supported codec.</source>
+      <translation>يتطلب توليد الإطارات باستخدام FSR ترميز GPU باستخدام H.264 أو HEVC أو AV1. اختر ترميزًا مدعومًا.</translation>
+    </message>
+    <message>
+      <source>GPU encoding is unavailable for the selected FSR DirectX adapter</source>
+      <translation>ترميز GPU غير متاح لمحوّل DirectX المحدد لـ FSR</translation>
+    </message>
+    <message>
+      <source>HDR FSR input requires HDR Mode and a 10-bit output codec</source>
+      <translation>يتطلب إدخال HDR في FSR وضع HDR وترميز إخراج بعمق 10 بت</translation>
+    </message>
+  </context>
 </TS>

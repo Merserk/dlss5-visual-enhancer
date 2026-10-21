@@ -1,8 +1,10 @@
 #include "video_delivery.hpp"
 #include "infrastructure/paths.hpp"
 #include "infrastructure/process.hpp"
+#include "infrastructure/scratch.hpp"
 #include "media/image_metadata.hpp"
 #include "processing/vfx_native.hpp"
+#include <QFile>
 
 namespace ve {
 QStringList vfxSubtitleArguments(const MediaInfo& source,const Settings& settings){
@@ -68,9 +70,21 @@ void muxDelivery(const QString& video, const QString& destination, const RenderR
         if (!transfer.isEmpty() && transfer!="unknown") mux << "-color_trc" << transfer;
     }
     if (!request.preview && settings.container == "MP4") mux << "-movflags" << "+faststart";
-    if (!request.preview && settings.container != "MOV" && settings.stages(true).contains("neural_model"))
-        mux << "-metadata" << "comment=" + mergeRenderDescription(
-            source.metadata.value("source_format").toObject().value("tags").toObject().value("comment").toString(), neuralRenderNote(settings));
+    std::unique_ptr<ScratchDirectory> metadataDirectory;
+    if (!request.preview && settings.container != "MOV" && settings.stages(true).contains("neural_model")) {
+        // Inherited comments can exceed Windows' process command-line limit.
+        // FFmpeg's file-loaded option preserves the complete UTF-8 argument.
+        metadataDirectory = std::make_unique<ScratchDirectory>("delivery-metadata-XXXXXX");
+        if (!metadataDirectory->isValid())
+            throw std::runtime_error("Cannot create the delivery metadata directory.");
+        QFile metadataFile(metadataDirectory->filePath("comment.txt"));
+        const auto argument = ("comment=" + mergeRenderDescription(
+            source.metadata.value("source_format").toObject().value("tags").toObject().value("comment").toString(), neuralRenderNote(settings))).toUtf8();
+        if (!metadataFile.open(QIODevice::WriteOnly) || metadataFile.write(argument) != argument.size() || !metadataFile.flush())
+            throw std::runtime_error(("Cannot write delivery metadata: " + metadataFile.errorString()).toStdString());
+        metadataFile.close();
+        mux << "-/metadata" << metadataFile.fileName();
+    }
     mux << "-fps_mode" << "passthrough" << "-avoid_negative_ts" << "disabled"
         << "-metadata:s:v:0" << "rotate=0" << destination;
     const auto result = runProcess(Paths::instance().ffmpeg(), mux, &control, 0);

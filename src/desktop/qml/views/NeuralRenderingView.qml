@@ -69,6 +69,8 @@ Item {
         if (id === "scale_method") return qsTranslate("App", "Scaling")
         if (id === "dlss_super_resolution") return qsTranslate("App", "DLSS Super Resolution")
         if (id === "dlss_ray_reconstruction") return qsTranslate("App", "DLSS Ray Reconstruction")
+        if (id === "fsr_frame_generation") return qsTranslate("App", "FSR Frame Generation")
+        if (id === "reshade") return qsTranslate("App", "ReShade")
         if (id === "super_resolution") return qsTranslate("App", "RTX Super Resolution")
         if (id === "rtx_video_hdr") return qsTranslate("App", "RTX Video HDR")
         if (id === "vfx_vsr") return qsTranslate("App", "Video Super Resolution")
@@ -84,6 +86,7 @@ Item {
     Component { id: scaleControls; ScaleMethodControls { appBridge: root.appBridge } }
     Component { id: dlssControls; DlssSuperResolutionControls { appBridge: root.appBridge } }
     Component { id: rrControls; RayReconstructionControls { appBridge: root.appBridge } }
+    Component { id: reshadeControls; ReShadeControls { appBridge: root.appBridge } }
     Component { id: superControls; SuperResolutionControls { appBridge: root.appBridge } }
     Component { id: hdrControls; RtxVideoHdrControls { appBridge: root.appBridge } }
     Component { id: vfxControls; VfxControls { appBridge: root.appBridge; stageId: parent ? parent.effectStage : "" } }
@@ -91,6 +94,7 @@ Item {
     Component { id: sharpeningControls; SharpeningControls { appBridge: root.appBridge } }
     Component { id: grainControls; GrainControls { appBridge: root.appBridge } }
     Component { id: frameControls; FrameGenerationControls { appBridge: root.appBridge } }
+    Component { id: fsrControls; FsrFrameGenerationControls { appBridge: root.appBridge } }
 
     Row {
         anchors.fill: parent
@@ -173,7 +177,7 @@ Item {
                 }
 
                 // Scrollable Cards Area
-                Flickable {
+                InspectorScrollArea {
                     id: flick
                     objectName: "workflowCardsScroll"
                     width: parent.width
@@ -250,6 +254,8 @@ Item {
                                                    : stageId === "scale_method" ? scaleControls
                                                    : stageId === "dlss_super_resolution" ? dlssControls
                                                    : stageId === "dlss_ray_reconstruction" ? rrControls
+                                                   : stageId === "fsr_frame_generation" ? fsrControls
+                                                   : stageId === "reshade" ? reshadeControls
                                                    : stageId === "super_resolution" ? superControls
                                                    : stageId === "rtx_video_hdr" ? hdrControls
                                                    : stageId.indexOf("vfx_") === 0 ? vfxControls

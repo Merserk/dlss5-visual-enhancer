@@ -481,10 +481,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>बैच शुरू नहीं हो सकता: %1</translation>
     </message>
     <message>
-      <source>Cascade</source>
-      <translation>कैस्केड</translation>
-    </message>
-    <message>
       <source>Changes apply immediately.</source>
       <translation>बदलाव तुरंत लागू होते हैं।</translation>
     </message>
@@ -719,7 +715,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/FrameInterpolationView.qml" line="88" />
       <location filename="../qml/views/NeuralRenderingView.qml" line="49" />
       <source>DLSS Frame Generation</source>
-      <translation>DLSS Frame Generation</translation>
+      <translation>DLSS फ़्रेम जनरेशन</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="14" />
@@ -730,7 +726,7 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="41" />
       <source>DLSS Neural Rendering</source>
-      <translation>DLSS Neural Rendering</translation>
+      <translation>DLSS न्यूरल रेंडरिंग</translation>
     </message>
     <message>
       <location filename="../qml/components/DlssSuperResolutionControls.qml" line="30" />
@@ -742,17 +738,11 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <location filename="../qml/views/NeuralRenderingView.qml" line="43" />
       <location filename="../qml/views/UpscaleView.qml" line="115" />
       <source>DLSS Super Resolution</source>
-      <translation>DLSS Super Resolution</translation>
+      <translation>DLSS सुपर रिज़ॉल्यूशन</translation>
     </message>
     <message>
       <source>DLSS effects: %1</source>
       <translation>DLSS प्रभाव: %1</translation>
-    </message>
-    <message>
-      <location filename="../qml/components/FrameGenerationControls.qml" line="25" />
-      <location filename="../qml/views/FrameInterpolationView.qml" line="104" />
-      <source>DLSS-G Engine</source>
-      <translation>DLSS-G इंजन</translation>
     </message>
     <message>
       <source>Deblur Modes</source>
@@ -1414,10 +1404,6 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
       <translation>NR शैली</translation>
     </message>
     <message>
-      <source>Native DLSSG</source>
-      <translation>नेटिव DLSSG</translation>
-    </message>
-    <message>
       <source>Natural</source>
       <translation>प्राकृतिक</translation>
     </message>
@@ -1831,13 +1817,13 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="44" />
       <source>RTX Super Resolution</source>
-      <translation>RTX Super Resolution</translation>
+      <translation>RTX सुपर रिज़ॉल्यूशन</translation>
     </message>
     <message>
       <location filename="../qml/views/NeuralRenderingView.qml" line="45" />
       <location filename="../qml/views/UpscaleView.qml" line="275" />
       <source>RTX Video HDR</source>
-      <translation>RTX Video HDR</translation>
+      <translation>RTX HDR वीडियो</translation>
     </message>
     <message>
       <source>Ready</source>
@@ -2640,11 +2626,461 @@ Poster frame shown. Scrub with &lt; &gt; or open the file externally.</source>
     </message>
       <message>
       <source>DLSS Ray Reconstruction</source>
-      <translation>DLSS Ray Reconstruction</translation>
+      <translation>DLSS रे रिकंस्ट्रक्शन</translation>
     </message>
     <message>
       <source>Imported images and videos use estimated material guides. Results depend on the source.</source>
       <translation>आयातित छवियों और वीडियो में सामग्री के अनुमानित संकेतों का उपयोग होता है। परिणाम स्रोत पर निर्भर करते हैं।</translation>
     </message>
-</context>
+    <message>
+      <source>AMD FidelityFX Optical Flow</source>
+      <translation>AMD FidelityFX ऑप्टिकल फ़्लो</translation>
+    </message>
+    <message>
+      <source>Active Techniques</source>
+      <translation>सक्रिय तकनीकें</translation>
+    </message>
+    <message>
+      <source>Always (MoGe-2 ViT-S)</source>
+      <translation>हमेशा (MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Auto (MoGe-2 ViT-S When Required)</source>
+      <translation>स्वचालित (आवश्यकता पड़ने पर MoGe-2 ViT-S)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Shaders)</source>
+      <translation>स्वचालित (प्रीसेट और रनटाइम शेडर्स)</translation>
+    </message>
+    <message>
+      <source>Automatic (Preset &amp; Runtime Textures)</source>
+      <translation>स्वचालित (प्रीसेट और रनटाइम टेक्सचर)</translation>
+    </message>
+    <message>
+      <source>Choose a ReShade .ini preset</source>
+      <translation>ReShade .ini प्रीसेट चुनें</translation>
+    </message>
+    <message>
+      <source>Depth Input</source>
+      <translation>गहराई इनपुट</translation>
+    </message>
+    <message>
+      <source>Disabled</source>
+      <translation>अक्षम</translation>
+    </message>
+    <message>
+      <source>Disocclusion Sensitivity</source>
+      <translation>डिसऑक्लूज़न संवेदनशीलता</translation>
+    </message>
+    <message>
+      <source>Effect Mix</source>
+      <translation>प्रभाव मिश्रण</translation>
+    </message>
+    <message>
+      <source>Flip Depth Vertically</source>
+      <translation>गहराई को लंबवत पलटें</translation>
+    </message>
+    <message>
+      <source>Logarithmic Depth Buffer</source>
+      <translation>लघुगणकीय गहराई बफर</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Spatial)</source>
+      <translation>बंद (प्रति-फ़्रेम स्थानिक)</translation>
+    </message>
+    <message>
+      <source>Processing ReShade video</source>
+      <translation>ReShade वीडियो प्रोसेस हो रहा है</translation>
+    </message>
+    <message>
+      <source>ReShade</source>
+      <translation>ReShade</translation>
+    </message>
+    <message>
+      <source>ReShade Preset (.ini)</source>
+      <translation>ReShade प्रीसेट (.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade Presets (*.ini)</source>
+      <translation>ReShade प्रीसेट (*.ini)</translation>
+    </message>
+    <message>
+      <source>ReShade runtime unavailable.</source>
+      <translation>ReShade रनटाइम अनुपलब्ध है।</translation>
+    </message>
+    <message>
+      <source>Reload Preset</source>
+      <translation>प्रीसेट रीलोड करें</translation>
+    </message>
+    <message>
+      <source>Reloaded ReShade preset.</source>
+      <translation>ReShade प्रीसेट रीलोड किया गया।</translation>
+    </message>
+    <message>
+      <source>Reversed Depth Buffer</source>
+      <translation>उलटा गहराई बफर</translation>
+    </message>
+    <message>
+      <source>Save Preset Copy</source>
+      <translation>प्रीसेट की प्रति सहेजें</translation>
+    </message>
+    <message>
+      <source>Save ReShade Preset Copy</source>
+      <translation>ReShade प्रीसेट की प्रति सहेजें</translation>
+    </message>
+    <message>
+      <source>Saved ReShade preset to %1</source>
+      <translation>ReShade प्रीसेट को %1 में सहेजा गया</translation>
+    </message>
+    <message>
+      <source>Shader Parameters</source>
+      <translation>शेडर पैरामीटर</translation>
+    </message>
+    <message>
+      <source>Shader Search Folder (.fx / .fxh)</source>
+      <translation>शेडर खोज फ़ोल्डर (.fx / .fxh)</translation>
+    </message>
+    <message>
+      <source>Temporal Depth Blend</source>
+      <translation>टेम्पोरल गहराई मिश्रण</translation>
+    </message>
+    <message>
+      <source>Texture &amp; LUT Search Folder</source>
+      <translation>टेक्सचर और LUT खोज फ़ोल्डर</translation>
+    </message>
+    <message>
+      <source>Video Motion &amp; Depth Stabilization</source>
+      <translation>वीडियो गति और गहराई स्थिरीकरण</translation>
+    </message>
+    <message>
+      <source>Always Generate AI Depth</source>
+      <translation>हमेशा AI गहराई बनाएँ</translation>
+    </message>
+    <message>
+      <source>Optical Flow</source>
+      <translation>ऑप्टिकल फ़्लो</translation>
+    </message>
+    <message>
+      <source>Off (Per-Frame Depth)</source>
+      <translation>बंद (हर फ़्रेम की गहराई)</translation>
+    </message>
+    <message>
+      <source>This preset requires depth. Select Auto or Always to process it.</source>
+      <translation>इस प्रीसेट को गहराई चाहिए। स्वचालित या हमेशा चुनें।</translation>
+    </message>
+    <message>
+      <source>AI depth supplies effects that need scene depth. Auto stabilizes it in video using AMD Optical Flow.</source>
+      <translation>AI गहराई दृश्य की गहराई वाले प्रभावों के लिए है। स्वचालित मोड AMD Optical Flow से वीडियो की गहराई स्थिर करता है।</translation>
+    </message>
+    <message>
+      <source>This preset does not need AI depth or motion processing. Auto skips that work.</source>
+      <translation>इस प्रीसेट को AI गहराई या गति प्रसंस्करण की आवश्यकता नहीं है। स्वचालित मोड यह काम छोड़ देता है।</translation>
+    </message>
+    <message>
+      <source>Techniques &amp; Settings</source>
+      <translation>तकनीकें और सेटिंग्स</translation>
+    </message>
+    <message>
+      <source>Reset Values</source>
+      <translation>मान रीसेट करें</translation>
+    </message>
+    <message>
+      <source>Search effects and parameters…</source>
+      <translation>प्रभाव और पैरामीटर खोजें…</translation>
+    </message>
+    <message>
+      <source>%1 enabled</source>
+      <translation>%1 सक्षम</translation>
+    </message>
+    <message>
+      <source>Off</source>
+      <translation>बंद</translation>
+    </message>
+    <message>
+      <source>Fisheye distortion is off by default. Enable the technique to apply it.</source>
+      <translation>फ़िशआई विकृति डिफ़ॉल्ट रूप से बंद है। लागू करने के लिए तकनीक सक्षम करें।</translation>
+    </message>
+    <message>
+      <source>Enable a technique above to apply this effect.</source>
+      <translation>यह प्रभाव लागू करने के लिए ऊपर कोई तकनीक सक्षम करें।</translation>
+    </message>
+    <message>
+      <source>Depth Detail</source>
+      <translation>गहराई का विवरण</translation>
+    </message>
+    <message>
+      <source>Effect Precision</source>
+      <translation>प्रभाव की परिशुद्धता</translation>
+    </message>
+    <message>
+      <source>HDR Handling</source>
+      <translation>HDR प्रसंस्करण</translation>
+    </message>
+    <message>
+      <source>Preserve Source Transparency</source>
+      <translation>स्रोत की पारदर्शिता बनाए रखें</translation>
+    </message>
+    <message>
+      <source>Show Internal Shader Parameters</source>
+      <translation>आंतरिक शेडर पैरामीटर दिखाएँ</translation>
+    </message>
+    <message>
+      <source>MoGe-2 ViT-S · ONNX Runtime DirectML
+Video depth alignment · AMD FidelityFX Optical Flow</source>
+      <translation>MoGe-2 ViT-S · ONNX Runtime DirectML
+वीडियो की गहराई का संरेखण · AMD FidelityFX ऑप्टिकल फ़्लो</translation>
+    </message>
+    <message>
+      <source>Choose a preset to begin.</source>
+      <translation>शुरू करने के लिए प्रीसेट चुनें।</translation>
+    </message>
+    <message>
+      <source>%1 technique(s) enabled · %2</source>
+      <translation>%1 तकनीकें सक्षम · %2</translation>
+    </message>
+    <message>
+      <source>AI depth enabled</source>
+      <translation>AI गहराई सक्षम</translation>
+    </message>
+    <message>
+      <source>Depth not required or disabled</source>
+      <translation>गहराई अनावश्यक या बंद</translation>
+    </message>
+    <message>
+      <source>Enabled</source>
+      <translation>सक्षम</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>उन्नत</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation</source>
+      <translation>FSR फ़्रेम जनरेशन</translation>
+    </message>
+    <message>
+      <source>Processing GPU</source>
+      <translation>प्रोसेसिंग GPU</translation>
+    </message>
+    <message>
+      <source>Frame generation available</source>
+      <translation>फ़्रेम जनरेशन उपलब्ध है</translation>
+    </message>
+    <message>
+      <source>Selected FSR adapter is unavailable</source>
+      <translation>चुना गया FSR एडाप्टर उपलब्ध नहीं है</translation>
+    </message>
+    <message>
+      <source>No compatible FSR adapter detected</source>
+      <translation>कोई संगत FSR एडाप्टर नहीं मिला</translation>
+    </message>
+    <message>
+      <source>Frame generation provider</source>
+      <translation>फ़्रेम जनरेशन तकनीक</translation>
+    </message>
+    <message>
+      <source>Shared GPU memory</source>
+      <translation>साझा GPU मेमोरी</translation>
+    </message>
+    <message>
+      <source>AI Processing GPU (DirectX 12 / FidelityFX)</source>
+      <translation>AI प्रोसेसिंग GPU (DirectX 12 / FidelityFX)</translation>
+    </message>
+    <message>
+      <source>RTX Video Super Resolution</source>
+      <translation>RTX वीडियो सुपर रिज़ॉल्यूशन</translation>
+    </message>
+    <message>
+      <source>Fast (280)</source>
+      <translation>तेज़ (280)</translation>
+    </message>
+    <message>
+      <source>Standard (504)</source>
+      <translation>मानक (504)</translation>
+    </message>
+    <message>
+      <source>High (756)</source>
+      <translation>उच्च (756)</translation>
+    </message>
+    <message>
+      <source>Maximum (1008)</source>
+      <translation>अधिकतम (1008)</translation>
+    </message>
+    <message>
+      <source>8-bit sRGB Compatibility</source>
+      <translation>8-बिट sRGB संगतता</translation>
+    </message>
+    <message>
+      <source>Auto (SDR Preset Adapter)</source>
+      <translation>स्वचालित (SDR प्रीसेट अडैप्टर)</translation>
+    </message>
+    <message>
+      <source>HDR-Aware Preset</source>
+      <translation>HDR समर्थित प्रीसेट</translation>
+    </message>
+    <message>
+      <source>SDR Adapter</source>
+      <translation>SDR अडैप्टर</translation>
+    </message>
+    <message>
+      <source>Reject Unsupported</source>
+      <translation>असमर्थित को अस्वीकार करें</translation>
+    </message>
+    <message>
+      <source>%1 FPS</source>
+      <translation>%1 फ़्रेम/सेकंड</translation>
+    </message>
+    <message>
+      <source>FPS</source>
+      <translation>फ़्रेम/सेकंड</translation>
+    </message>
+    <message>
+      <source>No compatible NVIDIA or FSR DirectX 12 GPU was detected.</source>
+      <translation>DirectX 12 के साथ संगत कोई NVIDIA या FSR GPU नहीं मिला।</translation>
+    </message>
+    <message>
+      <source>Clipboard download failed: %1</source>
+      <translation>क्लिपबोर्ड से डाउनलोड विफल: %1</translation>
+    </message>
+    <message>
+      <source>The clipboard URL did not contain a readable image.</source>
+      <translation>क्लिपबोर्ड के URL में पढ़ने योग्य छवि नहीं थी।</translation>
+    </message>
+    <message>
+      <source>Scanning input files…</source>
+      <translation>इनपुट फ़ाइलें स्कैन की जा रही हैं…</translation>
+    </message>
+    <message>
+      <source>Files added: %1.</source>
+      <translation>जोड़ी गई फ़ाइलें: %1।</translation>
+    </message>
+    <message>
+      <source>Rendering preview…</source>
+      <translation>प्रीव्यू रेंडर किया जा रहा है…</translation>
+    </message>
+    <message>
+      <source>Preview ready.</source>
+      <translation>प्रीव्यू तैयार है।</translation>
+    </message>
+    <message>
+      <source>Preview updated; waiting for the latest request.</source>
+      <translation>प्रीव्यू अपडेट हुआ; नवीनतम अनुरोध की प्रतीक्षा है।</translation>
+    </message>
+    <message>
+      <source>Processing batch…</source>
+      <translation>बैच प्रोसेस किया जा रहा है…</translation>
+    </message>
+    <message>
+      <source>%1 complete, %2 failed.</source>
+      <translation>पूर्ण: %1, विफल: %2।</translation>
+    </message>
+    <message>
+      <source>Interpolating video</source>
+      <translation>वीडियो फ़्रेमों का इंटरपोलेशन किया जा रहा है</translation>
+    </message>
+    <message>
+      <source>Use one frame-generation engine per workflow. Select DLSS, AMD FSR or VFX Frame Generation.</source>
+      <translation>हर वर्कफ़्लो में केवल एक फ़्रेम जनरेशन इंजन उपयोग करें। DLSS, AMD FSR या VFX फ़्रेम जनरेशन चुनें।</translation>
+    </message>
+    <message>
+      <source>DLSS Neural Rendering requires at least 64 by 64 input.</source>
+      <translation>DLSS न्यूरल रेंडरिंग के लिए कम से कम 64 × 64 पिक्सेल का इनपुट आवश्यक है।</translation>
+    </message>
+    <message>
+      <source>Scaling cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>स्केलिंग इस स्थान पर HDR वीडियो प्रोसेस नहीं कर सकती। इसे HDR रूपांतरण से पहले रखें।</translation>
+    </message>
+    <message>
+      <source>The requested output is below the supported 64 by 64 minimum.</source>
+      <translation>माँगा गया आउटपुट समर्थित न्यूनतम 64 × 64 पिक्सेल से छोटा है।</translation>
+    </message>
+    <message>
+      <source>DLSS Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>DLSS सुपर रिज़ॉल्यूशन इस स्थान पर HDR वीडियो प्रोसेस नहीं कर सकता। इसे HDR रूपांतरण से पहले रखें।</translation>
+    </message>
+    <message>
+      <source>Ray Reconstruction requires explicit PQ or HLG signaling for HDR video.</source>
+      <translation>रे रिकंस्ट्रक्शन के लिए HDR वीडियो में स्पष्ट PQ या HLG संकेत आवश्यक है।</translation>
+    </message>
+    <message>
+      <source>RTX Super Resolution cannot process HDR video at this position. Move it before HDR conversion.</source>
+      <translation>RTX सुपर रिज़ॉल्यूशन इस स्थान पर HDR वीडियो प्रोसेस नहीं कर सकता। इसे HDR रूपांतरण से पहले रखें।</translation>
+    </message>
+    <message>
+      <source>NVIDIA Video Effects is video-only.</source>
+      <translation>NVIDIA Video Effects केवल वीडियो के लिए है।</translation>
+    </message>
+    <message>
+      <source>The legacy NVIDIA VFX preset has no enabled effect.</source>
+      <translation>पुराने NVIDIA VFX प्रीसेट में कोई इफ़ेक्ट सक्षम नहीं है।</translation>
+    </message>
+    <message>
+      <source>This video effect requires SDR at this position. Move its card before HDR conversion.</source>
+      <translation>इस वीडियो इफ़ेक्ट को इस स्थान पर SDR चाहिए। इसका कार्ड HDR रूपांतरण से पहले रखें।</translation>
+    </message>
+    <message>
+      <source>RTX Video HDR requires SDR at this position.</source>
+      <translation>RTX HDR वीडियो के लिए इस स्थान पर SDR आवश्यक है।</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires at least 64 by 64 pixels.</source>
+      <translation>FSR फ़्रेम जनरेशन के लिए कम से कम 64 × 64 पिक्सेल आवश्यक हैं।</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation supports up to 16384 pixels per side.</source>
+      <translation>FSR फ़्रेम जनरेशन हर किनारे पर अधिकतम 16384 पिक्सेल का समर्थन करता है।</translation>
+    </message>
+    <message>
+      <source>Frame Generation target FPS must exceed the frame rate entering this card. Choose a higher target FPS.</source>
+      <translation>फ़्रेम जनरेशन की लक्षित फ़्रेम दर इस कार्ड की इनपुट फ़्रेम दर से अधिक होनी चाहिए। अधिक लक्षित फ़्रेम दर चुनें।</translation>
+    </message>
+    <message>
+      <source>Sharpening requires SDR video at this position. Move it before HDR conversion.</source>
+      <translation>शार्पनिंग के लिए इस स्थान पर SDR वीडियो आवश्यक है। इसे HDR रूपांतरण से पहले रखें।</translation>
+    </message>
+    <message>
+      <source>The selected .cube LUT is unavailable.</source>
+      <translation>चुनी गई .cube LUT उपलब्ध नहीं है।</translation>
+    </message>
+    <message>
+      <source>The selected ReShade .ini preset is unavailable.</source>
+      <translation>चुना गया ReShade .ini प्रीसेट उपलब्ध नहीं है।</translation>
+    </message>
+    <message>
+      <source>ReShade requires at least 16 by 16 input.</source>
+      <translation>ReShade के लिए कम से कम 16 × 16 पिक्सेल का इनपुट आवश्यक है।</translation>
+    </message>
+    <message>
+      <source>The selected codec does not support this container.</source>
+      <translation>चुना गया कोडेक इस कंटेनर का समर्थन नहीं करता।</translation>
+    </message>
+    <message>
+      <source>Video export requires even output dimensions.</source>
+      <translation>वीडियो निर्यात के लिए आउटपुट की चौड़ाई और ऊँचाई सम संख्याएँ होनी चाहिए।</translation>
+    </message>
+    <message>
+      <source>HDR output requires 10-bit HDR Mode in Export Settings.</source>
+      <translation>HDR आउटपुट के लिए निर्यात सेटिंग में 10-बिट HDR मोड आवश्यक है।</translation>
+    </message>
+    <message>
+      <source>HDR requires a 10-bit or higher video codec.</source>
+      <translation>HDR के लिए 10-बिट या अधिक का वीडियो कोडेक आवश्यक है।</translation>
+    </message>
+    <message>
+      <source>Custom suffix is empty or contains invalid filename characters.</source>
+      <translation>कस्टम सफ़िक्स खाली है या उसमें फ़ाइल नाम के लिए अमान्य वर्ण हैं।</translation>
+    </message>
+    <message>
+      <source>FSR Frame Generation requires GPU encoding with H.264, HEVC or AV1. Select a supported codec.</source>
+      <translation>FSR फ़्रेम जनरेशन के लिए H.264, HEVC या AV1 के साथ GPU एन्कोडिंग आवश्यक है। समर्थित कोडेक चुनें।</translation>
+    </message>
+    <message>
+      <source>GPU encoding is unavailable for the selected FSR DirectX adapter</source>
+      <translation>चुने गए FSR DirectX अडैप्टर के लिए GPU एन्कोडिंग उपलब्ध नहीं है</translation>
+    </message>
+    <message>
+      <source>HDR FSR input requires HDR Mode and a 10-bit output codec</source>
+      <translation>HDR FSR इनपुट के लिए HDR मोड और 10-बिट आउटपुट कोडेक आवश्यक है</translation>
+    </message>
+  </context>
 </TS>

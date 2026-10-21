@@ -43,6 +43,44 @@ QStringList vfxStageGroup(const QStringList& stages,qsizetype begin,const Settin
         group.append(id);rank=next;
     }return group;
 }
+Settings reshadeSettingsForMode(const Settings& settings, bool video) {
+    if (video)
+        return settings;
+    const Settings defaults;
+    const bool hasImageSpecific =
+        settings.reshade_image_configured ||
+        !settings.reshade_image_preset_path.isEmpty() ||
+        !settings.reshade_image_shader_search_paths.isEmpty() ||
+        !settings.reshade_image_texture_search_paths.isEmpty() ||
+        !settings.reshade_image_parameter_overrides.isEmpty() ||
+        settings.reshade_image_mix != defaults.reshade_image_mix ||
+        settings.reshade_image_depth_mode != defaults.reshade_image_depth_mode ||
+        // The old default alone must not turn an untouched legacy image
+        // configuration into an override of the shared preset.
+        (settings.reshade_image_depth_resolution != defaults.reshade_image_depth_resolution &&
+         settings.reshade_image_depth_resolution != 504) ||
+        settings.reshade_image_precision_policy != defaults.reshade_image_precision_policy ||
+        settings.reshade_image_hdr_policy != defaults.reshade_image_hdr_policy ||
+        settings.reshade_image_preserve_alpha != defaults.reshade_image_preserve_alpha ||
+        settings.reshade_image_deterministic_seed != defaults.reshade_image_deterministic_seed;
+    Settings active = settings;
+    active.reshade_temporal_stability = QStringLiteral("Spatial Only (Off)");
+    active.reshade_temporal_strength = 0;
+    if (!hasImageSpecific && !settings.reshade_preset_path.isEmpty())
+        return active;
+    active.reshade_preset_path = settings.reshade_image_preset_path;
+    active.reshade_shader_search_paths = settings.reshade_image_shader_search_paths;
+    active.reshade_texture_search_paths = settings.reshade_image_texture_search_paths;
+    active.reshade_parameter_overrides = settings.reshade_image_parameter_overrides;
+    active.reshade_mix = settings.reshade_image_mix;
+    active.reshade_depth_mode = settings.reshade_image_depth_mode;
+    active.reshade_depth_resolution = settings.reshade_image_depth_resolution;
+    active.reshade_precision_policy = settings.reshade_image_precision_policy;
+    active.reshade_hdr_policy = settings.reshade_image_hdr_policy;
+    active.reshade_preserve_alpha = settings.reshade_image_preserve_alpha;
+    active.reshade_deterministic_seed = settings.reshade_image_deterministic_seed;
+    return active;
+}
 namespace {
 template <class T> T convert(const QVariant& value) {
     return value.value<T>();
@@ -81,6 +119,7 @@ void migrateStages(Settings& settings, bool video) {
             ++it;
     }
     order.removeDuplicates();
+    if(video&&!order.contains("fsr_frame_generation"))order.insert(std::max<qsizetype>(0,order.indexOf("frame_generation")+1),"fsr_frame_generation");
     if (legacyDlss) {
         const auto origin =
             scaleDlss && (!upscaleDlss || order.indexOf("scale_method") < order.indexOf("super_resolution"))
@@ -109,11 +148,26 @@ void migrateStages(Settings& settings, bool video) {
                 order.insert(order.indexOf("dlss_super_resolution") + 1, stage);
             else if (stage == "rtx_video_hdr")
                 order.insert(order.indexOf("super_resolution") + 1, stage);
-            else
+            else if (stage == "reshade") {
+                const auto coloring = order.indexOf("coloring");
+                if (coloring >= 0)
+                    order.insert(coloring, stage);
+                else
+                    order.append(stage);
+            } else
                 order.append(stage);
         }
     enabled.removeDuplicates();
     enabled.removeIf([&allowed](const QString& stage) { return !allowed.contains(stage); });
+}
+void migrateRetiredReShadeDepth(Settings& settings) {
+    for (auto* mode : {&settings.reshade_depth_mode, &settings.reshade_image_depth_mode})
+        if (mode->startsWith("AI Depth (")) *mode = "AI Depth";
+}
+void migrateRetiredReShadeMotion(Settings& settings) {
+    migrateRetiredReShadeDepth(settings);
+    if (settings.reshade_temporal_stability == "Balanced")
+        settings.reshade_temporal_stability = "Auto";
 }
 void applyValues(Settings& settings, const QVariantMap& changes) {
 #define VE_SETTING(type, name, initial)                                                                      \
@@ -121,6 +175,7 @@ void applyValues(Settings& settings, const QVariantMap& changes) {
         settings.name = convert<type>(changes.value(QStringLiteral(#name)));
 #include "settings_fields.inc"
 #undef VE_SETTING
+    migrateRetiredReShadeMotion(settings);
 }
 std::expected<Settings, QString> migratePreset(const Settings& current, QVariantMap changes, int version,
                                                const QVariantMap& imported) {
@@ -162,6 +217,11 @@ std::expected<Settings, QString> migratePreset(const Settings& current, QVariant
         reset({"upscale_optical_flow_quality"});
     if (version < 34)
         reset({"frame_interpolation_optical_flow_quality"});
+    if (version < 40)
+        reset({"frame_interpolation_provider","fsr_frame_generation_target_fps","fsr_adapter_id"});
+    if (version < 41)
+        reset({"frame_interpolation_frame_rate_mode", "frame_interpolation_multiplier",
+               "fsr_frame_generation_frame_rate_mode", "fsr_frame_generation_multiplier"});
     if (version < 8)
         reset({"nr_scale_method", "nr_dlss_mode", "nr_dlss_preset", "upscale_image_engine",
                "upscale_image_dlss_mode", "upscale_image_dlss_preset", "upscale_engine", "upscale_dlss_mode",
@@ -286,6 +346,7 @@ std::expected<void, QString> Settings::set(QStringView key, const QVariant& inpu
 #undef VE_SETTING
     if (!found)
         return std::unexpected("Unknown setting: " + key.toString());
+    migrateRetiredReShadeDepth(candidate);
     if (key.endsWith(u"codec")) {
         if (key == u"codec")
             candidate.container = containersForCodec(candidate.codec).contains(candidate.container)
@@ -467,8 +528,13 @@ std::expected<void, QString> Settings::validate() const {
         return std::unexpected("Unknown Upscale mode.");
     if (upscale_hdr_precision != "Packed 10-bit" && upscale_hdr_precision != "FP16")
         return std::unexpected("Unknown HDR precision.");
-    if (!QStringList{"Auto", "Native DLSSG", "Cascade"}.contains(frame_interpolation_engine))
-        return std::unexpected("Unknown Frame Interpolation engine.");
+    for (const auto& mode : {frame_interpolation_frame_rate_mode, fsr_frame_generation_frame_rate_mode})
+        if (mode != "Multiplier" && mode != "Target FPS") return std::unexpected("Unknown frame-rate mode.");
+    for (const auto multiplier : {frame_interpolation_multiplier, fsr_frame_generation_multiplier})
+        if (multiplier < 2 || multiplier > 8) return std::unexpected("Frame generation multiplier must be from 2 to 8.");
+    if(!QStringList{"DLSS","FSR 3"}.contains(frame_interpolation_provider))return std::unexpected("Unknown frame interpolation provider.");
+    if(fsr_adapter_id!="auto"&&!QRegularExpression("^(?:[0-9]+|dxgi:[0-9a-fA-F]{4}:[0-9a-fA-F]{4}:[0-9a-fA-F]{8}:[0-9a-fA-F]{2}:[0-9]+)$").match(fsr_adapter_id).hasMatch())
+        return std::unexpected("Invalid FSR DirectX adapter selection.");
     if (!QStringList{"Lanczos4", "Area", "Bicubic", "Bilinear", "Nearest"}.contains(image_scaling_filter) ||
         !QStringList{"Spline36", "Lanczos", "Bicubic", "Area", "Bilinear"}.contains(video_scaling_filter))
         return std::unexpected("Unknown scaling filter.");
@@ -491,12 +557,74 @@ std::expected<void, QString> Settings::validate() const {
                      "180", "240", "360", "480"}
              .contains(frame_interpolation_target_fps))
         return std::unexpected("Unsupported output FPS.");
+    if(!QStringList{"23.976","25","29.97","30","50","59.94","60","90","119.88","120","144","165","180","240","360","480"}.contains(fsr_frame_generation_target_fps))
+        return std::unexpected("Unsupported FSR output FPS.");
     if (ffmpeg_device != "auto" && ffmpeg_device != "cpu" &&
         (!ffmpeg_device.startsWith("vulkan:") || QUuid(ffmpeg_device.mid(7)).isNull()))
         return std::unexpected("Invalid FFmpeg/Vulkan device selection.");
     for (const auto& uuid : {ai_gpu_uuid, video_gpu_uuid})
         if (uuid != "auto" && (!uuid.startsWith("GPU-") || QUuid(uuid.mid(4)).isNull()))
             return std::unexpected("Invalid NVIDIA GPU selection.");
+    const auto validateReShadePaths = [](const QString& value, const char* label) -> std::expected<void, QString> {
+        if (value.size() > 4096)
+            return std::unexpected(QString::fromLatin1(label) + " is too long.");
+        const QRegularExpression binaryPattern(R"(\.(dll|addon|addon32|addon64)\s*([;,]|$))",
+                                               QRegularExpression::CaseInsensitiveOption);
+        if (binaryPattern.match(value).hasMatch())
+            return std::unexpected("ReShade DLLs and binary add-ons cannot be loaded as presets or shader packages.");
+        return {};
+    };
+    for (const auto& [path, label] : {
+             std::pair{reshade_preset_path, "ReShade preset path"},
+             std::pair{reshade_shader_search_paths, "ReShade shader search paths"},
+             std::pair{reshade_texture_search_paths, "ReShade texture search paths"},
+             std::pair{reshade_image_preset_path, "ReShade image preset path"},
+             std::pair{reshade_image_shader_search_paths, "ReShade image shader search paths"},
+             std::pair{reshade_image_texture_search_paths, "ReShade image texture search paths"}}) {
+        if (auto ok = validateReShadePaths(path, label); !ok)
+            return ok;
+    }
+    for (const auto& overrides : {reshade_parameter_overrides, reshade_image_parameter_overrides}) {
+        if (overrides.size() > 65536)
+            return std::unexpected("ReShade parameter overrides are too large.");
+        const auto trimmed = overrides.trimmed();
+        if (!trimmed.isEmpty()) {
+            if (trimmed.startsWith('{')) {
+                QJsonParseError err;
+                const auto doc = QJsonDocument::fromJson(trimmed.toUtf8(), &err);
+                if (err.error != QJsonParseError::NoError || !doc.isObject())
+                    return std::unexpected("ReShade parameter overrides must be a valid JSON object.");
+            } else {
+                for (const auto& rawLine : trimmed.split('\n', Qt::SkipEmptyParts)) {
+                    const auto line = rawLine.trimmed();
+                    if (!line.isEmpty() && !line.startsWith('#') && !line.contains('='))
+                        return std::unexpected("ReShade parameter override entries must have the form KEY=VALUE.");
+                }
+            }
+        }
+    }
+    for (int mix : {reshade_mix, reshade_image_mix})
+        if (mix < 0 || mix > 100)
+            return std::unexpected("ReShade mix must be between 0 and 100.");
+    if (reshade_temporal_strength < 0 || reshade_temporal_strength > 100)
+        return std::unexpected("ReShade temporal strength must be between 0 and 100.");
+    for (const auto& depthMode : {reshade_depth_mode, reshade_image_depth_mode})
+        if (!QStringList{"Auto", "Off", "AI Depth"}.contains(depthMode))
+            return std::unexpected("Unknown ReShade depth mode.");
+    for (int depthRes : {reshade_depth_resolution, reshade_image_depth_resolution})
+        if (depthRes < 196 || depthRes > 1008 || (depthRes % 14) != 0)
+            return std::unexpected("ReShade depth resolution must be a multiple of 14 between 196 and 1008.");
+    if (!QStringList{"Auto", "Quality", "Spatial Only (Off)"}.contains(reshade_temporal_stability))
+        return std::unexpected("Unknown ReShade temporal stability policy.");
+    for (const auto& precision : {reshade_precision_policy, reshade_image_precision_policy})
+        if (!QStringList{"Auto", "FP16", "8-bit sRGB Compatibility"}.contains(precision))
+            return std::unexpected("Unknown ReShade precision policy.");
+    for (const auto& hdrPolicy : {reshade_hdr_policy, reshade_image_hdr_policy})
+        if (!QStringList{"Auto", "HDR Aware", "SDR Adapter", "Reject Unsupported"}.contains(hdrPolicy))
+            return std::unexpected("Unknown ReShade HDR policy.");
+    for (int seed : {reshade_deterministic_seed, reshade_image_deterministic_seed})
+        if (seed < 0 || seed > 65535)
+            return std::unexpected("ReShade deterministic seed must be between 0 and 65535.");
     return {};
 }
 QStringList Settings::stages(bool video) const {
@@ -570,6 +698,7 @@ Settings Settings::load(const QString& path) {
         result.name = convert<type>(loaded.value(QStringLiteral(#name)));
 #include "settings_fields.inc"
 #undef VE_SETTING
+    migrateRetiredReShadeMotion(result);
     migrateStages(result, false);
     migrateStages(result, true);
     // Repair individual invalid saved values without discarding the rest of the user's settings.
@@ -618,7 +747,7 @@ QJsonObject Settings::preset(const QString& name) const {
     auto migrated=*this;migrateStages(migrated,false);migrateStages(migrated,true);auto map = migrated.values();
     map.remove("nr_mask");
     return {{"format", "dlss5-visual-enhancer-settings-preset"},
-            {"schema_version", 38},
+            {"schema_version", 41},
             {"name", name.trimmed()},
             {"settings", QJsonObject::fromVariantMap(map)}};
 }
@@ -652,7 +781,7 @@ std::expected<QString, QString> Settings::importPreset(const QString& path) {
         std::floor(object.value("schema_version").toDouble()) != object.value("schema_version").toDouble())
         return std::unexpected(QT_TRANSLATE_NOOP("App", "Preset schema_version must be an integer."));
     const int version = object.value("schema_version").toInt();
-    if (version < 1 || version > 38)
+    if (version < 1 || version > 41)
         return std::unexpected(QT_TRANSLATE_NOOP("App", "Unsupported preset schema version."));
     const auto name = object.value("name").toString().trimmed();
     if (!object.value("settings").isObject() || name.isEmpty() || name.size() > 120 ||
@@ -747,6 +876,32 @@ std::expected<QString, QString> Settings::importPreset(const QString& path) {
             enabled.removeAll("dlss_ray_reconstruction");
             migrateStages(candidate,video);
         }
+    }
+    if (version < 39) {
+        // Pre-39 presets never enabled ReShade. Preserve all previous relative ordering.
+        for (bool video : {false, true}) {
+            auto& order = video ? candidate.video_stage_order : candidate.image_stage_order;
+            auto& enabled = video ? candidate.video_enabled_stages : candidate.image_enabled_stages;
+            const QSet<QString> seen(order.begin(), order.end()), active(enabled.begin(), enabled.end());
+            if (seen.size() != order.size() || active.size() != enabled.size())
+                return std::unexpected("Pipeline contains duplicate processing cards.");
+            for (const auto& stage : order)
+                if (!canonicalStages(video).contains(stage))
+                    return std::unexpected("Pipeline contains an unavailable processing card.");
+            for (const auto& stage : enabled)
+                if (!order.contains(stage))
+                    return std::unexpected("Pipeline enables an unavailable processing card.");
+            enabled.removeAll("reshade");
+            migrateStages(candidate, video);
+        }
+    }
+    if(version<40){
+        const auto& order=candidate.video_stage_order;const auto& enabled=candidate.video_enabled_stages;
+        const QSet<QString> seen(order.begin(),order.end()),active(enabled.begin(),enabled.end());
+        if(seen.size()!=order.size()||active.size()!=enabled.size())return std::unexpected("Pipeline contains duplicate processing cards.");
+        for(const auto& stage:order)if(!canonicalStages(true).contains(stage))return std::unexpected("Pipeline contains an unavailable processing card.");
+        for(const auto& stage:enabled)if(!order.contains(stage))return std::unexpected("Pipeline enables an unavailable processing card.");
+        candidate.video_enabled_stages.removeAll("fsr_frame_generation");migrateStages(candidate,true);
     }
     if (auto valid = candidate.validate(); !valid)
         return std::unexpected(valid.error());

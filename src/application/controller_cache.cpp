@@ -39,12 +39,23 @@ QSet<QString> AppController::protectedProcessingFiles() const {
     return result;
 }
 void AppController::updateProcessingCache(bool clean, bool automatic) {
-    if (shuttingDown_ || cacheBusy_) return;
+    if (shuttingDown_) return;
+    if (cacheBusy_ && (!clean || automatic || cacheCleaning_ || cacheCleanPending_)) return;
     if (clean && !cacheMaintenanceSafe()) {
         if (!automatic) {
             cacheStatus_ = QCoreApplication::translate("App", "Processing is active. Try again when it finishes.");
             emit processingCacheChanged();
         }
+        return;
+    }
+    if (cacheBusy_) {
+        // A manual click during a read-only scan must not be lost. Reserve the
+        // cleanup until that scan finishes; idle() blocks new processing while
+        // the request is pending, just as it does during the cleanup itself.
+        cacheCleanPending_ = true;
+        cacheStatus_.clear();
+        emit processingCacheChanged();
+        emit operationStateChanged();
         return;
     }
     const auto protectedPaths = protectedProcessingFiles();
@@ -135,6 +146,10 @@ void AppController::updateProcessingCache(bool clean, bool automatic) {
                     cacheStatus_ += ' ' + QCoreApplication::translate("App", "Some files are in use or could not be removed.");
                 log(QString("Removed %1 processing cache files (%2 bytes); %3 bytes remain; %4 skipped.")
                     .arg(removed.removedFiles).arg(removed.removedBytes).arg(snapshot.bytes).arg(removed.skipped), "cache");
+            }
+            if (cacheCleanPending_) {
+                cacheCleanPending_ = false;
+                updateProcessingCache(true); // Recheck safety and fresh protected paths.
             }
             emit processingCacheChanged();
             emit operationStateChanged();

@@ -24,7 +24,7 @@ QImage VideoStillPreview::process(const QImage &input, Settings settings, MediaI
     // The former source container quantized wide layouts back to the original
     // integer depth before the streaming stages read them. Preserve that step.
     info.pixelFormat = ffv1PreviewPixelFormat(info);
-    const bool nativeTemporal=stages.contains("dlss_super_resolution")||stages.contains("dlss_ray_reconstruction");
+    const bool nativeTemporal=stages.contains("dlss_super_resolution")||stages.contains("dlss_ray_reconstruction")||stages.contains("reshade");
     if(nativeTemporal)info.pixelFormat=input.depth()>32?"rgba64le":"rgba";
     info.colorSpace = "gbr";
     info.range = "pc";
@@ -162,7 +162,7 @@ QImage VideoStillPreview::process(const QImage &input, Settings settings, MediaI
     while(auto frame=pipeline.read()) {control.checkpoint();if(generatedTarget>=0&&frame->seconds()>generatedTarget+1e-7)break;output=std::move(frame);}
     if (!output)
         throw std::runtime_error("Video still preview returned no frame.");
-    if (!stages.isEmpty() && stages.back() != "neural_model" && stages.back() != "dlss_super_resolution" && stages.back() != "dlss_ray_reconstruction")
+    if (!stages.isEmpty() && stages.back() != "neural_model" && stages.back() != "dlss_super_resolution" && stages.back() != "dlss_ray_reconstruction" && stages.back() != "reshade")
         info.pixelFormat = "gbrp10le";
     else if (info.pixelFormat == "gbrp10le" && !stages.isEmpty())
         info.pixelFormat = "rgba64le";

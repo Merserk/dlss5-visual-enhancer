@@ -6,6 +6,7 @@ param(
     [string]$Destination,
     [string]$NativeBuildRoot,
     [string]$RuntimeSource,
+    [string]$MediaRuntimeSource,
     [string]$CertificateThumbprint,
     [string]$TimestampServer = 'http://timestamp.digicert.com',
     [switch]$MachineCertificateStore,
@@ -34,7 +35,7 @@ if (-not $RuntimeSource) {
     else { $RuntimeSource = Join-Path $destinationRoot 'app' }
 }
 & (Join-Path $PSScriptRoot 'package.ps1') -Configuration $Configuration -QtRoot $QtRoot -BuildDir $BuildDir `
-    -Destination $stage -NativeBuildRoot $NativeBuildRoot -RuntimeSource $RuntimeSource `
+    -Destination $stage -NativeBuildRoot $NativeBuildRoot -RuntimeSource $RuntimeSource -MediaRuntimeSource $MediaRuntimeSource `
     -CertificateThumbprint $CertificateThumbprint -TimestampServer $TimestampServer `
     -MachineCertificateStore:$MachineCertificateStore -RequireSignatures:$RequireSignatures -OutputDirectory $OutputDirectory
 $entrypointTests = Join-Path $workspace 'Tests/entrypoint_tests.ps1'

@@ -1,7 +1,9 @@
 #pragma once
+#include "fsr_native.hpp"
 #include "configuration/settings.hpp"
 #include "infrastructure/job.hpp"
 #include "media/media.hpp"
+#include "reshade_dependencies.hpp"
 #include <QCache>
 #include <QColorSpace>
 #include <QCryptographicHash>
@@ -133,8 +135,9 @@ inline QList<QByteArray> previewStageKeys(QByteArray identity, const Settings& s
         {"rtx_video_hdr",{"upscale_hdr_contrast","upscale_hdr_saturation","upscale_hdr_middle_gray","upscale_hdr_peak_luminance","upscale_hdr_precision"}},
         {"cas_sharpening",{"sharpening_method","cas_sharpness"}},
         {"grain",{"grain_amount","grain_size","grain_color","grain_response","grain_seed","grain_animated"}},
-        {"frame_generation",{"frame_interpolation_engine","frame_interpolation_target_fps",
-            "frame_interpolation_optical_flow_quality"}}
+        {"frame_generation",{"frame_interpolation_frame_rate_mode","frame_interpolation_multiplier","frame_interpolation_target_fps",
+            "frame_interpolation_optical_flow_quality"}},
+        {"fsr_frame_generation",{"fsr_frame_generation_frame_rate_mode","fsr_frame_generation_multiplier","fsr_frame_generation_target_fps","fsr_adapter_id"}}
     };
     identity+=QJsonDocument(QJsonObject{{"video",info.video},{"hdr",info.hdr},{"width",info.width},{"height",info.height},
         {"format",info.pixelFormat},{"matrix",info.colorSpace},{"range",info.range},{"primaries",info.primaries},{"transfer",info.transfer},
@@ -143,8 +146,18 @@ inline QList<QByteArray> previewStageKeys(QByteArray identity, const Settings& s
     QList<QByteArray> keys;
     for (qsizetype index=0; index<stages.size(); ++index) {
         const auto& stage=stages[index];
+        if(stage=="frame_generation")identity+="/temporal-grid-v2/monotonic-resets-v2/";
         QVariantMap relevant;
         if(stage=="dlss_ray_reconstruction")identity+="/rr-native-1x-abi2/rr-guides-v2/fixed-still-video/scene-v2/full-fingerprint/streamed-parked-32-v3/single-still/";
+        if(stage=="fsr_frame_generation"){
+            identity+="/fsr3-3.1.6/amd-of-video-guides-v1/precision16/scene-v1/cadence-adaptive-1over16-v2/history8-global-clock-v2/monotonic-resets-v2/gpu-encoding-required-v1/";
+            identity+=fsrAdapterCacheIdentity();
+            const auto engineOverride=qEnvironmentVariable("VE_FSR_RUNTIME_DIRECTORY"),mediaOverride=qEnvironmentVariable("VE_MEDIA_RUNTIME_DIRECTORY");
+            const auto fsrRoot=engineOverride.isEmpty()?root+"/bin/runtime/fsrfg/":engineOverride+'/';
+            for(const auto* file:{"neuroframe_engine_fsr_frame_generation.dll","amd_fidelityfx_framegeneration_dx12.dll","runtime-manifest.json"})identity+=previewFileIdentity(fsrRoot+file);
+            QDir av(mediaOverride.isEmpty()?root+"/bin/runtime/av":mediaOverride);
+            for(const auto& file:av.entryList({"avcodec-*.dll","avutil-*.dll","avformat-*.dll","swscale-*.dll"},QDir::Files,QDir::Name))identity+=previewFileIdentity(av.filePath(file));
+        }
         for (const auto& field : fields.value(stage)) relevant.insert(field,settings.value(field));
         if(isVfxStage(stage)||(hasVfxStages(settings.stages(true))&&QStringList{"super_resolution","rtx_video_hdr"}.contains(stage))){
             identity+="/vfx-source-colors-v2/";
@@ -162,6 +175,13 @@ inline QList<QByteArray> previewStageKeys(QByteArray identity, const Settings& s
             const auto values=settings.values();
             for (auto it=values.begin(); it!=values.end(); ++it)
                 if (it.key().startsWith("lut_")) relevant.insert(it.key(),it.value());
+        }
+        if (stage=="reshade") {
+            identity += reshadeDependencyIdentity(settings, info.video, root);
+            const auto rs=reshadeSettingsForMode(settings,info.video);
+            const auto values=rs.values();
+            for (auto it=values.begin(); it!=values.end(); ++it)
+                if (it.key().startsWith("reshade_")) relevant.insert(it.key(),it.value());
         }
         identity+=stage.toUtf8()+QJsonDocument(QJsonObject::fromVariantMap(relevant)).toJson(QJsonDocument::Compact);
         if (stage=="coloring") {

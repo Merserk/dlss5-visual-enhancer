@@ -23,7 +23,8 @@ class AvLibrary {
 
   private:
     AvLibrary() {
-        QDir directory(Paths::instance().at("bin/runtime/av"));
+        const auto override=qEnvironmentVariable("VE_MEDIA_RUNTIME_DIRECTORY");
+        QDir directory(override.isEmpty()?Paths::instance().at("bin/runtime/av"):override);
         for (const auto* name : {"avutil", "avcodec", "avformat", "swscale"}) {
             const auto files = directory.entryList({QString::fromLatin1(name) + "-*.dll"}, QDir::Files);
             if (files.size() != 1)

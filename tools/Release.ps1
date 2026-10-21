@@ -6,8 +6,11 @@ function Get-VeOwnedBinaries([string]$PackageRoot) {
         'bin/runtime/dlsssr/neuroframe_engine_super_resolution.dll',
         'bin/runtime/dlssrr/neuroframe_engine_ray_reconstruction.dll',
         'bin/runtime/dlssg/neuroframe_engine_frame_interpolation.dll',
+        'bin/runtime/fsrfg/neuroframe_engine_fsr_frame_generation.dll',
         'bin/runtime/rtx_video/neuroframe_engine_upscaling.dll',
-        'bin/runtime/vfx/neuroframe_engine_video_effects.dll')) {
+        'bin/runtime/vfx/neuroframe_engine_video_effects.dll',
+        'bin/runtime/reshade/neuroframe_engine_reshade.dll',
+        'bin/runtime/reshade/ve_reshade_runtime.dll')) {
         $path = Join-Path $PackageRoot $relative
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing application binary: $relative" }
         Get-Item -LiteralPath $path

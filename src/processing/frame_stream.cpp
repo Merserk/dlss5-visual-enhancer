@@ -81,9 +81,9 @@ struct Stage {
             return filter->read();
         }
         const double seconds=frame->seconds();
-        if(name=="dlss_ray_reconstruction"&&(!std::isfinite(seconds)||
+        if((name=="dlss_ray_reconstruction"||name=="reshade")&&(!std::isfinite(seconds)||
            (previousSeconds&&seconds<=*previousSeconds)))
-            throw std::runtime_error("Ray Reconstruction requires finite, increasing presentation timestamps.");
+            throw std::runtime_error("Ray Reconstruction/ReShade requires finite, increasing presentation timestamps.");
         if (!native) {
             native = std::make_unique<FramePipeline>(settings, info, QStringList{name}, finalOutput,
                                                      bool(normalizer));
@@ -93,9 +93,10 @@ struct Stage {
         const double interval=previousSeconds && seconds>*previousSeconds ? seconds-*previousSeconds
             : frame->duration>0 ? frame->duration*double(frame->timeBase.numerator)/frame->timeBase.denominator
             : info.fps>0 ? 1./info.fps : 1./60;
-        const bool gap=name=="dlss_ray_reconstruction"&&previousSeconds&&
+        const bool gap=(name=="dlss_ray_reconstruction"||name=="reshade")&&previousSeconds&&
             interval>std::max(.25,info.fps>0?4./info.fps:.25);
-        frame->image = native->process(frame->image, control, index, index == 0 || gap, float(std::clamp(interval*1000.,.01,1000.)));
+        frame->image = native->process(frame->image, control, index, index == 0 || gap,
+                                       float(std::clamp(interval*1000.,.01,1000.)), seconds);
         previousSeconds=seconds;
         ++index;
         return frame;
@@ -157,7 +158,7 @@ FrameStreamPipeline::FrameStreamPipeline(Settings settings, MediaInfo info, cons
                 .contains(name) ||
             name == "dlss_super_resolution" && !final)
             info.pixelFormat = "gbrp10le";
-        else if(name=="dlss_ray_reconstruction"){
+        else if(name=="dlss_ray_reconstruction"||name=="reshade"){
             info.pixelFormat="rgba64le";info.sourceBitDepth=16;
         }else if (name == "neural_model" || name == "dlss_super_resolution")
             info.pixelFormat =

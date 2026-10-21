@@ -9,26 +9,9 @@ Column {
     readonly property bool isImage: appBridge ? appBridge.nrMode === "Image" : true
     width: parent ? parent.width : 320
     spacing: 12
-    AppComboBox {
+    FrameRateControls {
         width: parent.width
-        label: qsTranslate("App", "Target Output Frame Rate")
-        model: appBridge ? appBridge.fiFpsChoices : []
-        currentValue: appBridge ? appBridge.fiTargetFps : "60"
-        onActivated: v => {
-            if (appBridge)
-                appBridge.fiTargetFps = v;
-        }
-    }
-
-    AppSegmentedControl {
-        width: parent.width
-        label: qsTranslate("App", "DLSS-G Engine")
-        model: appBridge ? appBridge.fiEngineChoices : []
-        currentValue: appBridge ? appBridge.fiEngine : "Auto"
-        onActivated: v => {
-            if (appBridge)
-                appBridge.fiEngine = v;
-        }
+        appBridge: root.appBridge
     }
 
     AppComboBox {

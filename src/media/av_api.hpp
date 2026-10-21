@@ -21,6 +21,7 @@ struct Api {
     AV_FN(av_find_input_format); AV_FN(av_malloc); AV_FN(av_free);
     AV_FN(avio_alloc_context); AV_FN(avio_context_free); 
     AV_FN(avcodec_find_decoder); AV_FN(avcodec_find_encoder_by_name); AV_FN(avcodec_get_hw_config);
+    AV_FN(avcodec_get_hw_frames_parameters);
     AV_FN(avcodec_alloc_context3); AV_FN(avcodec_parameters_to_context); AV_FN(avcodec_parameters_from_context);
     AV_FN(avcodec_open2); AV_FN(avcodec_free_context); AV_FN(avcodec_send_packet); AV_FN(avcodec_receive_frame);
     AV_FN(avcodec_flush_buffers); AV_FN(avformat_flush);
@@ -34,6 +35,8 @@ struct Api {
     AV_FN(av_new_packet);
     AV_FN(av_packet_side_data_new);
     AV_FN(av_buffer_ref); AV_FN(av_buffer_unref); AV_FN(av_hwdevice_ctx_create);
+    AV_FN(av_hwdevice_ctx_alloc); AV_FN(av_hwdevice_ctx_init);
+    AV_FN(av_hwdevice_ctx_create_derived); AV_FN(av_hwframe_ctx_create_derived); AV_FN(av_hwframe_map);
     AV_FN(av_hwframe_ctx_alloc); AV_FN(av_hwframe_ctx_init); AV_FN(av_hwframe_get_buffer);
     AV_FN(av_hwframe_transfer_data);
     AV_FN(avformat_alloc_output_context2); AV_FN(avformat_new_stream); AV_FN(avformat_write_header);
@@ -41,7 +44,7 @@ struct Api {
     AV_FN(avio_open); AV_FN(avio_closep); AV_FN(av_dict_set); AV_FN(av_dict_free);
     AV_FN(avio_flush);
     AV_FN(av_strerror); AV_FN(av_d2q); AV_FN(av_rescale_q); AV_FN(av_pix_fmt_desc_get);
-    AV_FN(av_get_pix_fmt);
+    AV_FN(av_get_pix_fmt); AV_FN(av_rescale_q_rnd);
     AV_FN(av_color_space_from_name); AV_FN(av_color_primaries_from_name); AV_FN(av_color_transfer_from_name);
     AV_FN(sws_alloc_context); AV_FN(sws_free_context); AV_FN(sws_scale_frame);
 #undef AV_FN

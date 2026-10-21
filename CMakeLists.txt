@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(VisualEnhancer VERSION 17.0.0 LANGUAGES C CXX RC)
+project(VisualEnhancer VERSION 18.0.0 LANGUAGES C CXX RC)
 
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
     message(FATAL_ERROR "Visual Enhancer requires a Windows MSVC x64 toolchain.")
@@ -69,10 +69,22 @@ add_library(ve_core STATIC
     src/media/image_alpha.cpp
     src/media/packet_stream.cpp
     src/media/cuda_video.cpp
+    src/media/d3d_video.cpp
+    src/media/d3d11_video.cpp
+    src/media/d3d_nvenc.cpp
+    src/media/d3d_amf.cpp
     src/media/host_video.cpp
     src/media/video_delivery.cpp
     src/media/frame_batch.cpp
     src/processing/native_engines.cpp
+    src/processing/fsr_native.cpp
+    src/processing/fsr_temporal.cpp
+    src/processing/fsr_video.cpp
+    src/processing/fsr_worker.cpp
+    src/processing/reshade_native.cpp
+    src/processing/reshade_cuda_adapter.cpp
+    src/processing/reshade_video.cpp
+    src/processing/reshade_worker.cpp
     src/processing/vfx_native.cpp
     src/processing/vfx_video.cpp
     src/processing/vfx_worker.cpp
@@ -87,9 +99,10 @@ add_library(ve_core STATIC
 target_include_directories(ve_core PUBLIC src "${VE_NATIVE_ROOT}/modules" PRIVATE third_party/libheif/include third_party/ffmpeg)
 target_include_directories(ve_core PRIVATE third_party/libjpeg-turbo-3.1.3/src "${VE_JPEG_BINARY}")
 target_include_directories(ve_core SYSTEM PRIVATE third_party)
+target_include_directories(ve_core SYSTEM PRIVATE "${VE_NATIVE_ROOT}/external/VideoCodecHeaders-12.2")
 target_include_directories(ve_core SYSTEM PRIVATE "${VE_NATIVE_ROOT}/external/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include")
 target_link_libraries(ve_core PUBLIC Qt6::Core Qt6::Gui Qt6::Network Qt6::Concurrent Qt6::Svg ve_libraw)
-target_link_libraries(ve_core PRIVATE zlibstatic ve_jpeg)
+target_link_libraries(ve_core PRIVATE zlibstatic ve_jpeg d3d12 d3d11 dxgi dxguid)
 target_compile_definitions(ve_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
     VE_APP_VERSION="${PROJECT_VERSION}")
 
@@ -152,9 +165,42 @@ option(BUILD_TESTING "Build the permanent unit and contract tests" OFF)
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.12...<6.13 REQUIRED COMPONENTS Test)
+    add_executable(ve_fsr_directx_export_smoke "${VE_TEST_ROOT}/fsr_directx_export_smoke.cpp")
+    target_link_libraries(ve_fsr_directx_export_smoke PRIVATE ve_core)
+    add_executable(ve_temporal_cadence_tests "${VE_TEST_ROOT}/temporal_cadence_tests.cpp")
+    add_executable(ve_fsr_settings_tests "${VE_TEST_ROOT}/fsr_settings_tests.cpp")
+    add_executable(ve_frame_generation_settings_tests "${VE_TEST_ROOT}/frame_generation_settings_tests.cpp")
+    target_link_libraries(ve_frame_generation_settings_tests PRIVATE ve_core Qt6::Test)
+    add_test(NAME frame_generation_settings_contracts COMMAND $<TARGET_FILE:ve_frame_generation_settings_tests> -o -,txt)
+    add_executable(ve_fsr_application_smoke "${VE_TEST_ROOT}/fsr_application_smoke.cpp")
+    add_executable(ve_fsr_startup_smoke "${VE_TEST_ROOT}/fsr_startup_smoke.cpp")
+    target_link_libraries(ve_fsr_startup_smoke PRIVATE ve_core)
+    add_executable(ve_frame_generation_preview_smoke "${VE_TEST_ROOT}/frame_generation_preview_smoke.cpp")
+    target_link_libraries(ve_frame_generation_preview_smoke PRIVATE ve_core)
+    target_link_libraries(ve_fsr_application_smoke PRIVATE ve_core)
+    add_executable(ve_fsr_lifecycle_smoke "${VE_TEST_ROOT}/fsr_lifecycle_smoke.cpp")
+    target_link_libraries(ve_fsr_lifecycle_smoke PRIVATE ve_core)
+    add_executable(ve_fsr_adaptive_smoke "${VE_TEST_ROOT}/fsr_adaptive_smoke.cpp")
+    target_link_libraries(ve_fsr_adaptive_smoke PRIVATE ve_core)
+    add_library(ve_fsr_bad_abi SHARED "${VE_TEST_ROOT}/fsr_bad_abi.cpp")
+    add_executable(ve_fsr_loader_smoke "${VE_TEST_ROOT}/fsr_loader_smoke.cpp")
+    target_link_libraries(ve_fsr_loader_smoke PRIVATE ve_core)
+    add_dependencies(ve_fsr_loader_smoke ve_fsr_bad_abi)
+    target_link_libraries(ve_fsr_settings_tests PRIVATE ve_core Qt6::Test)
+    add_test(NAME fsr_settings_contracts COMMAND $<TARGET_FILE:ve_fsr_settings_tests> -o -,txt)
+    target_link_libraries(ve_temporal_cadence_tests PRIVATE ve_core Qt6::Test)
+    add_test(NAME temporal_cadence_contracts COMMAND $<TARGET_FILE:ve_temporal_cadence_tests> -o -,txt)
     get_filename_component(VE_QT_RUNTIME_ROOT "${Qt6_DIR}/../../.." ABSOLUTE)
     add_executable(ve_storage_tests "${VE_TEST_ROOT}/storage_tests.cpp")
     add_executable(ve_dlss_rr_settings_tests "${VE_TEST_ROOT}/dlss_rr_settings_tests.cpp")
+    add_executable(ve_reshade_settings_tests "${VE_TEST_ROOT}/reshade_settings_tests.cpp")
+    target_link_libraries(ve_reshade_settings_tests PRIVATE ve_core Qt6::Test)
+    add_test(NAME reshade_settings_contracts COMMAND $<TARGET_FILE:ve_reshade_settings_tests> -o -,txt)
+    set_tests_properties(reshade_settings_contracts PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT "VE_APP_ROOT=${VE_WORKSPACE_ROOT}/Visual Enhancer"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${VE_QT_RUNTIME_ROOT}/bin"
+        TIMEOUT 45)
     add_executable(ve_dlss_rr_delivery_smoke "${VE_TEST_ROOT}/dlss_rr_delivery_smoke.cpp")
     target_link_libraries(ve_dlss_rr_delivery_smoke PRIVATE ve_core Qt6::Test)
     add_executable(ve_dlss_rr_initialization_smoke "${VE_TEST_ROOT}/dlss_rr_initialization_smoke.cpp")
@@ -197,6 +243,14 @@ if(BUILD_TESTING)
     set_tests_properties(process_stream_contracts PROPERTIES
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${VE_QT_RUNTIME_ROOT}/bin"
         TIMEOUT 45)
+    add_executable(ve_video_metadata_tests "${VE_TEST_ROOT}/video_metadata_tests.cpp")
+    target_link_libraries(ve_video_metadata_tests PRIVATE ve_core Qt6::Test)
+    target_compile_options(ve_video_metadata_tests PRIVATE /utf-8)
+    add_test(NAME video_metadata_contracts COMMAND $<TARGET_FILE:ve_video_metadata_tests> -o -,txt)
+    set_tests_properties(video_metadata_contracts PROPERTIES
+        ENVIRONMENT "VE_APP_ROOT=${VE_WORKSPACE_ROOT}/Visual Enhancer"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${VE_QT_RUNTIME_ROOT}/bin"
+        TIMEOUT 60)
     add_executable(ve_cli_cancel_probe "${VE_TEST_ROOT}/cli_cancel_probe.cpp")
     set_target_properties(ve_cli_cancel_probe PROPERTIES AUTOMOC OFF AUTORCC OFF)
     target_compile_definitions(ve_cli_cancel_probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
@@ -205,7 +259,7 @@ if(BUILD_TESTING)
     add_test(NAME processing_cache_contracts COMMAND $<TARGET_FILE:ve_processing_cache_tests> -o -,txt)
     add_test(NAME resolution_contracts COMMAND $<TARGET_FILE:ve_resolution_tests> -o -,txt)
     add_test(NAME translation_contracts COMMAND $<TARGET_FILE:ve_translation_tests> -o -,txt)
-    set_tests_properties(storage_contracts processing_cache_contracts translation_contracts resolution_contracts PROPERTIES
+    set_tests_properties(storage_contracts processing_cache_contracts translation_contracts resolution_contracts temporal_cadence_contracts fsr_settings_contracts frame_generation_settings_contracts PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${VE_QT_RUNTIME_ROOT}/plugins"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${VE_QT_RUNTIME_ROOT}/bin"

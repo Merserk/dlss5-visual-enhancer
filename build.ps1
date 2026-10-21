@@ -8,6 +8,7 @@ param(
     [string]$Destination,
     [string]$NativeBuildRoot,
     [string]$RuntimeSource,
+    [string]$MediaRuntimeSource,
     [switch]$RebuildNative,
     [string]$CertificateThumbprint,
     [string]$TimestampServer = 'http://timestamp.digicert.com',
@@ -22,10 +23,11 @@ $ErrorActionPreference = 'Stop'
 $resolvedQt = Resolve-VeQtRoot $QtRoot
 $resolvedBuild = Resolve-VePath $BuildDir $PSScriptRoot
 $generator = Get-VeVisualStudioGenerator
+Invoke-VeCommand 'python' @((Join-Path $PSScriptRoot 'tools/prepare-nvenc-headers.py'))
 if ($RebuildNative) {
     $nativeRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'native (dev)'
     $nativeShell = (Get-Process -Id $PID).Path
-    foreach ($feature in @('neural_rendering', 'super_resolution', 'ray_reconstruction', 'frame_interpolation', 'rtx_video', 'video_effects')) {
+    foreach ($feature in @('neural_rendering', 'super_resolution', 'ray_reconstruction', 'frame_interpolation', 'fsr_frame_generation', 'rtx_video', 'video_effects', 'reshade')) {
         Invoke-VeCommand $nativeShell @('-NoProfile', '-File', (Join-Path $nativeRoot "modules/$feature/build_bridge.ps1"), '-NoDeploy')
     }
     $NativeBuildRoot = Join-Path $nativeRoot 'modules'
@@ -45,7 +47,7 @@ if ($Test) {
 if ($Deploy) {
     & (Join-Path $PSScriptRoot 'tools/deploy.ps1') -BuildDir $resolvedBuild -QtRoot $resolvedQt `
         -Configuration $Configuration -Destination $Destination -NativeBuildRoot $NativeBuildRoot `
-        -RuntimeSource $RuntimeSource `
+        -RuntimeSource $RuntimeSource -MediaRuntimeSource $MediaRuntimeSource `
         -CertificateThumbprint $CertificateThumbprint `
         -TimestampServer $TimestampServer -MachineCertificateStore:$MachineCertificateStore `
         -RequireSignatures:$RequireSignatures -ScanDefender:$ScanDefender -OutputDirectory $OutputDirectory -StageOnly:$StageOnly

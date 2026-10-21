@@ -6,6 +6,7 @@ param(
     [string]$Destination,
     [string]$NativeBuildRoot,
     [string]$RuntimeSource,
+    [string]$MediaRuntimeSource,
     [string]$CertificateThumbprint,
     [string]$TimestampServer = 'http://timestamp.digicert.com',
     [switch]$MachineCertificateStore,
@@ -31,6 +32,21 @@ $runtimeSource = if ($RuntimeSource) { Resolve-VePath $RuntimeSource $projectRoo
         Join-Path $workspaceRoot 'Visual Enhancer'
     } else { Join-Path $workspaceRoot 'Visual Enhancer/app' }
 $binaryDirectory = Join-Path $resolvedBuild $Configuration
+if (-not $MediaRuntimeSource) {
+    $MediaRuntimeSource = if (Test-Path -LiteralPath (Join-Path $runtimeSource 'bin/runtime/av/source-manifest.json')) { $runtimeSource }
+        else { Join-Path $workspaceRoot 'native (dev)/external/VisualEnhancerMediaRuntime' }
+}
+$mediaSource = Resolve-VePath $MediaRuntimeSource $projectRoot
+$mediaAv = Join-Path $mediaSource 'bin/runtime/av'
+$mediaManifestPath = Join-Path $mediaAv 'source-manifest.json'
+if (-not (Test-Path -LiteralPath $mediaManifestPath -PathType Leaf)) { throw 'Prepare the pinned DirectX media runtime with tools/prepare-media-runtime.ps1.' }
+$mediaManifest = Get-Content -LiteralPath $mediaManifestPath -Raw | ConvertFrom-Json
+if ($mediaManifest.version -ne '8.1.2') { throw 'Unexpected DirectX media runtime version.' }
+$mediaLibraries = @('avutil-60.dll','avcodec-62.dll','avformat-62.dll','swscale-9.dll','swresample-6.dll')
+foreach ($name in $mediaLibraries) {
+    $record = @($mediaManifest.libraries | Where-Object name -EQ $name)
+    if ($record.Count -ne 1 -or (Get-FileHash -LiteralPath (Join-Path $mediaAv $name)).Hash -ne $record[0].sha256) { throw "Media runtime checksum mismatch: $name" }
+}
 $deployment = Join-Path $resolvedQt 'bin/windeployqt.exe'
 foreach ($name in @('Visual Enhancer.exe', 'VE_CLI.exe')) {
     $binary = Join-Path $binaryDirectory $name
@@ -53,6 +69,7 @@ $nativeModules = @{
     frame_interpolation = @('dlssg', 'neuroframe_engine_frame_interpolation.dll')
     rtx_video = @('rtx_video', 'neuroframe_engine_upscaling.dll')
     video_effects = @('vfx', 'neuroframe_engine_video_effects.dll')
+    reshade = @('reshade', 'neuroframe_engine_reshade.dll')
 }
 if (-not $NativeBuildRoot) {
     $localNativeRoot = Join-Path $workspaceRoot 'native (dev)/modules'
@@ -72,6 +89,8 @@ if ($NativeBuildRoot) {
 # including any source asset directories backed by junctions.
 function Copy-VeTree([string]$Source, [string]$Target) {
     if ([IO.Path]::GetFullPath($Source) -eq [IO.Path]::GetFullPath($Target)) { return }
+    # This dependency set is staged separately from its pinned manifest.
+    if ([IO.Path]::GetFullPath($Source) -eq [IO.Path]::GetFullPath((Join-Path $runtimeSource 'bin/runtime/av'))) { return }
     New-Item -ItemType Directory -Path $Target -Force | Out-Null
     foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
         $targetItem = Join-Path $Target $item.Name
@@ -101,6 +120,10 @@ if ([IO.Path]::GetFullPath($runtimeSource) -ne [IO.Path]::GetFullPath($appDirect
     }
 }
 Copy-VeTree (Join-Path $runtimeSource 'bin') (Join-Path $appDirectory 'bin')
+$targetAv = Join-Path $appDirectory 'bin/runtime/av'
+New-Item -ItemType Directory -Path $targetAv -Force | Out-Null
+foreach ($name in $mediaLibraries + @('source-manifest.json')) { Copy-Item -LiteralPath (Join-Path $mediaAv $name) -Destination $targetAv -Force }
+foreach ($name in @('FFMPEG-SHARED-LICENSE.txt','FFMPEG-SHARED-BUILD.txt')) { Copy-Item -LiteralPath (Join-Path $mediaSource "bin/licenses/$name") -Destination (Join-Path $appDirectory 'bin/licenses') -Force }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'QT-RELINKING.txt') -Destination (Join-Path $appDirectory 'bin/licenses/QT-RELINKING.txt') -Force
 $vfxModuleRoot = Join-Path $workspaceRoot 'native (dev)/modules/video_effects'
 $vfxBinary = Join-Path $vfxModuleRoot 'build/neuroframe_engine_video_effects.dll'
@@ -116,6 +139,21 @@ if(Test-Path -LiteralPath $vfxBinary){
         Copy-Item -LiteralPath (Join-Path $vfxSdk "features/$($plugin[0])/bin/$($plugin[1])") -Destination (Join-Path $appDirectory "bin/runtime/rtx_video/$($plugin[1])") -Force
     }
 }elseif(-not(Test-Path -LiteralPath (Join-Path $vfxRuntime 'neuroframe_engine_video_effects.dll'))){throw 'Build the NVIDIA VFX bridge before packaging the application.'}
+$reshadeModuleRoot = Join-Path $workspaceRoot 'native (dev)/modules/reshade'
+$reshadeBinary = Join-Path $reshadeModuleRoot 'build/neuroframe_engine_reshade.dll'
+if ($NativeBuildRoot) { $reshadeBinary = Join-Path $resolvedNativeBuildRoot 'reshade/build/neuroframe_engine_reshade.dll' }
+$reshadeRuntime = Join-Path $appDirectory 'bin/runtime/reshade'
+if (Test-Path -LiteralPath $reshadeBinary) {
+    & (Join-Path $reshadeModuleRoot 'package_runtime.ps1') -Destination $reshadeRuntime
+} elseif (-not (Test-Path -LiteralPath (Join-Path $reshadeRuntime 'neuroframe_engine_reshade.dll'))) {
+    throw 'Build the ReShade bridge before packaging the application.'
+}
+$fsrModuleRoot = Join-Path $workspaceRoot 'native (dev)/modules/fsr_frame_generation'
+$fsrBridgePath = if ($NativeBuildRoot) { Join-Path $resolvedNativeBuildRoot 'fsr_frame_generation/build/Release/neuroframe_engine_fsr_frame_generation.dll' }
+    else { Join-Path $fsrModuleRoot 'build/Release/neuroframe_engine_fsr_frame_generation.dll' }
+& (Join-Path $fsrModuleRoot 'package_runtime.ps1') -Destination (Join-Path $appDirectory 'bin/runtime/fsrfg') -BridgePath $fsrBridgePath
+$nvencLicense = Join-Path $workspaceRoot 'native (dev)/external/VideoCodecHeaders-12.2/LICENSE-header.txt'
+Copy-Item -LiteralPath $nvencLicense -Destination (Join-Path $appDirectory 'bin/licenses/NVENC-HEADERS-LICENSE.txt') -Force
 if ($NativeBuildRoot) {
     foreach ($feature in $nativeModules.Keys) {
         $binary = Join-Path $resolvedNativeBuildRoot "$feature/build/$($nativeModules[$feature][1])"
@@ -125,9 +163,21 @@ if ($NativeBuildRoot) {
 }
 foreach ($name in @('LICENSE.txt', 'THIRD-PARTY-NOTICES.txt')) {
     $source = Join-Path $runtimeSource $name
+    if ($name -eq 'THIRD-PARTY-NOTICES.txt' -and (Test-Path -LiteralPath (Join-Path $projectRoot 'THIRD-PARTY-NOTICES') -PathType Leaf)) {
+        $source = Join-Path $projectRoot 'THIRD-PARTY-NOTICES'
+    } elseif ($name -eq 'LICENSE.txt' -and (Test-Path -LiteralPath (Join-Path $projectRoot 'LICENSE.txt') -PathType Leaf)) {
+        $source = Join-Path $projectRoot 'LICENSE.txt'
+    }
     $target = Join-Path $appDirectory $name
     if ($source -ne $target -and (Test-Path -LiteralPath $source)) {
         Copy-Item -LiteralPath $source -Destination $target -Force
+    }
+}
+# The optional user guide may come from the source tree or the runtime bundle.
+foreach ($guide in @((Join-Path $projectRoot 'FSR-FRAME-GENERATION.md'), (Join-Path $runtimeSource 'FSR-FRAME-GENERATION.md'))) {
+    if (Test-Path -LiteralPath $guide -PathType Leaf) {
+        Copy-Item -LiteralPath $guide -Destination (Join-Path $appDirectory 'FSR-FRAME-GENERATION.md') -Force
+        break
     }
 }
 $resources = Join-Path $appDirectory 'resources'
@@ -151,7 +201,9 @@ $visualStudio = Get-VeVisualStudioInstallation
 $originalVcDirectory = [Environment]::GetEnvironmentVariable('VCINSTALLDIR')
 try {
     $env:VCINSTALLDIR = (Join-Path $visualStudio.installationPath 'VC') + '\'
-    $deploymentArguments = @($mode, '--compiler-runtime', '--skip-plugin-types', 'qmltooling', '--dir', $appDirectory,
+    # The Qt-bundled D3DCompiler_47 (6.3.9600) rejects the shader model 5.1 targets used by the ReShade runtime;
+    # the in-box Windows 10+ compiler in System32 is used instead.
+    $deploymentArguments = @($mode, '--compiler-runtime', '--no-system-d3d-compiler', '--skip-plugin-types', 'qmltooling', '--dir', $appDirectory,
         '--qmldir', (Join-Path $projectRoot 'src/desktop/qml'),
         (Join-Path $appDirectory 'Visual Enhancer.exe'), (Join-Path $appDirectory 'VE_CLI.exe'))
     Invoke-VeCommand $deployment $deploymentArguments
@@ -231,6 +283,15 @@ if ($CertificateThumbprint) {
     & (Join-Path $PSScriptRoot 'sign-release.ps1') -PackageRoot $resolvedDestination `
         -CertificateThumbprint $CertificateThumbprint -TimestampServer $TimestampServer `
         -MachineCertificateStore:$MachineCertificateStore
+    # Signing changes the application bridge's hash; vendor binaries stay pinned.
+    $fsrManifestPath = Join-Path $appDirectory 'bin/runtime/fsrfg/runtime-manifest.json'
+    $fsrManifest = Get-Content -LiteralPath $fsrManifestPath -Raw | ConvertFrom-Json
+    foreach ($record in $fsrManifest.binaries) {
+        if ($record.File -eq 'neuroframe_engine_fsr_frame_generation.dll') {
+            $record.SHA256 = (Get-FileHash -LiteralPath (Join-Path $appDirectory "bin/runtime/fsrfg/$($record.File)")).Hash
+        }
+    }
+    $fsrManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $fsrManifestPath -Encoding utf8
 }
 & (Join-Path $PSScriptRoot 'audit-release.ps1') -PackageRoot $resolvedDestination `
     -RequireSignatures:($RequireSignatures -or [bool]$CertificateThumbprint) -OutputDirectory $OutputDirectory

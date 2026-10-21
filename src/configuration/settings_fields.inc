@@ -2,12 +2,15 @@
 VE_SETTING(QStringList, image_stage_order,
            (QStringList{QStringLiteral("neural_model"), QStringLiteral("scale_method"),
                         QStringLiteral("dlss_super_resolution"), QStringLiteral("dlss_ray_reconstruction"), QStringLiteral("super_resolution"),
+                        QStringLiteral("reshade"),
                         QStringLiteral("coloring"), QStringLiteral("cas_sharpening"),
                         QStringLiteral("grain")}))
 VE_SETTING(QStringList, video_stage_order,
            (QStringList{QStringLiteral("neural_model"), QStringLiteral("scale_method"),
                         QStringLiteral("dlss_super_resolution"), QStringLiteral("dlss_ray_reconstruction"), QStringLiteral("super_resolution"),
                         QStringLiteral("rtx_video_hdr"), QStringLiteral("frame_generation"),
+                        QStringLiteral("fsr_frame_generation"),
+                        QStringLiteral("reshade"),
                         QStringLiteral("coloring"), QStringLiteral("cas_sharpening"),
                         QStringLiteral("grain"), QStringLiteral("vfx_vsr"),
                         QStringLiteral("vfx_upscale"), QStringLiteral("vfx_frame_generation")}))
@@ -69,7 +72,13 @@ VE_SETTING(QString, image_custom_suffix, (QStringLiteral("_Neural_Rendering")))
 VE_SETTING(QString, video_rename_mode, (QStringLiteral("Auto")))
 VE_SETTING(QString, video_custom_suffix, (QStringLiteral("_Neural_Rendering")))
 VE_SETTING(QString, frame_interpolation_target_fps, (QStringLiteral("60")))
-VE_SETTING(QString, frame_interpolation_engine, (QStringLiteral("Auto")))
+VE_SETTING(QString, frame_interpolation_frame_rate_mode, (QStringLiteral("Target FPS")))
+VE_SETTING(int, frame_interpolation_multiplier, (2))
+VE_SETTING(QString, frame_interpolation_provider, (QStringLiteral("DLSS")))
+VE_SETTING(QString, fsr_frame_generation_target_fps, (QStringLiteral("60")))
+VE_SETTING(QString, fsr_frame_generation_frame_rate_mode, (QStringLiteral("Target FPS")))
+VE_SETTING(int, fsr_frame_generation_multiplier, (2))
+VE_SETTING(QString, fsr_adapter_id, (QStringLiteral("auto")))
 VE_SETTING(QString, frame_interpolation_optical_flow_quality, (QStringLiteral("High")))
 VE_SETTING(QString, frame_interpolation_codec, (QStringLiteral("H.264")))
 VE_SETTING(QString, frame_interpolation_container, (QStringLiteral("MP4")))
@@ -133,3 +142,30 @@ VE_SETTING(bool, vfx_automatic_shot_detection, (true))
 VE_SETTING(bool, vfx_upscale_enabled, (false))
 VE_SETTING(double, vfx_upscale_scale, (2.0))
 VE_SETTING(double, vfx_upscale_strength, (0.4))
+// ReShade post-processing stage (image and video, disabled by default).
+// Motion estimation uses AMD FidelityFX Optical Flow 1.1.2 exclusively.
+VE_SETTING(QString, reshade_preset_path, (QStringLiteral("")))
+VE_SETTING(QString, reshade_shader_search_paths, (QStringLiteral("")))
+VE_SETTING(QString, reshade_texture_search_paths, (QStringLiteral("")))
+VE_SETTING(QString, reshade_parameter_overrides, (QStringLiteral("")))
+VE_SETTING(int, reshade_mix, (100))
+VE_SETTING(QString, reshade_depth_mode, (QStringLiteral("Auto")))
+VE_SETTING(int, reshade_depth_resolution, (1008))
+VE_SETTING(QString, reshade_temporal_stability, (QStringLiteral("Auto")))
+VE_SETTING(int, reshade_temporal_strength, (75))
+VE_SETTING(QString, reshade_precision_policy, (QStringLiteral("Auto")))
+VE_SETTING(QString, reshade_hdr_policy, (QStringLiteral("Auto")))
+VE_SETTING(bool, reshade_preserve_alpha, (true))
+VE_SETTING(int, reshade_deterministic_seed, (0))
+VE_SETTING(QString, reshade_image_preset_path, (QStringLiteral("")))
+VE_SETTING(bool, reshade_image_configured, (false))
+VE_SETTING(QString, reshade_image_shader_search_paths, (QStringLiteral("")))
+VE_SETTING(QString, reshade_image_texture_search_paths, (QStringLiteral("")))
+VE_SETTING(QString, reshade_image_parameter_overrides, (QStringLiteral("")))
+VE_SETTING(int, reshade_image_mix, (100))
+VE_SETTING(QString, reshade_image_depth_mode, (QStringLiteral("Auto")))
+VE_SETTING(int, reshade_image_depth_resolution, (1008))
+VE_SETTING(QString, reshade_image_precision_policy, (QStringLiteral("Auto")))
+VE_SETTING(QString, reshade_image_hdr_policy, (QStringLiteral("Auto")))
+VE_SETTING(bool, reshade_image_preserve_alpha, (true))
+VE_SETTING(int, reshade_image_deterministic_seed, (0))

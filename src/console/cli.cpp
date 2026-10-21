@@ -5,6 +5,10 @@
 #include "media/media.hpp"
 #include "processing/native_engines.hpp"
 #include "processing/pipeline.hpp"
+#include "processing/fsr_native.hpp"
+#include "processing/fsr_worker.hpp"
+#include "processing/reshade_native.hpp"
+#include "processing/reshade_worker.hpp"
 #include "processing/vfx_worker.hpp"
 #include <QDir>
 #include <QCoreApplication>
@@ -37,7 +41,7 @@ void json(const QJsonObject& value) {
 void help(const QString& command = {}) {
     output << "Visual Enhancer for images and videos, from your terminal.\n\n"
               "Usage: VE_CLI.exe COMMAND [INPUT ...] [OPTIONS]\n\n"
-              "Commands: render, reconstruct, upscale, interpolate, devices\n";
+              "Commands: render, reconstruct, reshade, upscale, interpolate, devices\n";
     if (command == "devices")
         output << "  --json                     Write GPU information as JSON\n";
     else if (!command.isEmpty()) {
@@ -56,6 +60,13 @@ void help(const QString& command = {}) {
             output << "  --format png|jpeg|webp|avif|tiff\n";
         if (command == "render")
             output << "  --style 0|1|2\n  --strength 0..2\n";
+        if (command == "render" || command == "reshade")
+            output << "  --reshade-preset PATH      ReShade .ini preset file\n"
+                      "  --reshade-shaders PATH     Shader (.fx/.fxh) search folder(s), separated by ';'\n"
+                      "  --reshade-textures PATH    Texture/LUT search folder(s), separated by ';'\n"
+                      "  --reshade-mix 0..1         Blend factor between source and ReShade output\n"
+                      "  --reshade-depth none|auto|moge-2-vits\n"
+                      "  --reshade-temporal auto|quality|off\n";
         if (command == "reconstruct")
             output << "  Native-resolution (1x) Ray Reconstruction\n"
                       "  --flow-quality high|medium|low  Video NVOFA quality\n";
@@ -64,7 +75,10 @@ void help(const QString& command = {}) {
                       "--size WIDTHxHEIGHT        Exact RTX dimensions\n  --mode "
                       "dlaa|quality|balanced|performance|ultra-performance\n";
         if (command == "interpolate")
-            output << "  --fps FPS                  Target frame rate (default: 60)\n";
+            output << "  --fps FPS                  Target frame rate (default: 60)\n"
+                      "  --multiplier 2..8          Multiply the source frame rate (instead of --fps)\n"
+                      "  --interpolator dlss|fsr3   Frame generation provider (default: dlss)\n"
+                      "  --fsr-gpu ID               auto, DXGI adapter index, or saved DXGI ID\n";
     } else
         output << "\nRun VE_CLI.exe COMMAND --help for options. Advanced settings: export a JSON preset from "
                   "the app.\n";
@@ -79,7 +93,8 @@ struct Arguments {
 Arguments parse(QStringList values) {
     Arguments result;
     result.command = values.takeFirst();
-    if (!QStringList{"render", "reconstruct", "upscale", "interpolate", "devices"}.contains(result.command))
+    if (!QStringList{"render", "reconstruct", "reshade", "upscale", "interpolate", "devices"}.contains(
+            result.command))
         throw UsageError("Unknown command: " + result.command);
     const QSet<QString> switches{"--json", "--quiet", "--dry-run", "--recursive"};
     QSet<QString> options{"--output", "--preset", "--gpu", "--codec", "--container", "--quality"};
@@ -87,12 +102,15 @@ Arguments parse(QStringList values) {
         options.insert("--format");
     if (result.command == "render")
         options.unite({"--style", "--strength"});
+    if (result.command == "render" || result.command == "reshade")
+        options.unite({"--reshade-preset", "--reshade-shaders", "--reshade-textures", "--reshade-mix",
+                       "--reshade-depth", "--reshade-temporal"});
     if (result.command == "reconstruct")
         options.insert("--flow-quality");
     if (result.command == "upscale")
         options.unite({"--engine", "--scale", "--size", "--mode"});
     if (result.command == "interpolate")
-        options.insert("--fps");
+        options.unite({"--fps","--multiplier","--interpolator","--fsr-gpu"});
     bool positional = false;
     for (qsizetype i = 0; i < values.size(); ++i) {
         auto value = values[i];
@@ -139,6 +157,48 @@ double number(const QString& value, const QString& name) {
         throw UsageError(name + " requires a finite number.");
     return result;
 }
+QStringList splitSearchPaths(const QString& raw) {
+    QStringList out;
+    for (const auto& part : raw.split(';', Qt::SkipEmptyParts)) {
+        const auto cleaned = localPath(part.trimmed());
+        if (!cleaned.isEmpty() && !out.contains(cleaned, Qt::CaseInsensitive))
+            out.append(cleaned);
+    }
+    return out;
+}
+void applyReShadeOptions(const Arguments& args, Settings& settings) {
+    if (args.options.contains("--reshade-preset"))
+        settings.reshade_image_preset_path = settings.reshade_preset_path =
+            localPath(args.options.value("--reshade-preset"));
+    if (args.options.contains("--reshade-shaders"))
+        settings.reshade_image_shader_search_paths = settings.reshade_shader_search_paths =
+            splitSearchPaths(args.options.value("--reshade-shaders")).join(';');
+    if (args.options.contains("--reshade-textures"))
+        settings.reshade_image_texture_search_paths = settings.reshade_texture_search_paths =
+            splitSearchPaths(args.options.value("--reshade-textures")).join(';');
+    if (args.options.contains("--reshade-mix")) {
+        const auto raw = args.options.value("--reshade-mix");
+        const double v = number(raw, "--reshade-mix");
+        const int pct =
+            (v >= 0.0 && v <= 1.0 && raw.contains('.')) ? int(std::llround(v * 100.0)) : int(std::llround(v));
+        settings.reshade_image_mix = settings.reshade_mix = pct;
+    }
+    if (args.options.contains("--reshade-depth"))
+        settings.reshade_image_depth_mode = settings.reshade_depth_mode =
+            choice(args, "--reshade-depth",
+                   {{"none", "Off"},
+                    {"off", "Off"},
+                    {"auto", "Auto"},
+                    {"moge-2-vits", "AI Depth"},
+                    {"ai", "AI Depth"}});
+    if (args.options.contains("--reshade-temporal"))
+        settings.reshade_temporal_stability =
+            choice(args, "--reshade-temporal",
+                   {{"auto", "Auto"},
+                    {"off", "Spatial Only (Off)"},
+                    {"quality", "Quality"},
+                    {"amd-optical-flow", "Quality"}});
+}
 Settings settingsFor(const Arguments& args, const QStringList& paths) {
     Settings settings;
     settings.image_rename_mode = settings.video_rename_mode = settings.upscale_image_rename_mode =
@@ -148,20 +208,40 @@ Settings settingsFor(const Arguments& args, const QStringList& paths) {
             throw UsageError(result.error());
     }
     const bool images = std::ranges::any_of(paths, isImage), videos = std::ranges::any_of(paths, isVideo);
+    const bool hasReShadeOption =
+        args.options.contains("--reshade-preset") || args.options.contains("--reshade-shaders") ||
+        args.options.contains("--reshade-textures") || args.options.contains("--reshade-mix") ||
+        args.options.contains("--reshade-depth") || args.options.contains("--reshade-temporal");
     if (args.command == "render") {
-        if (!args.options.contains("--preset"))
-            settings.image_enabled_stages = settings.video_enabled_stages = {"neural_model"};
+        if (!args.options.contains("--preset")) {
+            if (hasReShadeOption && !args.options.contains("--style") && !args.options.contains("--strength"))
+                settings.image_enabled_stages = settings.video_enabled_stages = {"reshade"};
+            else if (hasReShadeOption)
+                settings.image_enabled_stages = settings.video_enabled_stages = {"neural_model", "reshade"};
+            else
+                settings.image_enabled_stages = settings.video_enabled_stages = {"neural_model"};
+        }
         if (args.options.contains("--style") || args.options.contains("--strength")) {
             if ((images && !settings.image_enabled_stages.contains("neural_model")) ||
                 (videos && !settings.video_enabled_stages.contains("neural_model")))
                 throw UsageError(
                     "The preset disables Neural Rendering. Enable it before using --style or --strength.");
         }
+        if (hasReShadeOption) {
+            if ((images && !settings.image_enabled_stages.contains("reshade")) ||
+                (videos && !settings.video_enabled_stages.contains("reshade")))
+                throw UsageError("The preset disables ReShade. Enable it before using --reshade-* options.");
+        }
         if (args.options.contains("--style"))
             settings.nr_style =
                 choice(args, "--style", {{"0", "Style 0"}, {"1", "Style 1"}, {"2", "Style 2"}});
         if (args.options.contains("--strength"))
             settings.nr_intensity = number(args.options.value("--strength"), "--strength");
+        applyReShadeOptions(args, settings);
+    } else if (args.command == "reshade") {
+        if (!args.options.contains("--preset"))
+            settings.image_enabled_stages = settings.video_enabled_stages = {"reshade"};
+        applyReShadeOptions(args, settings);
     } else if (args.command == "reconstruct") {
         settings.image_enabled_stages=settings.video_enabled_stages={"dlss_ray_reconstruction"};
         if(args.options.contains("--flow-quality"))
@@ -220,9 +300,25 @@ Settings settingsFor(const Arguments& args, const QStringList& paths) {
     } else {
         if (images)
             throw UsageError("interpolate accepts videos only. Use render or upscale for images.");
-        settings.video_enabled_stages = {"frame_generation"};
-        if (args.options.contains("--fps"))
-            settings.frame_interpolation_target_fps = args.options.value("--fps");
+        if(args.options.contains("--interpolator"))settings.frame_interpolation_provider=choice(args,"--interpolator",{{"dlss","DLSS"},{"fsr3","FSR 3"}});
+        const bool fsr=settings.frame_interpolation_provider=="FSR 3";
+        settings.video_enabled_stages = {fsr?"fsr_frame_generation":"frame_generation"};
+        if (args.options.contains("--fps") && args.options.contains("--multiplier"))
+            throw UsageError("Choose either --fps or --multiplier.");
+        if (args.options.contains("--fps")){
+            (fsr ? settings.fsr_frame_generation_frame_rate_mode : settings.frame_interpolation_frame_rate_mode) = "Target FPS";
+            if(fsr)settings.fsr_frame_generation_target_fps=args.options.value("--fps");
+            else settings.frame_interpolation_target_fps = args.options.value("--fps");
+        }
+        if (args.options.contains("--multiplier")) {
+            bool valid = false;
+            const auto multiplier = args.options.value("--multiplier").toInt(&valid);
+            if (!valid || multiplier < 2 || multiplier > 8) throw UsageError("--multiplier must be an integer from 2 to 8.");
+            (fsr ? settings.fsr_frame_generation_frame_rate_mode : settings.frame_interpolation_frame_rate_mode) = "Multiplier";
+            (fsr ? settings.fsr_frame_generation_multiplier : settings.frame_interpolation_multiplier) = multiplier;
+        }
+        if(args.options.contains("--fsr-gpu"))settings.fsr_adapter_id=args.options.value("--fsr-gpu");
+        if(!fsr&&args.options.contains("--fsr-gpu"))throw UsageError("--fsr-* options require --interpolator fsr3");
         settings.codec = settings.frame_interpolation_codec;
         settings.container = settings.frame_interpolation_container;
         settings.quality = settings.frame_interpolation_quality;
@@ -300,7 +396,9 @@ struct ConsoleCancellation {
 };
 } // namespace
 int runCli(const QStringList& arguments) {
+    if(arguments.size()==2&&arguments.front()=="--internal-fsr-worker")return runFsrWorker(arguments.back());
     if(arguments.size()==2&&arguments.front()=="--internal-vfx-worker")return runVfxWorker(arguments.back());
+    if(arguments.size()==2&&arguments.front()=="--internal-reshade-worker")return runReShadeWorker(arguments.back());
     const bool jsonOutput = arguments.contains("--json");
     try {
         if (arguments.isEmpty() || arguments.contains("--help") || arguments.contains("-h")) {
@@ -318,6 +416,21 @@ int runCli(const QStringList& arguments) {
         if (args.command == "devices") {
             QJsonArray devices;
             for (const auto& gpu : detectGpus()) {
+                bool reshadeAvailable = false;
+                QString reshadeMotion = ReShadeEngine::opticalFlowBackend();
+                QString reshadeDepth = QStringLiteral("MoGe-2 ViT-S (ONNX Runtime DirectML)");
+                QString reshadeError;
+                try {
+                    ReShadeEngine::initialize(gpu.index);
+                    const auto caps = ReShadeEngine::capabilities(gpu.index);
+                    reshadeAvailable = caps.available != 0;
+                    if (!caps.depth_available)
+                        reshadeDepth = QStringLiteral("unavailable");
+                    if (!caps.amd_optical_flow_available)
+                        reshadeMotion = QStringLiteral("unavailable");
+                } catch (const std::exception& e) {
+                    reshadeError = QString::fromUtf8(e.what());
+                }
                 devices.append(QJsonObject{
                     {"index", gpu.index},
                     {"name", gpu.name},
@@ -327,15 +440,26 @@ int runCli(const QStringList& arguments) {
                     {"ai_compatible", gpu.compatible},
                     {"compatibility_error",
                      gpu.compatible ? ""
-                                    : "Requires an NVIDIA RTX GPU with compute capability 7.5 or newer."}});
+                                    : "Requires an NVIDIA RTX GPU with compute capability 7.5 or newer."},
+                    {"reshade_available", reshadeAvailable},
+                    {"reshade_motion_backend", reshadeMotion},
+                    {"reshade_depth_backend", reshadeDepth},
+                    {"reshade_error", reshadeError}});
                 if (!jsonOutput)
                     output << gpu.index << "  " << gpu.name << "  ("
                            << QString::number(gpu.memoryMiB / 1024., 'f', 1) << " GB VRAM)\n   " << gpu.uuid
                            << " | Driver " << gpu.driver
-                           << " | RTX processing: " << (gpu.compatible ? "yes" : "unavailable") << '\n';
+                           << " | RTX processing: " << (gpu.compatible ? "yes" : "unavailable")
+                           << " | ReShade: " << (reshadeAvailable ? "yes (" + reshadeMotion + ")" : "unavailable")
+                           << '\n';
+            }
+            QJsonArray fsrDevices;
+            for(const auto& gpu:detectFsrAdapters()){
+                fsrDevices.append(QJsonObject{{"dxgi_index",int(gpu.index)},{"id",gpu.id},{"name",gpu.name},{"available",gpu.available},{"error",gpu.unavailableReason},{"dedicated_memory_bytes",qint64(gpu.memoryBytes)}});
+                if(!jsonOutput)output<<"DXGI "<<gpu.index<<"  "<<gpu.name<<" | FSR 3: "<<(gpu.available?QString("available"):gpu.unavailableReason)<<"\n   "<<gpu.id<<'\n';
             }
             if (jsonOutput)
-                json({{"schema_version", 1}, {"ok", true}, {"devices", devices}});
+                json({{"schema_version", 1}, {"ok", true}, {"devices", devices},{"fsr_adapters",fsrDevices}});
             else
                 output.flush();
             return 0;

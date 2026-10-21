@@ -4,6 +4,7 @@
 #include "processing/effects.hpp"
 #include "processing/vfx_native.hpp"
 #include "processing/vfx_worker.hpp"
+#include "processing/fsr_worker.hpp"
 #include "media/timeline.hpp"
 #include "media/video_preview.hpp"
 #include <QClipboard>
@@ -75,21 +76,26 @@ QVariant AppController::handleWorkflow(Action action, const QVariantList& args) 
         const auto warmStages = settings_.image_enabled_stages.contains("neural_model") ? QStringList{"neural_model"} : QStringList{};
         auto future = QtConcurrent::run(&pool_, [this, selection, control, warmStages] {
             std::vector<Gpu> devices;
+            std::vector<FsrAdapter> fsrDevices;
             QString error;
             try {
                 devices = detectGpus(control.get());
+                fsrDevices = detectFsrAdapters(control.get());
                 control->checkpoint();
-                if (devices.empty()) throw std::runtime_error("No compatible NVIDIA GPU was detected.");
+                const bool nvidia=std::any_of(devices.begin(),devices.end(),[](const Gpu& gpu){return gpu.compatible;});
+                const bool fsr=std::any_of(fsrDevices.begin(),fsrDevices.end(),[](const FsrAdapter& gpu){return gpu.available;});
+                if (!nvidia&&!fsr) throw std::runtime_error(QT_TRANSLATE_NOOP("App", "No compatible NVIDIA or FSR DirectX 12 GPU was detected."));
                 // Initialize selected image NR asynchronously before the first
                 // preview; dimensions and inference still belong to the job.
-                NativeEngines::instance().prepare(gpuOrdinal(selection), warmStages);
+                if(nvidia&&!warmStages.isEmpty())NativeEngines::instance().prepare(gpuOrdinal(selection), warmStages);
                 control->checkpoint();
             } catch (const std::exception& e) { error = QString::fromUtf8(e.what()); }
-            QMetaObject::invokeMethod(this, [this, devices, error] {
+            QMetaObject::invokeMethod(this, [this, devices, fsrDevices, error] {
                 if (shuttingDown_) return;
                 runtimeInitializationStarted_ = false;
                 runtimeJob_.reset();
                 gpus_ = devices;
+                fsrAdapters_=fsrDevices;
                 runtime_ = error.isEmpty() ? "Ready" : "Failed";
                 runtimeError_ = error;
                 status_ = error.isEmpty() ? QT_TRANSLATE_NOOP("App", "Ready. Add files to begin.") : error;
@@ -349,12 +355,12 @@ QVariant AppController::handleWorkflow(Action action, const QVariantList& args) 
         });
         connect(reply, &QNetworkReply::finished, this, [this, reply, manager] {
             if (reply->error() != QNetworkReply::NoError) {
-                status_ = "Clipboard download failed: " + reply->errorString();
+                status_ = QCoreApplication::translate("App", "Clipboard download failed: %1").arg(reply->errorString());
                 emit statusMessageChanged();
             } else {
                 const auto bytes=reply->readAll();
                 if (bytes.isEmpty()) {
-                    status_="The clipboard URL did not contain a readable image.";
+                    status_=QT_TRANSLATE_NOOP("App", "The clipboard URL did not contain a readable image.");
                     emit statusMessageChanged();
                 } else addInputs({}, {},bytes);
             }
@@ -387,7 +393,7 @@ void AppController::addInputs(const QVariantList& urls, QImage clipboardImage, Q
     const int original = contextIndex();
     const auto tab = tab_;
     const auto id = ++operationId_;
-    setOperation("ScanningInputs", "Scanning input files…");
+    setOperation("ScanningInputs", QT_TRANSLATE_NOOP("App", "Scanning input files…"));
     job_ = std::make_shared<JobControl>();
     const auto control = job_;
     auto future = QtConcurrent::run(&pool_, [this, paths, original, tab, id, control,
@@ -445,7 +451,7 @@ void AppController::addInputs(const QVariantList& urls, QImage clipboardImage, Q
                     }
                 }
                 setOperation("Idle", error.isEmpty()
-                                         ? QString("Added %1 file(s).").arg(images.size() + videos.size())
+                                         ? QCoreApplication::translate("App", "Files added: %1.").arg(images.size() + videos.size())
                                          : error);
                 loadSelected();
             },
@@ -606,9 +612,10 @@ void AppController::preview(double positionMs, bool still) {
     const auto info = current.source;
     const auto settings = info.video ? videoPreviewSettings(settings_) : settings_;
     const bool vfxGenerated=info.video&&settings.stages(true).contains("vfx_frame_generation");
+    const bool fsrGenerated=info.video&&settings.stages(true).contains("fsr_frame_generation");
     const bool nativeRrAfterFi=info.video&&rrNeedsGeneratedHistory(settings.stages(true));
     const auto requestedPosition=quantizePlayhead(positionMs>=0?positionMs:current.playheadSeconds*1000,
-        vfxGenerated?vfxFrameRate(info.fps,vfxSettingsForStages(settings,settings.stages(true))):info.fps,info.duration);
+        fsrGenerated?frameGenerationFrameRate(info.fps,settings,true):vfxGenerated?vfxFrameRate(info.fps,vfxSettingsForStages(settings,settings.stages(true))):info.fps,info.duration);
     const auto position=quantizePlayhead(requestedPosition.seconds*1000,info.fps,info.duration);
     const double seconds = position.seconds;
     if (workflowType == Workflow::FrameInterpolation)
@@ -628,13 +635,13 @@ void AppController::preview(double positionMs, bool still) {
     progress_ = 0;
     emit overallProgressChanged();
     fastPreview_ = fastColor;
-    setOperation("PreviewRunning", "Rendering preview…");
+    setOperation("PreviewRunning", QT_TRANSLATE_NOOP("App", "Rendering preview…"));
     QElapsedTimer previewElapsed;
     previewElapsed.start();
     auto future = QtConcurrent::run(&previewPool_, [this, index, path, settings, info, seconds, still,
                                                     workflowType, id, generation, settingsRevision,
                                                     previewRevision, posterGeneration, position, control,
-                                                    fastColor, previewElapsed, vfxGenerated, nativeRrAfterFi, requestedPosition] {
+                                                    fastColor, previewElapsed, vfxGenerated, fsrGenerated, nativeRrAfterFi, requestedPosition] {
         QJsonObject profile{{"queue_ms", double(previewElapsed.nsecsElapsed()) / 1e6},
                             {"frame", qint64(position.number)}};
         QElapsedTimer phase;
@@ -677,7 +684,7 @@ void AppController::preview(double positionMs, bool still) {
                     (void)sourceDirectory.filePath("source-preview.mkv");
                     if (!sourceDirectory.isValid())
                         throw std::runtime_error("Cannot create the preview source directory.");
-                    const bool rrHistory=stages.contains("dlss_ray_reconstruction");
+                    const bool rrHistory=stages.contains("dlss_ray_reconstruction")||stages.contains("fsr_frame_generation");
                     const auto previewSource = rrHistory?path:
                         extractVideoPreviewSource(path, info, sourceDirectory.path(), seconds, clipSeconds,
                                                   false, *control, settings.ffmpeg_device);
@@ -714,7 +721,9 @@ void AppController::preview(double positionMs, bool still) {
                     (!stages.contains("neural_model") ||
                      effective.nr_mask.value("path").toString().isEmpty()) &&
                     (!stages.contains("coloring") ||
-                     (effective.lut_path.isEmpty() && effective.lut_reference_image.isEmpty()));
+                     (effective.lut_path.isEmpty() && effective.lut_reference_image.isEmpty())) &&
+                    (!stages.contains("reshade") ||
+                     reshadeSettingsForMode(effective, info.video).reshade_preset_path.isEmpty());
                 int rotation = info.metadata.value("tags").toObject().value("rotate").toString().toInt();
                 for (const auto &side : info.metadata.value("side_data_list").toArray())
                     if (side.toObject().contains("rotation"))
@@ -725,8 +734,16 @@ void AppController::preview(double positionMs, bool still) {
                     (!info.hdr || info.transfer == "smpte2084") &&
                     (stages == QStringList{"neural_model"} || stages == QStringList{"rtx_video_hdr"});
                 const bool directVideoStill =
-                    stages.size() == 1 && !stages.contains("dlss_ray_reconstruction") && rotation % 360 == 0 && (!hdrPreview || fastHdr);
-                if(info.video&&hasVfxStages(stages)){
+                    stages.size() == 1 && !stages.contains("dlss_ray_reconstruction") &&
+                    !stages.contains("reshade") && rotation % 360 == 0 && (!hdrPreview || fastHdr);
+                if(fsrGenerated){
+                    auto source=videoFrames_.frame(path,info,position,*control,false,0,false);input=source.pixels;prefetchSource=true;
+                    const auto identity=source.identity+QByteArray::number(requestedPosition.seconds,'g',17)+"/isolated-fsr/v1";
+                    const auto keys=previewStageKeys(identity,effective,info,stages,true,Paths::instance().root);
+                    if(auto cached=previewStages_.find(keys.back()))output=std::move(cached->pixels);
+                    else{output=previewIsolatedFsr(path,effective,info,requestedPosition.seconds,*control);previewStages_.store(keys.back(),{output,false,false});}
+                    if(immutableOutput)outputIdentity="video-output/isolated-fsr/v1"+keys.back();
+                } else if(info.video&&hasVfxStages(stages)){
                     auto source=videoFrames_.frame(path,info,position,*control,false,gpuOrdinal(settings.ai_gpu_uuid),settings.ffmpeg_device!="cpu");input=source.pixels;prefetchSource=true;
                     const auto identity=source.identity+QByteArray::number(requestedPosition.seconds,'g',17)+"/isolated-vfx/v1";
                     const auto keys=previewStageKeys(identity,effective,info,stages,true,Paths::instance().root);
@@ -770,7 +787,8 @@ void AppController::preview(double positionMs, bool still) {
                         previewStages_.store(keys.back(), {output, false, false});
                     }
                 } else if (info.video && !directVideoStill) {
-                    if (!hdrPreview || hasVfxStages(stages) || stages.contains("dlss_ray_reconstruction")) {
+                    if (!hdrPreview || hasVfxStages(stages) || stages.contains("dlss_ray_reconstruction") ||
+                        stages.contains("reshade")) {
                         auto source = videoFrames_.frame(path, info, position, *control, false,
                                                          gpuOrdinal(settings.ai_gpu_uuid),
                                                          settings.ffmpeg_device == "auto");
@@ -784,13 +802,13 @@ void AppController::preview(double positionMs, bool still) {
                         if (!videoStill_)
                             videoStill_ = std::make_unique<VideoStillPreview>();
                         std::vector<TimedImage> temporal;
-                        if(!stages.contains("dlss_ray_reconstruction")&&(stages.contains("dlss_super_resolution")||vfxGenerated)) {
+                        if(!stages.contains("dlss_ray_reconstruction")&&(stages.contains("dlss_super_resolution")||stages.contains("reshade")||vfxGenerated)) {
                             const int count=reconstructionHistoryFrames(effective,stages);
                             temporal=videoFrames_.temporalContext(path,info,position,source.absoluteSeconds,count,
                                 *control,gpuOrdinal(settings.ai_gpu_uuid),settings.ffmpeg_device=="auto",vfxGenerated||nativeRrAfterFi);
                         }
                         output = videoStill_->process(input, effective, info, stages, previewStages_,
-                                                      source.identity, *control,temporal,vfxGenerated?requestedPosition.seconds+info.presentationStartSeconds():stages.contains("dlss_ray_reconstruction")?source.absoluteSeconds:-1,path);
+                                                      source.identity, *control,temporal,(vfxGenerated||nativeRrAfterFi)?requestedPosition.seconds+info.presentationStartSeconds():stages.contains("dlss_ray_reconstruction")?source.absoluteSeconds:-1,path);
                         if(hdrPreview){auto colors=info;colors.hdr=true;if(stages.contains("rtx_video_hdr")){colors.primaries="bt2020";colors.transfer="smpte2084";}output=toneMapVideoPreview(output,colors,*control,settings.ffmpeg_device);}
                         profile["processing_ms"] = double(phase.nsecsElapsed()) / 1e6;
                         const auto keys = previewStageKeys(source.identity, effective, info, stages, true,
@@ -947,8 +965,8 @@ void AppController::preview(double positionMs, bool still) {
                 fastPreview_ = false;
                 emit vfxStatusChanged();
                 emit overallProgressChanged();
-                setOperation("Idle", currentResult ? error.isEmpty() ? "Preview ready." : error
-                                                   : "Preview updated; waiting for the latest request.");
+                setOperation("Idle", currentResult ? error.isEmpty() ? QT_TRANSLATE_NOOP("App", "Preview ready.") : error
+                                                   : QT_TRANSLATE_NOOP("App", "Preview updated; waiting for the latest request."));
                 cleanupCaches();
                 if (contextIndex() == index)
                     notifyContext();
@@ -1043,7 +1061,7 @@ void AppController::batch(const QString& destinationMode, const QString& folder)
     scrubTimer_.stop();
     progress_ = 0;
     emit overallProgressChanged();
-    setOperation("BatchRunning", "Processing batch…");
+    setOperation("BatchRunning", QT_TRANSLATE_NOOP("App", "Processing batch…"));
     auto future = QtConcurrent::run(&pool_, [this, index, paths, settings, workflowType, destinationMode,
                                              folder, id, control] {
         auto release = QtConcurrent::run(&previewPool_, [this] {
@@ -1137,10 +1155,10 @@ void AppController::batch(const QString& destinationMode, const QString& folder)
                 emit overallProgressChanged();
                 emit exportPhaseChanged();
                 emit vfxStatusChanged();
-                setOperation("Idle", QString("%1 complete, %2 failed%3.")
+                setOperation("Idle", QCoreApplication::translate("App", "%1 complete, %2 failed.")
                                          .arg(successes)
                                          .arg(failures)
-                                         .arg(cancelled ? ", cancelled" : ""));
+                                         + (cancelled ? ' ' + QCoreApplication::translate("App", "Batch stopped by user.") : QString{}));
                 if (contextIndex() == index && successes > 0)
                     loadSelected();
             },

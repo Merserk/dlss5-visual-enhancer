@@ -27,6 +27,7 @@ struct Settings {
 [[nodiscard]] QStringList normalizeVfxStages(const QStringList& stages,const Settings& settings);
 [[nodiscard]] Settings vfxSettingsForStages(const Settings& settings,const QStringList& stages);
 [[nodiscard]] QStringList vfxStageGroup(const QStringList& stages,qsizetype begin,const Settings& settings);
+[[nodiscard]] Settings reshadeSettingsForMode(const Settings& settings, bool video);
 [[nodiscard]] QStringList codecChoices();
 [[nodiscard]] QStringList containersForCodec(const QString& codec);
 [[nodiscard]] QString defaultContainer(const QString& codec);

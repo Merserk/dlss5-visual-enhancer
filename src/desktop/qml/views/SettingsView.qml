@@ -57,6 +57,13 @@ Rectangle {
                             onActivated: (v) => { if (appBridge) appBridge.aiGpuUuid = v }
                         }
                         AppComboBox {
+                            objectName: "fsr-processing-device"
+                            width: parent.width; label: qsTranslate("App", "AI Processing GPU (DirectX 12 / FidelityFX)")
+                            model: appBridge ? appBridge.fsrAdapterChoices : []
+                            currentValue: appBridge ? appBridge.fsrAdapterId : "auto"
+                            onActivated: (value) => { if (appBridge) appBridge.fsrAdapterId = value }
+                        }
+                        AppComboBox {
                             objectName: "ffmpeg-vulkan-device"
                             width: parent.width; label: qsTranslate("App", "Decoding / Encoding Device")
                             model: appBridge ? appBridge.ffmpegDeviceChoices : [{label: qsTranslate("App", "Automatic (Best Available)"), value: "auto"}, {label: "CPU", value: "cpu"}]

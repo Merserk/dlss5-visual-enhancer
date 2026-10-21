@@ -3,6 +3,7 @@
 #include "presentation/batch_model.hpp"
 #include "presentation/image_providers.hpp"
 #include "processing/native_engines.hpp"
+#include "processing/fsr_native.hpp"
 #include "processing/pipeline.hpp"
 #include "processing/preview_cache.hpp"
 #include "media/video_preview.hpp"
@@ -57,12 +58,16 @@ class AppController : public QmlFacade {
     [[nodiscard]] PreviewContext& context();
     [[nodiscard]] const PreviewContext& context() const;
     [[nodiscard]] int previewDelay() const { return context().source.video ? 35 : 80; }
-    [[nodiscard]] bool idle() const { return operation_ == "Idle" && !shuttingDown_ && !cacheCleaning_; }
+    [[nodiscard]] bool idle() const {
+        return operation_ == "Idle" && !shuttingDown_ && !cacheCleaning_ && !cacheCleanPending_;
+    }
     void notifyContext();
     void setOperation(const QString& operation, const QString& status = {});
     void log(const QString& message, const QString& tag = "desktop");
     void saveSettings();
     void settingsChanged();
+    void requestReShadeInspection();
+    void initializeReShadeImageSettings();
     void setLanguage(const QString& code);
     void addInputs(const QVariantList& paths, QImage clipboardImage = {}, QByteArray clipboardData = {});
     void scanMetadata(int contextIndex, const QStringList& paths);
@@ -94,15 +99,21 @@ class AppController : public QmlFacade {
     int inspectorWidth_ = 400, queueHeight_ = 330, logHeight_ = 220;
     std::array<PreviewContext, 5> contexts_;
     std::vector<Gpu> gpus_;
+    std::vector<FsrAdapter> fsrAdapters_;
     QStringList logs_, warnings_;
     std::vector<std::unique_ptr<QTranslator>> translators_;
     QTimer saveTimer_, autoTimer_, scrubTimer_, cleanupTimer_;
     QElapsedTimer lastCacheCleanup_;
     QTemporaryDir transientFiles_;
     ProcessingTemporaryDirectory previewClips_{ProcessingCacheKind::PreviewClips};
-    QThreadPool pool_, previewPool_, cachePool_;
+    QThreadPool pool_, previewPool_, cachePool_, reshadeInspectionPool_;
+    QVariantMap reshadeInspection_;
+    QString reshadeRequestedKey_, reshadeLoadedKey_;
+    bool reshadeInspectionBusy_ = false;
+    quint64 reshadeReloadGeneration_ = 0;
     ProcessingCacheSnapshot cacheSnapshot_;
     bool cacheBusy_ = false, cacheCleaning_ = false, cacheReady_ = false;
+    bool cacheCleanPending_ = false;
     QString cacheStatus_;
     QTimer cacheRefreshTimer_, cacheTrimTimer_;
     VideoFrameReader videoFrames_;
