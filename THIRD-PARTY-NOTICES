@@ -1,11 +1,9 @@
 VISUAL ENHANCER
 THIRD-PARTY NOTICES
 
-Copyright (c) 2026 Merserk.
-Visual Enhancer is distributed under the Merserk Source License for portions
-owned by Merserk. Third-party components are NOT relicensed under the Merserk
-Source License. Each third-party component remains subject to its own
-copyright, license, redistribution requirements, and notices.
+Each third-party component remains subject to its own copyright, license,
+redistribution requirements, and notices. The application's license does not
+replace the terms applicable to third-party components.
 
 SCOPE
 
@@ -20,6 +18,11 @@ release directory (Visual Enhancer/): executables and Qt libraries are at
 its root, media tools and native engines are in bin/, and application
 resources are in resources/. Settings and caches use Windows per-user
 storage; outputs/ and logs/ are relative to the release directory.
+Model weights are downloaded separately through the Models tab and are not
+bundled with the application. Model package locations below use
+<model-storage> for the per-user model directory and <revision> for the
+package directory selected by resources/models/catalog.json. Each model
+package includes its applicable license texts in LICENSE.txt.
 Native SDKs and engine development files are maintained separately and
 are not included in the application source upload.
 
@@ -58,8 +61,7 @@ Shipped as (third-party files only):
 License: the applicable NVIDIA DLSS / RTX Video SDK licenses
 (proprietary). Redistribution is subject to the exact SDK license
 provided with each runtime, including its application-distribution,
-notice, use, and reverse-engineering restrictions. The Merserk source
-license does not replace those terms.
+notice, use, and reverse-engineering restrictions.
 
 Full texts in release packages:
     bin/runtime/dlsssr/LICENSE-NVIDIA-DLSS.txt
@@ -187,8 +189,7 @@ Shipped as:
 License: LibRaw offers LGPL version 2.1 or CDDL version 1.0, at the
 recipient's election, together with the notices for incorporated code.
 The elected license's source and linking conditions apply to this
-static-library build. LibRaw's dual licensing does not relicense the
-Merserk-owned application code.
+static-library build.
 
 Full texts / notices:
     third_party/LibRaw-*/LICENSE.LGPL
@@ -272,7 +273,6 @@ Full open-source license texts / attribution records:
 
 For LGPL distributions, users may replace the dynamically loaded Qt
 libraries with compatible modified versions and debug those modifications.
-The Merserk Source License does not restrict those third-party rights.
 A compatible Qt kit can be selected with -QtRoot when rebuilding and
 deploying; see build.ps1, tools/deploy.ps1, and CMakeLists.txt.
 
@@ -464,23 +464,27 @@ c) Microsoft ONNX Runtime, DirectML and graphics helpers
    https://github.com/microsoft/DirectXShaderCompiler and
    https://github.com/microsoft/PixEvents.
 
-d) MoGe-2 ViT-S ONNX Model
+d) MoGe-2 ViT-B ONNX Model
 
-   Source: https://huggingface.co/Ruicheng/moge-2-vits-normal-onnx.
+   Source: https://huggingface.co/Ruicheng/moge-2-vitb-normal-onnx.
    Copyright (c) Microsoft Corporation.
-   Shipped as:
-       bin/runtime/reshade/models/moge-2-vits/model.onnx
-   License: MIT for MoGe and its ViT-S model weights. Incorporated DINOv2
+   Downloaded model package:
+       <model-storage>/moge2/<revision>/model.onnx
+   License: MIT for MoGe and its ViT-B model weights. Incorporated DINOv2
    code retains its Apache-2.0 notices.
    Full texts / attribution records:
        bin/runtime/reshade/license/MoGe-LICENSE.txt
        bin/runtime/reshade/license/MoGe-NOTICE.txt
+       <model-storage>/moge2/<revision>/LICENSE.txt
+       <model-storage>/moge2/<revision>/model-manifest.json
    See https://github.com/microsoft/MoGe and
-   https://huggingface.co/Ruicheng/moge-2-vits-normal.
+   https://huggingface.co/Ruicheng/moge-2-vitb-normal.
    The adapted graph removes unused normals and metric-scale branches,
-   derives the token count from the input patch grid, and extracts relative
-   depth and the original validity mask. Retained learned weights are
-   unchanged. The validity mask is not calibrated uncertainty.
+   derives the token count from the input patch grid, shifts point-map Z
+   positive, and retains the original sigmoid validity mask. Retained learned
+   weights and computation are converted to FP16; positional interpolation
+   uses equivalent separable matrices for DirectML. The output is relative
+   depth, not metric distance or calibrated uncertainty.
    The installed depth inference path uses native C++ ONNX Runtime and DirectML;
    Python and PyTorch are not runtime dependencies for this path.
 
@@ -559,8 +563,10 @@ not included in the application source upload.
 The GUI and CLI application executables use the matching app-local x64
 Visual C++ runtime DLLs deployed from Visual Studio. Those Microsoft DLLs
 are copied without modification and retain their original signatures.
-They remain governed by Microsoft's redistributable terms, not the
-Merserk source license.
+They remain governed by Microsoft's redistributable terms.
+
+Windows-supplied interface fonts used for localization are system components
+and are not redistributed with the application.
 
 Redistribution information:
 https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files
@@ -570,8 +576,48 @@ GeForce, ReShade, ONNX Runtime, DirectML, FFmpeg, Qt, LibRaw, and others)
 are the property of their respective owners and are used only to identify
 compatible or incorporated technology. Inclusion does not imply sponsorship,
 endorsement, certification, or partnership unless expressly stated by that
-party. Visual Enhancer is developed independently by Merserk.
+party.
+
+===============================================================================
+13. VISIONNEXT (VOSR) IMAGE RESTORATION
+===============================================================================
+Upstream VOSR: https://github.com/cswry/VOSR
+Model weights: https://huggingface.co/CSWRY/VOSR
+DINOv2: https://github.com/facebookresearch/dinov2
+The VOSR implementation, Qwen image VAE and DINOv2 assets retain their upstream
+Apache-2.0 notices. VisionNext is the application's display name for VOSR.
+The separately downloaded package contains FP16 ONNX graphs and external
+weight data in:
+    <model-storage>/visionnext/<revision>/
+Full model license texts and conversion records:
+    <model-storage>/visionnext/<revision>/LICENSE.txt
+    <model-storage>/visionnext/<revision>/model-manifest.json
+    <model-storage>/visionnext/<revision>/graph-audit.json
+The model manifest records source references, graph contracts and checksums.
+ONNX Runtime and DirectML licenses and third-party notices are included in
+bin/runtime/visionnext/license/. The VOSR and DINOv2 license texts are also
+retained there as VOSR-LICENSE.txt and DINOv2-LICENSE.txt.
+
+===============================================================================
+14. SHARPNEXT (LPNSR) IMAGE RESTORATION
+===============================================================================
+Upstream: https://github.com/Faze-Hsw/LPNSR
+SharpNext is the application's display name for the LPNSR noise-predictor
+pipeline, using an LPNSR predictor, ResShift UNet, and VQ autoencoder. The LPNSR
+repository is MIT licensed. The incorporated ResShift component retains its
+S-Lab License 1.0, which permits non-commercial use; the upstream LPNSR MIT
+notice does not remove that restriction. The complete applicable notices for
+LPNSR, ResShift, latent diffusion, taming transformers, Swin Transformer,
+ONNX Runtime, and DirectML are included in bin/runtime/sharpnext/license.
+The separately downloaded FP16 ONNX graphs and external weight data are in:
+    <model-storage>/sharpnext/<revision>/
+Full model license texts and conversion records:
+    <model-storage>/sharpnext/<revision>/LICENSE.txt
+    <model-storage>/sharpnext/<revision>/model-manifest.json
+    <model-storage>/sharpnext/<revision>/graph-audit.json
+The model manifest records source references, graph contracts and checksums.
 
 ===============================================================================
 END OF THIRD-PARTY NOTICES
 ===============================================================================
+
