@@ -132,6 +132,12 @@ Use the processing cards for individual effects and **Export Settings** for imag
 
 Use `--help` for options, `--recursive` for subfolders, `--dry-run` to inspect a job, and `--json --quiet` for scripting. Use `reconstruct --help` for RR options; RR always processes at 1× and does not accept DLSS mode or RR preset options. `interpolate` defaults to DLSS; select FSR with `--interpolator fsr3`, then choose either `--fps` or an integer `--multiplier` from 2 through 8. `--fsr-gpu` accepts `auto`, a DirectX adapter index, or a saved DXGI ID from `devices --json`, independently of the NVIDIA `--gpu` option. ReShade accepts `--reshade-preset`, shader and texture search paths, and depth controls; use `reshade --help` for details. Presets exported from the application include advanced effect and export settings. Without `-o`, output goes to `outputs/` beside the executables.
 
+## Source Code Availability
+
+This repository contains selected source code for reference. Some components and dependencies required to build the application are not included.
+
+Source code may not be updated with every release. Updates will be published periodically.
+
 ## License and third-party notices
 
 Project-owned Visual Enhancer material is distributed under the **Merserk Source License**. The software may be used for personal, professional, and commercial work, and outputs created or processed with Visual Enhancer may be used commercially. Redistribution, mirroring, repackaging, rebranding, resale, sublicensing, publishing modified builds, and similar redistribution require prior written permission except where the license states otherwise. See [LICENSE](LICENSE) for the complete terms.
