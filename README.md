@@ -73,7 +73,7 @@ Video-only effects appear as individual cards in the Video pipeline. Stages run 
 
 | Type | Input | Output |
 | --- | --- | --- |
-| Images | PNG, JPEG, WebP, AVIF, TIFF, BMP, GIF, SVG, HEIF/HEIC, and many camera RAW formats | PNG, JPEG, WebP, AVIF, TIFF; 16-bit export for PNG/TIFF |
+| Images | PNG, JPEG, JPEG XL, WebP, AVIF, TIFF, BMP, GIF, SVG, HEIF/HEIC, and many camera RAW formats | PNG, JPEG, JPEG XL, WebP, AVIF, TIFF; 16-bit export for PNG/TIFF |
 | Video | MP4, MKV, MOV, AVI, WebM, M4V, TS/MTS/M2TS, WMV, FLV | H.264, H.265, AV1, ProRes Proxy/HQ, FFV1 Lossless RGB 10-bit; compatible MP4, MKV, or MOV containers |
 
 Image processing applies supported color profiles and EXIF orientation, retains supported metadata, and preserves transparency where the output format allows it. Animated or multipage images use the first frame/page. Video exports retain audio, metadata, and chapters where supported; subtitle preservation depends on the processing path and container.
