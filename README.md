@@ -2,7 +2,7 @@
 
 [![Downloads](https://img.shields.io/github/downloads/Merserk/dlss5-visual-enhancer/total.svg?style=flat-square&label=Downloads)](https://github.com/Merserk/dlss5-visual-enhancer/releases) ![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square&logo=windows11&logoColor=white) ![DLSS](https://img.shields.io/badge/DLSS%205-Neural%20Rendering-76B900?style=flat-square) ![DLSS Super Resolution](https://img.shields.io/badge/DLSS-Super%20Resolution-76B900?style=flat-square&logo=nvidia&logoColor=white) ![DLSS Ray Reconstruction](https://img.shields.io/badge/DLSS-Ray%20Reconstruction-76B900?style=flat-square&logo=nvidia&logoColor=white) ![DLSS Frame Generation](https://img.shields.io/badge/DLSS-Frame%20Generation-76B900?style=flat-square&logo=nvidia&logoColor=white) ![FSR Frame Generation](https://img.shields.io/badge/AMD-FSR%20Frame%20Generation-ED1C24?style=flat-square&logo=amd&logoColor=white) ![RTX Video](https://img.shields.io/badge/RTX-Video-76B900?style=flat-square&logo=nvidia&logoColor=white) ![NVIDIA Video Effects (VFX)](https://img.shields.io/badge/NVIDIA-Video%20Effects%20%28VFX%29-76B900?style=flat-square&logo=nvidia&logoColor=white) ![ReShade](https://img.shields.io/badge/ReShade-Effects-6C5CE7?style=flat-square) ![NVIDIA NIS](https://img.shields.io/badge/NVIDIA-NIS-76B900?style=flat-square&logo=nvidia&logoColor=white) ![AMD CAS](https://img.shields.io/badge/AMD-CAS-ED1C24?style=flat-square&logo=amd&logoColor=white) ![3D LUT](https://img.shields.io/badge/3D-LUT-6C5CE7?style=flat-square) [![Patreon](https://img.shields.io/badge/Patreon-Merserk-FF424D?style=flat-square&logo=patreon&logoColor=white)](https://www.patreon.com/Merserk)
 
-**Visual Enhancer** is a portable Windows application for AI-assisted image and video enhancement. Its configurable pipelines combine **NVIDIA DLSS 5 Neural Rendering** through the **Neuroframe Engine**, scaling, **DLSS Super Resolution**, **DLSS Ray Reconstruction**, **RTX Video Super Resolution**, image **Upscale** with **VisionNext** or **SharpNext**, **ReShade**, coloring, sharpening, and film grain. Video processing also offers **RTX Video HDR**, **DLSS Frame Generation**, **FSR Frame Generation**, **Video Super Resolution**, **Video Frame Generation**, and **Upscale (Lightweight)** as separate stages.
+**Visual Enhancer** is a portable Windows application for AI-assisted image and video enhancement. Its configurable pipelines combine **NVIDIA DLSS 5 Neural Rendering** through the **Neuroframe Engine**, scaling, **DLSS Super Resolution**, **DLSS Ray Reconstruction**, **RTX Video Super Resolution**, image **Upscale** with **VisionNext**, **SharpNext**, or **RazorNext**, **ReShade**, coloring, sharpening, and film grain. Video processing also offers **RTX Video HDR**, **DLSS Frame Generation**, **FSR Frame Generation**, **Video Super Resolution**, **Video Frame Generation**, and **Upscale (Lightweight)** as separate stages.
 
 <img width="1920" height="1080" alt="Main Cover_v2" src="https://github.com/user-attachments/assets/9248c946-391e-408c-b146-f7d8a6e9c695" />
 
@@ -41,11 +41,11 @@ The **Neural Rendering** workspace has separate **Image** and **Video** pipeline
 | **DLSS Super Resolution** | DLAA or AI upscaling with selectable quality modes and presets. Video includes optical-flow quality controls. |
 | **DLSS Ray Reconstruction** | Reconstruct images and videos at native **1× resolution**. Video uses NVIDIA Optical Flow (NVOFA), with High, Medium, or Low optical-flow quality. |
 | **RTX Super Resolution** | NVIDIA RTX Video enhancement and upscaling, with quality levels, scale factors, or custom dimensions. |
-| **Upscale** | Image restoration with **VisionNext** or **SharpNext**, using FP16 ONNX models through DirectML. Select **1×, 2×, 4×, 6×, or 8×** output scale; **2×** is the default. Automatic or manual tiling controls memory use. |
+| **Upscale** | Image restoration with **VisionNext**, **SharpNext**, or **RazorNext**, using FP16 models through Windows ML. Select **1×, 2×, 4×, 6×, or 8×** output scale; **2×** is the default. Tile size or GPU memory controls depend on the selected model. |
 | **RTX Video HDR** | Convert SDR video to HDR with contrast, saturation, middle gray, peak luminance, and precision controls. |
 | **DLSS Frame Generation** | Increase video frame rate with a 2×–8× multiplier or target FPS, automatic engine selection, and High, Medium, or Low optical-flow quality. |
 | **FSR Frame Generation** | Generate intermediate video frames using DirectX 12 and AMD FidelityFX Optical Flow, with a 2×–8× multiplier or target FPS. FSR processing runs on the GPU without CUDA or NVIDIA Optical Flow. |
-| **ReShade** | Apply `.ini` presets to images and videos, enable individual effects, edit their parameters, and blend the result. Optional **MoGe-2 ViT-B FP16** AI depth runs through ONNX Runtime and DirectML; AMD FidelityFX Optical Flow stabilizes depth-dependent effects in video. |
+| **ReShade** | Apply `.ini` presets to images and videos, enable individual effects, edit their parameters, and blend the result. Optional **MoGe-2 ViT-B FP16** AI depth runs through Windows ML; AMD FidelityFX Optical Flow stabilizes depth-dependent effects in video. |
 | **Coloring** | Adjust light and color, apply `.cube` LUTs, match image references, and export graded LUTs. |
 | **Sharpening** | NVIDIA NIS or AMD FidelityFX CAS with adjustable strength. |
 | **Grain** | Adjustable film grain with size, color, tonal response, and seed controls; animated grain for video. |
@@ -57,13 +57,13 @@ Ray Reconstruction adapts a model designed for ray-traced rendering to imported 
 
 Video-only effects appear as individual cards in the Video pipeline. Stages run from top to bottom; the application checks hardware support, dimensions, frame rates, and HDR compatibility before processing. Choose one frame-generation provider per pipeline: **DLSS**, **FSR**, or **Video Frame Generation**. DLSS and FSR offer **Multiplier** and **Target FPS** modes, with fixed targets from **23.976 to 480 FPS**; multiplier mode retains the source's fractional frame rate. The **Frame Interpolation** workspace also lets you choose between DLSS and FSR. ReShade includes a bundled preset, shader and texture search paths, precision and HDR controls, and optional AI depth generation; RTGI shaders are not bundled.
 
-**Upscale** is an Image-mode effect; it is separate from the video-only **Upscale (Lightweight)** stage. Keep **Tile Size** on **Auto** for the default memory settings. VisionNext supports 256- or 512-pixel tiles, and SharpNext supports 128- or 256-pixel input tiles. GPU model sessions are released when the preview or export operation finishes; cached image results can still be reused.
+**Upscale** is an Image-mode effect; it is separate from the video-only **Upscale (Lightweight)** stage. VisionNext and SharpNext offer automatic or manual tile sizes. RazorNext instead offers an automatic or selectable GPU memory budget; lower budgets can reduce GPU memory use at the cost of processing time and additional system memory. RazorNext can require substantial GPU and system memory. Image model sessions can remain loaded briefly between operations and are released after inactivity or when memory is needed; cached image results can also be reused.
 
 ### Workflow and preview
 
 - **Comparison:** Split, 2-Up, and Output views, zoom, fit-to-view, a shared video timeline, and Focus Preview (`Ctrl+Shift+F`).
 - **Previews:** realtime updates for supported changes, full-resolution image previews, and short video previews from the selected position. Cached results reduce repeated processing.
-- **Models:** manage **VisionNext** and **SharpNext** under **Upscale**, and **MoGe-2** under **ReShade**. Download, cancel, resume interrupted transfers, or remove models with confirmation. Downloads verify file hashes and retry connection failures. The **Models** tab shows an animated progress underline during background downloads, including downloads started by enabling an effect.
+- **Models:** manage **VisionNext**, **SharpNext**, and **RazorNext** under **Upscale**, and **MoGe-2** under **ReShade**. Download, cancel, resume interrupted transfers, or remove models with confirmation. Downloads verify file hashes and retry connection failures. The **Models** tab shows an animated progress underline during background downloads, including downloads started by enabling an effect.
 - **Batches:** add files or folders, drag and drop, paste clipboard media, track per-file progress, pause or cancel exports, and retry failed items. **Show input in Explorer** and **Show output in Explorer** select the corresponding file in File Explorer.
 - **Export:** choose the format, codec, container, quality, output folder, and naming mode. Existing files are not silently overwritten.
 - **HDR:** preserve or export 10-bit HDR with a compatible pipeline and codec. Place SDR-only effects before HDR conversion.
@@ -73,7 +73,7 @@ Video-only effects appear as individual cards in the Video pipeline. Stages run 
 
 | Type | Input | Output |
 | --- | --- | --- |
-| Images | PNG, JPEG, JPEG XL, WebP, AVIF, TIFF, BMP, GIF, SVG, HEIF/HEIC, and many camera RAW formats | PNG, JPEG, JPEG XL, WebP, AVIF, TIFF; 16-bit export for PNG/TIFF |
+| Images | PNG, JPEG, JPEG XL, WebP, AVIF, TIFF, BMP, GIF, SVG, HEIF/HEIC, and many camera RAW formats | PNG, JPEG, JPEG XL, WebP, AVIF, TIFF; 16-bit export for PNG, TIFF, and JPEG XL |
 | Video | MP4, MKV, MOV, AVI, WebM, M4V, TS/MTS/M2TS, WMV, FLV | H.264, H.265, AV1, ProRes Proxy/HQ, FFV1 Lossless RGB 10-bit; compatible MP4, MKV, or MOV containers |
 
 Image processing applies supported color profiles and EXIF orientation, retains supported metadata, and preserves transparency where the output format allows it. Animated or multipage images use the first frame/page. Video exports retain audio, metadata, and chapters where supported; subtitle preservation depends on the processing path and container.
@@ -93,7 +93,7 @@ NVIDIA NVENC export requires an encoder supported by the selected RTX GPU. AV1 h
 
 ## Settings
 
-**Settings** contains interface language, **AI Processing GPU (Tensor Cores / NGX)** for NVIDIA processing, **AI Processing GPU (DirectX 12 / FidelityFX)** for FSR Frame Generation, a separate **Upscale → GPU** selector for image Upscale, **Decoding / Encoding Device**, **Realtime Preview**, and **Processing Cache**. The processing GPU selections are independent of the general video device setting. FSR's **Auto** selection prioritizes a compatible discrete GPU using Windows' high-performance adapter preference. **Clean Cache** releases reclaimable preview, shader, and processing cache data. Preset import and export are available from the header menu.
+**Settings** contains interface language, **AI Processing GPU (Tensor Cores / NGX)** for NVIDIA processing, **AI Processing GPU (DirectX 12 / FidelityFX)** for FSR Frame Generation, a separate **Upscale → GPU** selector and **AI Inferencing Framework** for image Upscale, **Decoding / Encoding Device**, **Realtime Preview**, and **Processing Cache**. The processing GPU selections are independent of the general video device setting. Image Upscale can use automatic GPU provider selection or DirectML; first-time model preparation can take longer, and compiled models can be reused later. FSR's **Auto** selection prioritizes a compatible discrete GPU using Windows' high-performance adapter preference. **Clean Cache** releases reclaimable preview, shader, and processing cache data. Preset import and export are available from the header menu.
 
 Use the processing cards for individual effects and **Export Settings** for image format, bit depth, video codec, container, quality, and **Preserve / Export 10-bit HDR**. The Export dialog selects the destination and filename. Saved settings, caches, and downloaded models use Windows per-user storage; replacing the application folder does not reset them. The default output folder is `outputs/` beside the executables, and session logs are stored in `logs/`; these folders are created when the application starts. Temporary processing files use application-managed temporary storage.
 
@@ -123,7 +123,7 @@ The interface supports the following languages, with language changes applied im
 | `render` | Neural Rendering, or the complete enabled pipeline from a JSON preset. |
 | `reconstruct` | DLSS Ray Reconstruction for images and videos at native 1× resolution. |
 | `reshade` | Process images or videos with a ReShade `.ini` preset. |
-| `upscale` | RTX or DLSS Super Resolution; VisionNext or SharpNext for images. |
+| `upscale` | RTX or DLSS Super Resolution; VisionNext, SharpNext, or RazorNext for images. |
 | `interpolate` | DLSS or FSR Frame Generation with a multiplier or target FPS. |
 | `devices` | List NVIDIA processing GPUs and DirectX adapters for FSR. |
 
@@ -142,7 +142,7 @@ The interface supports the following languages, with language changes applied im
 
 Use `--help` for options, `--recursive` for subfolders, `--dry-run` to inspect a job, and `--json --quiet` for scripting. Use `reconstruct --help` for RR options; RR always processes at 1× and does not accept DLSS mode or RR preset options. `interpolate` defaults to DLSS; select FSR with `--interpolator fsr3`, then choose either `--fps` or an integer `--multiplier` from 2 through 8. `--fsr-gpu` accepts `auto`, a DirectX adapter index, or a saved DXGI ID from `devices --json`, independently of the NVIDIA `--gpu` option. ReShade accepts `--reshade-preset`, shader and texture search paths, and depth controls; use `reshade --help` for details. Presets exported from the application include advanced effect and export settings. Without `-o`, output goes to `outputs/` beside the executables.
 
-For AI image Upscale, select `--engine visionnext` or `--engine sharpnext`. Both accept `--scale 1|2|4|6|8`; `--tile` accepts `auto|256|512` for VisionNext or `auto|128|256` for SharpNext. Use `--upscale-gpu auto` or a saved DirectML adapter ID to select the Upscale GPU independently of NVIDIA processing. Required models download automatically if they are missing. ReShade's AI-depth model is selected with `--reshade-depth moge-2-vitb`; `auto` downloads it only when the preset requires depth.
+For AI image Upscale, select `--engine visionnext`, `--engine sharpnext`, or `--engine razornext`. Each accepts `--scale 1|2|4|6|8`; `--tile` accepts `auto|256|512` for VisionNext or `auto|128|256` for SharpNext. RazorNext uses `--memory-budget auto|unlimited|12|8|6` instead of manual tiling. Use `--upscale-gpu auto` or a saved DirectX adapter ID to select the Upscale GPU independently of NVIDIA processing. Required models download automatically if they are missing. ReShade's AI-depth model is selected with `--reshade-depth moge-2-vitb`; `auto` downloads it only when the preset requires depth.
 
 ## Source Code Availability
 
