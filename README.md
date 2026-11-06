@@ -113,6 +113,7 @@ The interface supports the following languages, with language changes applied im
 - 日本語
 - 한국어
 - Polski
+- Türkçe (varsayılan)
 - Українська
 - 中文 (简体)
 - 中文 (繁體)
