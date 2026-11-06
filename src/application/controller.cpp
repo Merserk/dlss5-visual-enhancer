@@ -183,7 +183,7 @@ AppController::AppController(PreviewProvider* previews, QObject* parent)
         },
         Qt::QueuedConnection);
     connect(this, &AppController::operationStateChanged, this, &AppController::previewBusyChanged);
-    setLanguage(desktop_.value("interface/language", "en_US").toString());
+    setLanguage(desktop_.value("interface/language", "tr").toString());
     // A cold cache directory scan must not delay the first visible window.
     QTimer::singleShot(1500, this, &AppController::cleanupCaches);
 }
@@ -861,7 +861,7 @@ void AppController::persistLayout() {
     emit layoutChanged();
 }
 void AppController::setLanguage(const QString& code) {
-    const QStringList codes{"en_US", "ar", "de", "es", "fr", "hi", "ja", "ko", "pl", "uk", "zh_CN", "zh_TW"};
+    const QStringList codes{"en_US", "ar", "de", "es", "fr", "hi", "ja", "ko", "pl", "tr", "uk", "zh_CN", "zh_TW"};
     if (!codes.contains(code))
         return;
     for (const auto& translator : translators_)
