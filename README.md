@@ -94,6 +94,12 @@ The application accepts image dimensions up to **32,768 pixels per side**, subje
 
 NVIDIA NVENC export requires an encoder supported by the selected RTX GPU. AV1 hardware encoding on NVIDIA requires RTX 40 or 50 series. FSR exports require GPU encoding with **H.264**, **H.265**, or **AV1** on the selected DirectX adapter; codec support is checked on that GPU. ProRes and FFV1 are not FSR export codecs.
 
+### RTX 20 / 30 series and DLSS Frame Generation
+
+DLSS Frame Generation is not supported on RTX 20 and 30 series GPUs. On these GPUs, `interpolate` with the DLSS provider can fail with `DLSS Frame Generation is unavailable after NGX initialization`. **FSR Frame Generation** (`--interpolator fsr3`) is the supported alternative.
+
+Some users run DLSS Frame Generation on RTX 30 series GPUs through the third-party [dlssg_for_sm86](https://github.com/sdli1995/dlssg_for_sm86) proxy. This is an unofficial, user-installed workaround and is not distributed, tested, or supported by this project. It is not an NVIDIA-supported configuration, and Visual Enhancer does not enable it automatically. If you try it, download it only from its own repository, check its checksum and signature yourself, and follow its instructions. Remove its files from the application folder to return to the default behavior. One reported setup that completed a short `interpolate --interpolator dlss --fps 60` run used an RTX 3060 Ti with driver 621.01, placing the proxy's `version.dll` and `dlssg_sm86.ini` in the application folder beside `VE_CLI.exe`. Results on other GPUs, drivers, or longer clips may differ.
+
 ## Settings
 
 **Settings** contains interface language, **AI Processing GPU (Tensor Cores / NGX)** for NVIDIA processing, **AI Processing GPU (DirectX 12 / FidelityFX)** for FSR Frame Generation, a separate **Upscale → GPU** selector and **AI Inferencing Framework** for AI Upscale, **Decoding / Encoding Device**, **Realtime Preview**, and **Processing Cache**. The processing GPU selections are independent of the general video device setting. AI Upscale can use automatic GPU provider selection or DirectML; first-time model preparation can take longer, and compiled models can be reused later. FSR's **Auto** selection prioritizes a compatible discrete GPU using Windows' high-performance adapter preference. **Clean Cache** releases reclaimable preview, shader, and processing cache data. Preset import and export are available from the header menu.
