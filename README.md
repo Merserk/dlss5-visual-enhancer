@@ -14,8 +14,6 @@
 2. Extract the complete ZIP archive to a folder.
 3. Run **`Visual Enhancer.exe`**.
 
-AI models are downloaded separately. Open **Models** from the header bar to download them, or enable **Denoising**, **Deblurring**, **Upscale**, or an AI-depth ReShade effect to start downloading the required package automatically. Internet access is needed for downloads; installed models run locally. A fresh package contains no previous outputs or session logs.
-
 ## Examples
 
 ### Original
