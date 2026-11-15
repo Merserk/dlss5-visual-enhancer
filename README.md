@@ -6,8 +6,6 @@
 
 <img width="1920" height="1080" alt="Main Cover_v2" src="https://github.com/user-attachments/assets/9248c946-391e-408c-b146-f7d8a6e9c695" />
 
-<img width="1920" height="1080" alt="Second Cover" src="https://github.com/user-attachments/assets/b1cb9d91-7b0b-4962-bd61-8ef9184d31e5" />
-
 ## Installation
 
 1. Download the [latest release](https://github.com/Merserk/dlss5-visual-enhancer/releases/latest).
