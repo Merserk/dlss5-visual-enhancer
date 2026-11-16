@@ -4,7 +4,7 @@
 
 **Visual Enhancer** is a portable Windows application for AI-assisted image and video enhancement. Its configurable pipelines combine AI **Denoising**, AI **Deblurring**, **NVIDIA DLSS 5 Neural Rendering** through the **Neuroframe Engine**, scaling, **DLSS Super Resolution**, **DLSS Ray Reconstruction**, **RTX Video Super Resolution**, AI **Upscale** for images and video, **ReShade**, coloring, sharpening, and film grain, alongside a **Style Transfer** workspace for reference-guided image grading. Video processing also offers **RTX Video HDR**, **DLSS Frame Generation**, **FSR Frame Generation**, **Video Super Resolution**, **Video Frame Generation**, and **Upscale (Lightweight)** as separate stages.
 
-<img width="1920" height="1080" alt="Main Cover_v2" src="https://github.com/user-attachments/assets/9248c946-391e-408c-b146-f7d8a6e9c695" />
+<img width="1920" height="1080" alt="Main Cover_v3" src="https://github.com/user-attachments/assets/1717728d-9865-47c8-9524-114386abded6" />
 
 ## Installation
 
