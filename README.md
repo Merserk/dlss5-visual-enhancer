@@ -9,8 +9,8 @@
 ## Installation
 
 1. Download the [latest release](https://github.com/Merserk/dlss5-visual-enhancer/releases/latest).
-2. Extract the complete ZIP archive to a folder.
-3. Run **`Visual Enhancer.exe`**.
+2. Run the downloaded installer. Follow the on-screen instructions to complete the installation.
+3. Launch Visual Enhancer from the Start menu or desktop shortcut.
 
 ## Examples
 
