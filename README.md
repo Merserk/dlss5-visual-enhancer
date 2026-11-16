@@ -14,17 +14,17 @@
 
 ## Examples
 
-### Original
-
-https://github.com/user-attachments/assets/8df8bd4c-01b4-47dd-9705-3614a0b0ff75
-
 ### DLSS 5 Neural Rendering
 
-https://github.com/user-attachments/assets/cff68783-4ee9-4c99-8b36-4eee2a6437ec
+https://github.com/user-attachments/assets/e8ba2dbb-2501-4809-96fb-614b1a7d7cbf
 
 ### DLSS Frame Generation
 
-https://github.com/user-attachments/assets/81c29005-e4f0-4acf-b9f7-d58850bb055f
+https://github.com/user-attachments/assets/e3409ac4-ab87-443b-9239-7b029d5d2468
+
+### Upscaling
+
+https://github.com/user-attachments/assets/7620f349-4c11-4a06-8b2c-fd4ecaaf8d3e
 
 ## Main features
 
