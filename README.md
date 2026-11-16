@@ -160,4 +160,4 @@ Project-owned Visual Enhancer material is distributed under the **Merserk Source
 
 Third-party components and downloaded models remain subject to their own licenses and are not relicensed under the Merserk Source License. See [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) and the model package's `LICENSE.txt` for the applicable terms.
 
-Visual Enhancer is an independent community project and is not affiliated with, sponsored by, or endorsed by NVIDIA or AMD. NVIDIA, GeForce RTX, DLSS, and RTX Video are trademarks and/or registered trademarks of NVIDIA Corporation. AMD and FidelityFX are trademarks of Advanced Micro Devices, Inc.
+Visual Enhancer is a software and is not affiliated with, sponsored by, or endorsed by NVIDIA or AMD. NVIDIA, GeForce RTX, DLSS, and RTX Video are trademarks and/or registered trademarks of NVIDIA Corporation. AMD and FidelityFX are trademarks of Advanced Micro Devices, Inc.
