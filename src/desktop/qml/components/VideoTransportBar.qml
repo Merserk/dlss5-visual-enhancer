@@ -30,7 +30,12 @@ Rectangle {
     readonly property real lastFramePosition: framePosition(totalFrames)
     readonly property int timeCellWidth: Math.ceil(timeMetrics.advanceWidth)
     readonly property real rulerLabelGap: Math.max(72, timeCellWidth + 24)
-    readonly property real rulerStep: niceInterval(effectiveDuration / 1000 / Math.max(1, Math.floor(timelineFace.width / rulerLabelGap)))
+    // The ruler item count must not be derived from timelineFace (a child of
+    // this bar) nor from effectiveDuration (updated asynchronously by the
+    // player). Either dependency lets one layout pass change the Repeater
+    // count, which rebuilds every ruler label and invalidates the layout again.
+    readonly property int rulerSlots: Math.max(2, Math.min(20, Math.round(width / 140)))
+    readonly property real rulerStep: niceInterval(effectiveDuration / 1000 / rulerSlots)
 
     implicitHeight: stacked ? 108 : 72
     height: implicitHeight
@@ -209,7 +214,8 @@ Rectangle {
             opacity: root.canSeek ? 1 : 0.45
 
             Repeater {
-                model: root.effectiveDuration > 0 ? Math.floor(root.effectiveDuration / 1000 / (root.rulerStep / 4)) + 1 : 1
+                // Constant count, see rulerSlots.
+                model: root.rulerSlots * 4 + 1
                 Rectangle {
                     required property int index
                     x: timelineFace.width * root.fractionAt(index * root.rulerStep / 4 * 1000)
@@ -219,7 +225,7 @@ Rectangle {
                 }
             }
             Repeater {
-                model: root.effectiveDuration > 0 ? Math.floor(root.effectiveDuration / 1000 / root.rulerStep) + 1 : 1
+                model: root.rulerSlots + 1
                 Text {
                     required property int index
                     readonly property real tickMs: index * root.rulerStep * 1000
