@@ -14,17 +14,26 @@
 
 ## Examples
 
-### DLSS 5 Neural Rendering
+<details>
+<summary><strong>DLSS 5 Neural Rendering</strong> — Before / After (0:12)</summary>
 
 https://github.com/user-attachments/assets/e8ba2dbb-2501-4809-96fb-614b1a7d7cbf
 
-### DLSS Frame Generation
+</details>
+
+<details>
+<summary><strong>DLSS Frame Generation</strong> — 24 FPS interpolation (0:12)</summary>
 
 https://github.com/user-attachments/assets/e3409ac4-ab87-443b-9239-7b029d5d2468
 
-### Upscaling
+</details>
+
+<details>
+<summary><strong>Upscaling (RazorNext)</strong> — 480p to 4K (0:07)</summary>
 
 https://github.com/user-attachments/assets/7620f349-4c11-4a06-8b2c-fd4ecaaf8d3e
+
+</details>
 
 ## Main features
 
