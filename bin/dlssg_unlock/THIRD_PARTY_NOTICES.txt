@@ -1,0 +1,183 @@
+Third-party material in this project
+
+The project's own C++ source code is released under the MIT license in
+LICENSE.md (Copyright (c) 2026 sdli1995). The kernel images the project ships
+are provided in binary form only and are not covered by that license.
+Everything listed in this file was not written for this project, keeps its own
+terms, and is not relicensed by LICENSE.md.
+
+Third-party source code: Microsoft Research Detours 4.0.1 (third_party/detours),
+JSON for Modern C++ 3.11.2 (third_party/json) and the DirectX helper header
+d3dx12.h (third_party/directx), all under the MIT license - see the notices at
+the end of this file. Detours is compiled from its own sources: tag v4.0.1 of
+https://github.com/microsoft/Detours (commit
+e4bfd6b03e50de46b47abfbd1e46b384f0c5f833), the library sources of its src/
+directory with the vcpkg port's find-jmp-bounds-arm64.patch applied (ARM64-only
+code). It is built with the compiler flags of the prebuilt vcpkg library that
+earlier releases linked - its Makefile's flags followed by those vcpkg adds,
+an optimized (/O2) build - so the Detours code in the shipped binaries is the
+code those releases carried. third_party/detours/README.md records the archive
+hash, the flags and how to check both.
+
+The declarations of NVIDIA's NGX interface the backend
+uses (src/backend/ngx/ngx_abi.h, and the three Init structs in src/backend/ngx/ngx_log.h) are this
+project's own, written from its measurements of the binaries and the public
+SDK's documented layouts; no NGX header from NVIDIA or from another project is
+included.
+
+NVIDIA material: the source repository contains no NVIDIA file - no runtime,
+no snippet and no kernel image. The release package carries the following
+NVIDIA material as files under dlssg_sm86\ beside the proxies. None of it is
+relicensed by LICENSE.md.
+
+The DLSS-G runtime is an unmodified nvngx_dlssg.dll 310.9.16.0, 7,506,544
+bytes, SHA256:
+cadee1aa6db3907babdc3285da2aebc4553d92b89c38ba3eae8abd8bba1bea72
+(dlssg_sm86\runtime\nvngx_dlssg.dll), handed to the NGX core exactly as
+received. A package built for the alternative runtime model 310.9 carries
+nvngx_dlssg.dll 310.9.1.0 instead, 7,460,976 bytes, SHA256:
+ff6e90eb78b827927dff5b4ecc6b1c870c2e9bca29ed9f48c7d348cc9e170b82.
+
+The frame-generation kernel pack, dlssg_sm86\kernels\fg_kernels.dll, holds
+that runtime's kernels extracted, recompiled for sm_86 and sm_75, patched or
+rewritten, and the manifest that says which runtime kernel each image
+replaces. It is derived from NVIDIA kernel code, is provided in binary form
+only and is not covered by the MIT license.
+
+[SuperResolution] Mode additionally uses an unmodified DLSS Super Resolution
+snippet, nvngx_dlss.dll 310.9.16.0, 74,187,376 bytes,
+SHA256 858ccff96360c3098db9264cd6f13d04a027e09b6ce7ad5bbc297570e824b4f2 (until
+2026-10-15: 310.7.129.0, d202b024cf5a809d4f6cb57b698ca61cdf7e7f664915a3794942042066d7cf72;
+the preset L and M network weights of the two builds are byte-identical). It is
+handed to the NGX core exactly as received - the file NVIDIA signed, byte for
+byte - and it ships as a FILE beside the proxy (dlssg_sm86\sr\nvngx_dlss.dll),
+not inside the DLL: it is 74 MB and a release carries six proxy names. The
+INT8 kernel sets beside it - the resource-only DLL dlssg_sm86\sr\sr_kernels.dll,
+which holds them with no code of its own - are post-training quantizations of
+that snippet's own network weights: derived from NVIDIA material, binary only,
+and not covered by the MIT license.
+
+SM75 GPU assets: thank you to Coldwood1026 for the RTX 20-series / SM75 work.
+Repository: https://github.com/Coldwood1026/dlssg_for_sm75 (previous name:
+Coldwood1026/dlssg_for_sm86).
+Pinned source:
+https://github.com/Coldwood1026/dlssg_for_sm75/commit/c60c2aa363c7e66a523122aa5cec9c884658ad5f
+No CPU host from that binary is embedded. PTX container lengths, termination and
+alignment were repaired, and the PTX ISA declaration of the 33 image kernels was
+normalised from 8.7 to 8.5 (payload text and container field; no instruction
+text changed). The kernel pack carries the repaired family: PTX with one
+further recorded rewrite (the f16x2 .local unpack repair) and cubins this
+project built from it with ptxas, for the 44 kernels the 310.9.1 runtime shares
+with the 310.1 runtime that work was made for. (The original family, that
+repository's sm_75 cubins byte for byte, was removed on 2026-10-22 with
+[Compatibility] SM75Family.) Those images are themselves derivatives
+of NVIDIA kernel code and are third-party material in the same bucket as the
+kernel pack: they are not relicensed by LICENSE.md.
+
+Intel material: [FrameGeneration] Engine=XeSS runs Intel's XeSS-FG model on
+this project's own runner. The resource-only DLL
+dlssg_sm86\xefg\xefg_kernels.dll holds the model's compute shaders (DXBC) and
+weight buffers, extracted from libxess_fg.dll 1.3.1.78 of the XeSS 3 SDK
+(SHA256 ec5e0c65e075570c6ede72618bb666d0be0c2e10b2ea9762c0fe8cb8e375ab27),
+unmodified; the dispatch sequence the runner records
+(src/backend/xefg/xe_graph.inc (private)) was derived from measurements of the same
+library. libxess_fg.dll itself is neither shipped nor loaded. The XeSS 3 SDK is
+released under the MIT license (xess-main/MIT.txt, Copyright (c) 2026 Intel
+Corporation); that notice is reproduced at the end of this file. It does not
+describe the NVIDIA material above.
+
+[FrameGeneration] Engine=XeSS (opt-in) runs XeSS-FG model 15 as ported by MFG-Unlocker
+1.6.0 (https://github.com/dashdogy/MFG-Unlocker, Copyright (c) 2026 Michael
+Robles / dashdogy, MIT License; its notice is reproduced at the end of this
+file). The same resource-only DLL dlssg_sm86\xefg\xefg_kernels.dll also holds the compute
+programs and weight buffers libxess_fg.dll 1.3.1.78 executes for that port:
+Intel's own programs and weights (MIT, above) and the port's 54 programs,
+taken unmodified from the MFG-Unlocker 1.6.0 release (pinned manifest SHA256
+d74bd783d29280ed372653701ce9b0395362e381faace1213206e0bdd9bfc9e5). Per the
+port's own XEFG-PROGRAMS-NOTICE, 46 of those programs are derived from Intel's
+XeSS SDK programs and remain subject to Intel's licence terms for the XeSS SDK;
+they are not covered by MFG-Unlocker's MIT License nor by LICENSE.md. The
+dispatch sequence (src/backend/xefg/xe_graph15.inc (private)) was measured on
+libxess_fg.dll running that port offline. The relabel of model 15 as model 16
+that makes the provider run it was identified by the authors of the "XessFG
+Model 15 Final" package; the frame-count unlock is MFG-Unlocker's.
+
+DirectX helper header d3dx12.h
+Copyright (c) Microsoft Corporation. All rights reserved.
+SPDX-License-Identifier: MIT
+
+Microsoft Research Detours 4.0.1
+Copyright (c) Microsoft Corporation. All rights reserved.
+Source: https://github.com/microsoft/Detours, tag v4.0.1
+
+JSON for Modern C++ 3.11.2
+Copyright (c) 2013-2022 Niels Lohmann
+SPDX-License-Identifier: MIT
+
+The following MIT notice applies to the helper libraries identified above.
+Their original attribution is also retained in third_party/detours/LICENSE.md
+and the Detours sources, third_party/json/json.h and
+third_party/directx/d3dx12.h. This license does not
+describe the NVIDIA runtime or extracted NVIDIA kernel assets.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to
+do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+XeSS 3 SDK (the XeSS-FG shaders and weights in dlssg_sm86\xefg\xefg_kernels.dll)
+Copyright (c) 2026 Intel Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this
+software and associated documentation files (the "Software"), to deal in the Software
+without restriction, including without limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies
+or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+MFG-Unlocker 1.6.0 (the model-15 port in dlssg_sm86\xefg\xefg_kernels.dll)
+MIT License
+
+Copyright (c) 2026 Michael Robles
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
