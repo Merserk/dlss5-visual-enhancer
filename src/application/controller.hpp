@@ -92,7 +92,7 @@ class AppController : public QmlFacade {
     QString tab_ = "neural-rendering", nrMode_ = "Image", upscaleMode_ = "Image";
     QString operation_ = "Idle", status_ = "Initializing runtime…", runtime_ = "Initializing", runtimeError_,
             presetStatus_, exportPhase_;
-    QString destinationMode_ = "output", exportFolder_, language_ = "en_US";
+    QString destinationMode_ = "output", exportFolder_, language_ = "tr";
     bool shuttingDown_ = false, autoPreview_ = true, focus_ = false, fastPreview_ = false,
          previewDirty_ = false;
     double split_ = 0.5, progress_ = 0;
